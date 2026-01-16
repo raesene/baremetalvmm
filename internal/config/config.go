@@ -118,6 +118,12 @@ func ConfigPath() string {
 	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
 		return filepath.Join(xdgConfig, "vmm", "config.json")
 	}
+
+	// When running under sudo, use the original user's home directory
 	home, _ := os.UserHomeDir()
+	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" && sudoUser != "root" {
+		home = filepath.Join("/home", sudoUser)
+	}
+
 	return filepath.Join(home, ".config", "vmm", "config.json")
 }

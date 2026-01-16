@@ -25,34 +25,32 @@ func NewManager(bridgeName, subnet, gateway, hostInterface string) *Manager {
 	}
 }
 
-// EnsureBridge creates the network bridge if it doesn't exist
+// EnsureBridge creates the network bridge if it doesn't exist and ensures NAT is configured
 func (m *Manager) EnsureBridge() error {
-	// Check if bridge exists
-	if m.bridgeExists() {
-		return nil
+	// Create bridge if it doesn't exist
+	if !m.bridgeExists() {
+		// Create bridge
+		if err := m.runCmd("ip", "link", "add", m.BridgeName, "type", "bridge"); err != nil {
+			return fmt.Errorf("failed to create bridge: %w", err)
+		}
+
+		// Set bridge IP
+		if err := m.runCmd("ip", "addr", "add", m.Gateway+"/16", "dev", m.BridgeName); err != nil {
+			// Might already have an IP, continue
+		}
+
+		// Bring up bridge
+		if err := m.runCmd("ip", "link", "set", m.BridgeName, "up"); err != nil {
+			return fmt.Errorf("failed to bring up bridge: %w", err)
+		}
 	}
 
-	// Create bridge
-	if err := m.runCmd("ip", "link", "add", m.BridgeName, "type", "bridge"); err != nil {
-		return fmt.Errorf("failed to create bridge: %w", err)
-	}
-
-	// Set bridge IP
-	if err := m.runCmd("ip", "addr", "add", m.Gateway+"/16", "dev", m.BridgeName); err != nil {
-		// Might already have an IP, continue
-	}
-
-	// Bring up bridge
-	if err := m.runCmd("ip", "link", "set", m.BridgeName, "up"); err != nil {
-		return fmt.Errorf("failed to bring up bridge: %w", err)
-	}
-
-	// Enable IP forwarding
+	// Always ensure IP forwarding is enabled
 	if err := m.runCmd("sysctl", "-w", "net.ipv4.ip_forward=1"); err != nil {
 		return fmt.Errorf("failed to enable IP forwarding: %w", err)
 	}
 
-	// Set up NAT
+	// Always ensure NAT rules are in place (setupNAT checks for duplicates)
 	if err := m.setupNAT(); err != nil {
 		return fmt.Errorf("failed to setup NAT: %w", err)
 	}
