@@ -30,6 +30,7 @@ type VM struct {
 	CPUs         int       `json:"cpus"`
 	MemoryMB     int       `json:"memory_mb"`
 	DiskSizeMB   int       `json:"disk_size_mb"`
+	Image        string    `json:"image,omitempty"`
 	KernelPath   string    `json:"kernel_path"`
 	RootfsPath   string    `json:"rootfs_path"`
 	IPAddress    string    `json:"ip_address"`

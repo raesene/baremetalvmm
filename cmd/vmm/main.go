@@ -58,6 +58,7 @@ func createCmd() *cobra.Command {
 	var disk int
 	var sshKeyPath string
 	var dnsServers []string
+	var imageName string
 
 	cmd := &cobra.Command{
 		Use:   "create <name>",
@@ -78,11 +79,20 @@ func createCmd() *cobra.Command {
 				return fmt.Errorf("VM '%s' already exists", name)
 			}
 
+			// Validate image exists if specified
+			if imageName != "" {
+				imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
+				if !imgMgr.ImageExists(imageName) {
+					return fmt.Errorf("image '%s' not found. Use 'vmm image list' to see available images", imageName)
+				}
+			}
+
 			// Create new VM
 			newVM := vm.NewVM(name)
 			newVM.CPUs = cpus
 			newVM.MemoryMB = memory
 			newVM.DiskSizeMB = disk
+			newVM.Image = imageName
 			newVM.MacAddress = newVM.GenerateMacAddress()
 			newVM.TapDevice = network.GenerateTapName(newVM.ID)
 			newVM.DNSServers = dnsServers
@@ -106,6 +116,9 @@ func createCmd() *cobra.Command {
 
 			fmt.Printf("Created VM '%s' (ID: %s)\n", name, newVM.ID)
 			fmt.Printf("  CPUs: %d, Memory: %d MB, Disk: %d MB\n", newVM.CPUs, newVM.MemoryMB, newVM.DiskSizeMB)
+			if newVM.Image != "" {
+				fmt.Printf("  Image: %s\n", newVM.Image)
+			}
 			fmt.Printf("  TAP device: %s, MAC: %s\n", newVM.TapDevice, newVM.MacAddress)
 			if newVM.SSHPublicKey != "" {
 				fmt.Printf("  SSH key: configured\n")
@@ -122,6 +135,7 @@ func createCmd() *cobra.Command {
 	cmd.Flags().IntVar(&disk, "disk", 1024, "Disk size in MB")
 	cmd.Flags().StringVar(&sshKeyPath, "ssh-key", "", "Path to SSH public key file for root access")
 	cmd.Flags().StringSliceVar(&dnsServers, "dns", nil, "Custom DNS servers (can be specified multiple times)")
+	cmd.Flags().StringVar(&imageName, "image", "", "Name of rootfs image to use (from 'vmm image import')")
 
 	return cmd
 }
@@ -273,7 +287,7 @@ func startCmd() *cobra.Command {
 			}
 
 			// Create VM-specific rootfs if needed
-			vmRootfs, err := imgMgr.CreateVMRootfs(name, paths.VMs, existingVM.DiskSizeMB)
+			vmRootfs, err := imgMgr.CreateVMRootfs(name, paths.VMs, existingVM.DiskSizeMB, existingVM.Image)
 			if err != nil {
 				return fmt.Errorf("failed to create VM rootfs: %w", err)
 			}
@@ -581,7 +595,12 @@ func imageCmd() *cobra.Command {
 				fmt.Println("  (none)")
 			} else {
 				for _, r := range rootfs {
-					fmt.Printf("  - %s\n", r)
+					// Remove .ext4 extension for display
+					name := r
+					if len(r) > 5 && r[len(r)-5:] == ".ext4" {
+						name = r[:len(r)-5]
+					}
+					fmt.Printf("  - %s\n", name)
 				}
 			}
 
@@ -611,7 +630,64 @@ func imageCmd() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(listCmd, pullCmd)
+	var importSize int
+	importCmd := &cobra.Command{
+		Use:   "import <docker-image> --name <name>",
+		Short: "Import a Docker image as a VMM rootfs",
+		Long: `Import a Docker image as a VMM rootfs.
+
+The Docker image will be exported, configured with systemd and SSH,
+and converted to an ext4 filesystem suitable for Firecracker VMs.
+
+Examples:
+  vmm image import ubuntu:22.04 --name ubuntu-base
+  vmm image import myregistry/myapp:latest --name myapp --size 4096`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dockerImage := args[0]
+			name, _ := cmd.Flags().GetString("name")
+
+			if name == "" {
+				return fmt.Errorf("--name is required")
+			}
+
+			if err := cfg.EnsureDirectories(); err != nil {
+				return fmt.Errorf("failed to create directories: %w", err)
+			}
+
+			paths := cfg.GetPaths()
+			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
+
+			if err := imgMgr.ImportDockerImage(dockerImage, name, importSize); err != nil {
+				return err
+			}
+
+			return nil
+		},
+	}
+	importCmd.Flags().String("name", "", "Name for the imported image (required)")
+	importCmd.Flags().IntVar(&importSize, "size", 2048, "Size of the image in MB")
+	importCmd.MarkFlagRequired("name")
+
+	deleteCmd := &cobra.Command{
+		Use:   "delete <name>",
+		Short: "Delete an imported image",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			paths := cfg.GetPaths()
+			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
+
+			if err := imgMgr.DeleteImage(name); err != nil {
+				return err
+			}
+
+			fmt.Printf("Deleted image '%s'\n", name)
+			return nil
+		},
+	}
+
+	cmd.AddCommand(listCmd, pullCmd, importCmd, deleteCmd)
 	return cmd
 }
 
@@ -706,7 +782,7 @@ func autostartCmd() *cobra.Command {
 				}
 
 				// Create rootfs if needed
-				vmRootfs, err := imgMgr.CreateVMRootfs(v.Name, paths.VMs, v.DiskSizeMB)
+				vmRootfs, err := imgMgr.CreateVMRootfs(v.Name, paths.VMs, v.DiskSizeMB, v.Image)
 				if err != nil {
 					fmt.Printf("  Error: failed to create rootfs: %v\n", err)
 					continue

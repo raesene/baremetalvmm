@@ -72,7 +72,7 @@ baremetalvmm/
 ## CLI Commands
 
 ```
-vmm create <name> [--cpus N] [--memory MB] [--disk MB] [--ssh-key PATH] [--dns SERVER]
+vmm create <name> [--cpus N] [--memory MB] [--disk MB] [--ssh-key PATH] [--dns SERVER] [--image NAME]
 vmm start <name>
 vmm stop <name>
 vmm delete <name> [-f]
@@ -81,6 +81,8 @@ vmm ssh <name> [-u user]
 vmm port-forward <name> <host>:<guest>
 vmm image list
 vmm image pull
+vmm image import <docker-image> --name <name> [--size MB]
+vmm image delete <name>
 vmm config show
 vmm config init
 vmm autostart   # Hidden, used by systemd
@@ -93,6 +95,7 @@ vmm autostop    # Hidden, used by systemd
 - `--disk` - Disk size in MB (default: 1024) - rootfs is resized to this size
 - `--ssh-key` - Path to SSH public key file for root access
 - `--dns` - Custom DNS server (can be repeated for multiple servers)
+- `--image` - Name of custom rootfs image (from `vmm image import`)
 
 ## Common Development Tasks
 
@@ -237,6 +240,48 @@ vmm create myvm
 vmm create myvm --dns 9.9.9.9 --dns 1.0.0.1
 ```
 
+### Docker Image Import (`internal/image/image.go`)
+**Feature**: Import Docker images as VM root filesystems.
+**Implementation**:
+- `ImportDockerImage()` exports Docker container filesystem
+- Installs systemd, openssh-server, and networking tools via chroot
+- Configures image for Firecracker (serial console, SSH, networking)
+- Creates ext4 filesystem image from exported container
+- Added `Image` field to VM struct for image selection
+- Added `--image` flag to `vmm create`
+- Added `vmm image import` and `vmm image delete` commands
+
+**Process**:
+1. Creates a temporary container from the Docker image
+2. Exports the container filesystem to a tarball
+3. Extracts to a temporary directory
+4. Installs required packages: systemd, systemd-sysv, openssh-server, iproute2, iputils-ping, dnsutils
+5. Configures systemd as init, enables SSH, sets up serial console
+6. Creates ext4 image and copies files into it
+
+**Requirements**:
+- Docker must be installed and accessible
+- Only Debian/Ubuntu-based images are supported
+- Requires root privileges
+
+**Usage**:
+```bash
+# Import a Docker image
+sudo vmm image import ubuntu:22.04 --name ubuntu-base
+
+# Import with custom size (default 2GB)
+sudo vmm image import ubuntu:22.04 --name ubuntu-large --size 4096
+
+# Create VM with custom image
+sudo vmm create myvm --image ubuntu-base --ssh-key ~/.ssh/id_ed25519.pub
+
+# List available images
+vmm image list
+
+# Delete an imported image
+sudo vmm image delete ubuntu-base
+```
+
 ## Future Improvements (Not Yet Implemented)
 
 1. **Cloud-init** - Full cloud-init support for more flexible VM initialization
@@ -245,7 +290,7 @@ vmm create myvm --dns 9.9.9.9 --dns 1.0.0.1
 4. **Better IP management** - Persistent IP allocation
 5. **Web UI** - Optional browser-based management
 6. **VM snapshots** - Save/restore VM state
-7. **Custom images** - Support for user-provided kernels/rootfs
+7. **Custom kernels** - Support for user-provided kernel images
 
 ## Code Style
 

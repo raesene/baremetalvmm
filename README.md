@@ -93,13 +93,15 @@ Flags:
   --disk int         Disk size in MB (default 1024)
   --ssh-key string   Path to SSH public key file for root access
   --dns string       Custom DNS servers (can be specified multiple times)
+  --image string     Name of rootfs image to use (from 'vmm image import')
 ```
 
 Example with all options:
 ```bash
 sudo vmm create myvm --cpus 2 --memory 2048 --disk 10000 \
   --ssh-key ~/.ssh/id_ed25519.pub \
-  --dns 9.9.9.9 --dns 1.1.1.1
+  --dns 9.9.9.9 --dns 1.1.1.1 \
+  --image ubuntu-base
 ```
 
 ### Access
@@ -131,6 +133,8 @@ sudo vmm port-forward myvm 8080:80
 |---------|-------------|
 | `vmm image list` | List available images |
 | `vmm image pull` | Download default images |
+| `vmm image import <docker-image> --name <name>` | Import a Docker image as rootfs |
+| `vmm image delete <name>` | Delete an imported image |
 
 ### Configuration
 
@@ -250,6 +254,55 @@ sudo vmm create myvm --dns 10.0.0.53 --dns 10.0.0.54
 ```
 
 DNS configuration is written to `/etc/resolv.conf` in the VM's rootfs each time the VM starts.
+
+## Custom Docker Images
+
+VMM can import Docker images as VM root filesystems. This allows you to use your existing Docker images as the base for VMs.
+
+### Importing an Image
+
+```bash
+# Import Ubuntu 22.04 as a base image
+sudo vmm image import ubuntu:22.04 --name ubuntu-base
+
+# Import with a larger size (default is 2GB)
+sudo vmm image import ubuntu:22.04 --name ubuntu-large --size 4096
+
+# Import a custom image from a registry
+sudo vmm image import myregistry/myapp:latest --name myapp
+```
+
+The import process:
+1. Exports the Docker container filesystem
+2. Installs systemd, openssh-server, and networking tools
+3. Configures the image for Firecracker (serial console, SSH, networking)
+4. Creates an ext4 filesystem image
+
+### Using Custom Images
+
+```bash
+# Create a VM using the imported image
+sudo vmm create myvm --image ubuntu-base --ssh-key ~/.ssh/id_ed25519.pub
+
+# Start the VM
+sudo vmm start myvm
+```
+
+### Requirements
+
+- Docker must be installed and accessible
+- Only Debian/Ubuntu-based images are currently supported
+- The import process requires root privileges
+
+### Managing Images
+
+```bash
+# List all available images
+vmm image list
+
+# Delete an imported image
+sudo vmm image delete ubuntu-base
+```
 
 ## Troubleshooting
 
