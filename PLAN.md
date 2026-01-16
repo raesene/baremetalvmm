@@ -39,11 +39,11 @@ After evaluating the options, **Firecracker** was chosen as the VMM engine becau
 | Port Forwarding | Done | iptables DNAT rules |
 | Image Management | Done | Downloads Firecracker quickstart images |
 | systemd Integration | Done | Auto-start/stop on boot |
-| SSH Access | Partial | Network works; rootfs needs SSH configuration |
+| SSH Access | Done | SSH key injection via `--ssh-key` flag |
 
 ### What's Not Yet Implemented
 
-- **Cloud-init support** - For proper SSH key injection
+- **Cloud-init support** - For more flexible VM initialization
 - **Custom rootfs images** - Currently uses Firecracker quickstart image
 - **Jailer integration** - For production security hardening
 - **VM snapshots** - Save/restore VM state

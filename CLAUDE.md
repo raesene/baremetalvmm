@@ -146,7 +146,6 @@ Key Go packages:
 3. **No GPU passthrough** - Firecracker limitation
 4. **Serial I/O limits** - ~13k IOPS max (Firecracker limitation)
 5. **No live migration** - VMs must be stopped to move
-6. **SSH requires rootfs config** - Default rootfs doesn't have SSH credentials configured
 
 ## Bugs Fixed (January 2026)
 
@@ -165,9 +164,26 @@ Key Go packages:
 **Cause**: TAP device wasn't deleted when VM was stopped, so Firecracker couldn't reattach on restart.
 **Fix**: Delete TAP device in `stopCmd()` after VM shutdown completes.
 
+## Features Added (January 2026)
+
+### SSH Key Injection (`internal/image/image.go:193-243`)
+**Feature**: Inject SSH public keys into VM rootfs for passwordless access.
+**Implementation**:
+- Added `SSHPublicKey` field to VM struct
+- Added `--ssh-key` flag to `vmm create` command
+- `InjectSSHKey()` function mounts ext4 rootfs, writes authorized_keys file
+- SSH key injection happens in `vmm start` after rootfs is copied
+
+**Usage**:
+```bash
+vmm create myvm --ssh-key ~/.ssh/id_ed25519.pub
+vmm start myvm
+vmm ssh myvm
+```
+
 ## Future Improvements (Not Yet Implemented)
 
-1. **Cloud-init** - Proper VM initialization with SSH keys (would fix SSH access)
+1. **Cloud-init** - Full cloud-init support for more flexible VM initialization
 2. **Jailer integration** - Production security hardening
 3. **Resource quotas** - CPU/memory/disk limits
 4. **Better IP management** - Persistent IP allocation

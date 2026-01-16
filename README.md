@@ -47,8 +47,8 @@ vmm config init
 # Download kernel and rootfs images
 sudo vmm image pull
 
-# Create a VM
-sudo vmm create myvm --cpus 2 --memory 1024
+# Create a VM with SSH key for access
+sudo vmm create myvm --cpus 2 --memory 1024 --ssh-key ~/.ssh/id_ed25519.pub
 
 # Start the VM
 sudo vmm start myvm
@@ -56,8 +56,8 @@ sudo vmm start myvm
 # List VMs (works as non-root)
 vmm list
 
-# Test network connectivity
-ping 172.16.0.2
+# SSH into the VM
+vmm ssh myvm
 
 # Stop the VM
 sudo vmm stop myvm
@@ -84,19 +84,20 @@ sudo vmm delete myvm
 vmm create <name> [flags]
 
 Flags:
-  --cpus int      Number of vCPUs (default 1)
-  --memory int    Memory in MB (default 512)
-  --disk int      Disk size in MB (default 1024)
+  --cpus int         Number of vCPUs (default 1)
+  --memory int       Memory in MB (default 512)
+  --disk int         Disk size in MB (default 1024)
+  --ssh-key string   Path to SSH public key file for root access
 ```
 
 ### Access
 
 | Command | Description |
 |---------|-------------|
-| `vmm ssh <name>` | SSH into a VM (see note below) |
+| `vmm ssh <name>` | SSH into a VM as root |
 | `vmm ssh <name> -u <user>` | SSH as specific user |
 
-**Note**: SSH access requires the rootfs to have SSH credentials configured. The default Firecracker quickstart rootfs does not have SSH enabled with known credentials. See "Custom Root Filesystem" section below.
+**Note**: SSH access requires an SSH public key to be configured when creating the VM using the `--ssh-key` flag. The key is injected into the VM's rootfs at startup.
 
 ### Networking
 
@@ -203,16 +204,19 @@ sudo systemctl status vmm
 
 VMs with `auto_start: true` (the default) will be started automatically.
 
-## Custom Root Filesystem
+## SSH Key Injection
 
-The default rootfs (`bionic.rootfs.ext4`) is a minimal Ubuntu 18.04 image from the Firecracker quickstart. It does not have SSH credentials configured.
+VMM automatically injects SSH public keys into VMs at startup. When you create a VM with the `--ssh-key` flag, the specified public key is stored in the VM configuration. When the VM starts, VMM:
 
-To enable SSH access, you'll need a custom rootfs with:
-- SSH server installed and enabled
-- Known root password, or
-- SSH public key in `/root/.ssh/authorized_keys`
+1. Mounts the VM's rootfs image
+2. Creates `/root/.ssh/` directory if needed
+3. Writes the public key to `/root/.ssh/authorized_keys`
+4. Sets correct permissions (700 for directory, 600 for file)
+5. Unmounts and boots the VM
 
-Future versions will support cloud-init for automatic SSH key injection.
+This allows passwordless SSH access as root using your existing SSH key pair.
+
+**Note**: SSH key injection requires root privileges (for mounting the rootfs image).
 
 ## Troubleshooting
 
@@ -305,9 +309,8 @@ go test ./...
 
 1. **Linux only** - Firecracker only runs on Linux with KVM
 2. **Root required** - VM start/stop and networking require root privileges
-3. **No SSH by default** - Default rootfs lacks SSH credentials (see Custom Root Filesystem)
-4. **No GPU passthrough** - Firecracker limitation
-5. **No live migration** - VMs must be stopped to move
+3. **No GPU passthrough** - Firecracker limitation
+4. **No live migration** - VMs must be stopped to move
 
 ## License
 
