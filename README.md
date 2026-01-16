@@ -101,6 +101,8 @@ Flags:
 
 **Note**: SSH access requires an SSH public key to be configured when creating the VM using the `--ssh-key` flag. The key is injected into the VM's rootfs at startup.
 
+**Tip**: You can use `sudo vmm ssh <name>` if you prefer consistency with other commands. When run with sudo, VMM automatically detects the original user and uses their SSH keys from their home directory.
+
 ### Networking
 
 | Command | Description |
@@ -109,8 +111,8 @@ Flags:
 
 Example:
 ```bash
-# Forward host port 8080 to VM port 80
-vmm port-forward myvm 8080:80
+# Forward host port 8080 to VM port 80 Needs sudo for iptables rights
+sudo vmm port-forward myvm 8080:80
 ```
 
 ### Images

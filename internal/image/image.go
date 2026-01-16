@@ -70,8 +70,8 @@ func (m *Manager) GetDefaultRootfsPath() string {
 	return filepath.Join(m.RootfsDir, DefaultRootfsName)
 }
 
-// CreateVMRootfs creates a copy of the rootfs for a specific VM
-func (m *Manager) CreateVMRootfs(vmName string, vmDir string) (string, error) {
+// CreateVMRootfs creates a copy of the rootfs for a specific VM with the specified size
+func (m *Manager) CreateVMRootfs(vmName string, vmDir string, diskSizeMB int) (string, error) {
 	srcPath := m.GetDefaultRootfsPath()
 	dstPath := filepath.Join(vmDir, vmName+".ext4")
 
@@ -89,6 +89,27 @@ func (m *Manager) CreateVMRootfs(vmName string, vmDir string) (string, error) {
 	fmt.Printf("Creating rootfs for VM '%s'...\n", vmName)
 	if err := copyFile(srcPath, dstPath); err != nil {
 		return "", fmt.Errorf("failed to copy rootfs: %w", err)
+	}
+
+	// Resize the rootfs if a size was specified
+	if diskSizeMB > 0 {
+		fmt.Printf("Resizing rootfs to %d MB...\n", diskSizeMB)
+
+		// Expand the file to the desired size
+		truncateCmd := exec.Command("truncate", "-s", fmt.Sprintf("%dM", diskSizeMB), dstPath)
+		if output, err := truncateCmd.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("failed to expand rootfs file: %w: %s", err, string(output))
+		}
+
+		// Check the filesystem before resizing
+		e2fsckCmd := exec.Command("e2fsck", "-f", "-y", dstPath)
+		e2fsckCmd.Run() // Best effort, ignore errors
+
+		// Resize the ext4 filesystem to fill the file
+		resize2fsCmd := exec.Command("resize2fs", dstPath)
+		if output, err := resize2fsCmd.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("failed to resize filesystem: %w: %s", err, string(output))
+		}
 	}
 
 	return dstPath, nil
