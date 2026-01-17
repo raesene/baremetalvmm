@@ -19,7 +19,7 @@ A lightweight CLI tool to manage Firecracker microVMs for development environmen
 - Ubuntu 24.04 (or compatible Linux distribution)
 - KVM support (`/dev/kvm` must be accessible)
 - Root access (for networking setup)
-- Go 1.21+ (for building from source)
+- Go 1.21+ (only if building from source)
 
 ## Quick Start
 
@@ -30,15 +30,26 @@ A lightweight CLI tool to manage Firecracker microVMs for development environmen
 git clone https://github.com/raesene/baremetalvmm.git
 cd baremetalvmm
 
-# Build and install (requires root)
+# Install (requires root)
 sudo ./scripts/install.sh
 ```
 
 The install script will:
-- Build the `vmm` binary
-- Install it to `/usr/local/bin`
+- Download the pre-built `vmm` binary from GitHub releases (amd64/arm64)
+- Fall back to building from source if download fails
+- Install the binary to `/usr/local/bin`
 - Download Firecracker v1.11.0
 - Create data directories in `/var/lib/vmm`
+
+#### Installation Options
+
+```bash
+# Default: download pre-built binary
+sudo ./scripts/install.sh
+
+# Force build from source (requires Go 1.21+)
+sudo ./scripts/install.sh --build-from-source
+```
 
 To optionally install the systemd service for auto-start on boot:
 ```bash

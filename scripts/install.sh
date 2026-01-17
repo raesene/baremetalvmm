@@ -6,6 +6,8 @@ set -e
 
 INSTALL_DIR="/usr/local/bin"
 DATA_DIR="/var/lib/vmm"
+VMM_VERSION="0.1.0"
+GITHUB_REPO="raesene/baremetalvmm"
 
 echo "VMM Installer"
 echo "============="
@@ -22,21 +24,95 @@ if [ ! -e /dev/kvm ]; then
     echo "Ensure your CPU supports virtualization and it's enabled in BIOS."
 fi
 
-# Build if vmm binary doesn't exist
-if [ ! -f "./vmm" ]; then
-    echo "Building VMM..."
+# Detect architecture
+detect_arch() {
+    local arch=$(uname -m)
+    case "$arch" in
+        x86_64)
+            echo "amd64"
+            ;;
+        aarch64|arm64)
+            echo "arm64"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+# Download pre-built binary from GitHub releases
+download_prebuilt() {
+    local arch=$(detect_arch)
+    if [ -z "$arch" ]; then
+        echo "Unsupported architecture: $(uname -m)"
+        return 1
+    fi
+
+    local url="https://github.com/${GITHUB_REPO}/releases/download/v${VMM_VERSION}/vmm_${VMM_VERSION}_linux_${arch}.tar.gz"
+    echo "Downloading VMM v${VMM_VERSION} for linux/${arch}..."
+
+    if curl -fsSL -o /tmp/vmm.tar.gz "$url"; then
+        echo "Extracting..."
+        tar -xzf /tmp/vmm.tar.gz -C /tmp vmm
+        cp /tmp/vmm "$INSTALL_DIR/vmm"
+        chmod +x "$INSTALL_DIR/vmm"
+        rm -f /tmp/vmm.tar.gz /tmp/vmm
+        echo "VMM installed to $INSTALL_DIR/vmm"
+        return 0
+    else
+        echo "Failed to download pre-built binary"
+        rm -f /tmp/vmm.tar.gz
+        return 1
+    fi
+}
+
+# Build from source
+build_from_source() {
+    echo "Building VMM from source..."
     if command -v go &> /dev/null; then
         go build -o vmm ./cmd/vmm/
+        cp vmm "$INSTALL_DIR/vmm"
+        chmod +x "$INSTALL_DIR/vmm"
+        echo "VMM installed to $INSTALL_DIR/vmm"
+        return 0
     else
-        echo "Error: Go is not installed. Please build manually or install Go."
-        exit 1
+        echo "Error: Go is not installed. Cannot build from source."
+        return 1
     fi
-fi
+}
 
-# Install binary
-echo "Installing vmm to $INSTALL_DIR..."
-cp vmm "$INSTALL_DIR/vmm"
-chmod +x "$INSTALL_DIR/vmm"
+# Install VMM binary
+# Priority: 1. Pre-built binary from GitHub, 2. Build from source
+install_vmm() {
+    # Check if --build-from-source flag is provided
+    if [ "$BUILD_FROM_SOURCE" = "1" ]; then
+        echo "Building from source (--build-from-source specified)..."
+        build_from_source
+        return $?
+    fi
+
+    # Try to download pre-built binary first
+    if download_prebuilt; then
+        return 0
+    fi
+
+    # Fall back to building from source
+    echo "Falling back to building from source..."
+    build_from_source
+}
+
+# Parse command line arguments
+BUILD_FROM_SOURCE=0
+for arg in "$@"; do
+    case "$arg" in
+        --build-from-source)
+            BUILD_FROM_SOURCE=1
+            ;;
+    esac
+done
+
+# Install VMM
+install_vmm
 
 # Create data directories
 echo "Creating data directories..."
