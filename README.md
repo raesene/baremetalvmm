@@ -35,46 +35,49 @@ The install script will:
 - Download Firecracker v1.11.0
 - Create data directories in `/var/lib/vmm`
 
-#### Installation Options
+### One time Setup
+
+First up (one time only) run the init command
 
 ```bash
-# Default: download pre-built binary
-sudo ./scripts/install.sh
-
-# Force build from source (requires Go 1.21+)
-sudo ./scripts/install.sh --build-from-source
-```
-
-To optionally install the systemd service for auto-start on boot:
-```bash
-sudo ./scripts/install-service.sh
-```
-
-### Basic Usage
-
-```bash
-# Initialize configuration
 vmm config init
+```
 
-# Download kernel and rootfs images
+Next up we need to pull the default kernel and root image, this is the ones provided by the firecracker project, we can change the rootfs with more commands (changing kernel still to be developed). Again this is one-time should be present for future runs
+
+```bash
 sudo vmm image pull
+```
 
-# Create a VM with SSH key for access
+### Basic usage
+
+First up we create a VM. Key elements we can configure here are number of CPUs, amount of memory, amount of disk space and importantly an SSH key to use to connect to the VM once it's started. there also also other options for things like custom images (see later in README) and custom DNS servers.
+
+```bash
 sudo vmm create myvm --cpus 2 --memory 1024 --ssh-key ~/.ssh/id_ed25519.pub
+```
 
-# Start the VM
+Once the VM is created, we can start it up
+
+```bash
 sudo vmm start myvm
+```
 
-# List VMs (works as non-root)
-vmm list
+Then once it's started we should be able to SSH in to it. That can be done by name using the `vmm` command as shown below, or you can just use standard `ssh` with a username of `root` and the IP address of the VM
 
-# SSH into the VM
+```bash
 vmm ssh myvm
+```
 
-# Stop the VM
+To stop the VM but leave it in place
+
+```bash
 sudo vmm stop myvm
+```
 
-# Delete the VM
+and then to clean it up
+
+```bash
 sudo vmm delete myvm
 ```
 
