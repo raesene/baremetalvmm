@@ -84,6 +84,56 @@ func createCmd() *cobra.Command {
 				return fmt.Errorf("VM '%s' already exists", name)
 			}
 
+			// Resolve values: CLI flag → config default → hardcoded fallback
+			defaults := cfg.GetVMDefaults()
+
+			// CPUs
+			if !cmd.Flags().Changed("cpus") {
+				if defaults.CPUs > 0 {
+					cpus = defaults.CPUs
+				} else {
+					cpus = 1
+				}
+			}
+
+			// Memory
+			if !cmd.Flags().Changed("memory") {
+				if defaults.MemoryMB > 0 {
+					memory = defaults.MemoryMB
+				} else {
+					memory = 512
+				}
+			}
+
+			// Disk
+			if !cmd.Flags().Changed("disk") {
+				if defaults.DiskSizeMB > 0 {
+					disk = defaults.DiskSizeMB
+				} else {
+					disk = 1024
+				}
+			}
+
+			// Image
+			if !cmd.Flags().Changed("image") && defaults.Image != "" {
+				imageName = defaults.Image
+			}
+
+			// Kernel
+			if !cmd.Flags().Changed("kernel") && defaults.Kernel != "" {
+				kernelName = defaults.Kernel
+			}
+
+			// SSH key path
+			if !cmd.Flags().Changed("ssh-key") && defaults.SSHKeyPath != "" {
+				sshKeyPath = defaults.SSHKeyPath
+			}
+
+			// DNS servers
+			if !cmd.Flags().Changed("dns") && len(defaults.DNSServers) > 0 {
+				dnsServers = defaults.DNSServers
+			}
+
 			// Create image manager for validation
 			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
@@ -128,6 +178,14 @@ func createCmd() *cobra.Command {
 
 			// Read SSH public key if provided
 			if sshKeyPath != "" {
+				// Expand ~ to home directory
+				if len(sshKeyPath) > 0 && sshKeyPath[0] == '~' {
+					home, _ := os.UserHomeDir()
+					if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" && sudoUser != "root" {
+						home = "/home/" + sudoUser
+					}
+					sshKeyPath = home + sshKeyPath[1:]
+				}
 				keyData, err := os.ReadFile(sshKeyPath)
 				if err != nil {
 					return fmt.Errorf("failed to read SSH public key from %s: %w", sshKeyPath, err)
@@ -169,9 +227,9 @@ func createCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().IntVar(&cpus, "cpus", 1, "Number of vCPUs")
-	cmd.Flags().IntVar(&memory, "memory", 512, "Memory in MB")
-	cmd.Flags().IntVar(&disk, "disk", 1024, "Disk size in MB")
+	cmd.Flags().IntVar(&cpus, "cpus", 0, "Number of vCPUs")
+	cmd.Flags().IntVar(&memory, "memory", 0, "Memory in MB")
+	cmd.Flags().IntVar(&disk, "disk", 0, "Disk size in MB")
 	cmd.Flags().StringVar(&sshKeyPath, "ssh-key", "", "Path to SSH public key file for root access")
 	cmd.Flags().StringSliceVar(&dnsServers, "dns", nil, "Custom DNS servers (can be specified multiple times)")
 	cmd.Flags().StringVar(&imageName, "image", "", "Name of rootfs image to use (from 'vmm image import')")
@@ -633,6 +691,60 @@ func configCmd() *cobra.Command {
 			fmt.Printf("Gateway:           %s\n", cfg.Gateway)
 			fmt.Printf("Host interface:    %s\n", cfg.HostInterface)
 			fmt.Printf("Config file:       %s\n", config.ConfigPath())
+
+			// Display VM defaults
+			fmt.Printf("\nVM Defaults:\n")
+			defaults := cfg.GetVMDefaults()
+
+			// CPUs
+			if defaults.CPUs > 0 {
+				fmt.Printf("  cpus:            %d (from config)\n", defaults.CPUs)
+			} else {
+				fmt.Printf("  cpus:            1 (default)\n")
+			}
+
+			// Memory
+			if defaults.MemoryMB > 0 {
+				fmt.Printf("  memory_mb:       %d (from config)\n", defaults.MemoryMB)
+			} else {
+				fmt.Printf("  memory_mb:       512 (default)\n")
+			}
+
+			// Disk
+			if defaults.DiskSizeMB > 0 {
+				fmt.Printf("  disk_size_mb:    %d (from config)\n", defaults.DiskSizeMB)
+			} else {
+				fmt.Printf("  disk_size_mb:    1024 (default)\n")
+			}
+
+			// Image
+			if defaults.Image != "" {
+				fmt.Printf("  image:           %s (from config)\n", defaults.Image)
+			} else {
+				fmt.Printf("  image:           (default rootfs)\n")
+			}
+
+			// Kernel
+			if defaults.Kernel != "" {
+				fmt.Printf("  kernel:          %s (from config)\n", defaults.Kernel)
+			} else {
+				fmt.Printf("  kernel:          (default kernel)\n")
+			}
+
+			// SSH key path
+			if defaults.SSHKeyPath != "" {
+				fmt.Printf("  ssh_key_path:    %s (from config)\n", defaults.SSHKeyPath)
+			} else {
+				fmt.Printf("  ssh_key_path:    (none)\n")
+			}
+
+			// DNS servers
+			if len(defaults.DNSServers) > 0 {
+				fmt.Printf("  dns_servers:     %v (from config)\n", defaults.DNSServers)
+			} else {
+				fmt.Printf("  dns_servers:     [8.8.8.8, 8.8.4.4, 1.1.1.1] (default)\n")
+			}
+
 			return nil
 		},
 	}

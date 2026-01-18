@@ -48,6 +48,7 @@ baremetalvmm/
 - Gateway: `172.16.0.1`
 - Config file: `~/.config/vmm/config.json`
 - `host_interface` is auto-detected from the default route (falls back to `eth0` if detection fails)
+- Optional `vm_defaults` section for `vmm create` default values (cpus, memory, disk, image, kernel, ssh_key_path, dns_servers)
 
 ### 2. VM Management (`internal/vm/`)
 - VM states: `created`, `starting`, `running`, `stopping`, `stopped`, `error`
@@ -105,14 +106,16 @@ vmm autostop    # Hidden, used by systemd
 ```
 
 ### Create flags
-- `--cpus` - Number of vCPUs (default: 1)
-- `--memory` - Memory in MB (default: 512)
-- `--disk` - Disk size in MB (default: 1024) - rootfs is resized to this size
-- `--ssh-key` - Path to SSH public key file for root access
-- `--dns` - Custom DNS server (can be repeated for multiple servers)
-- `--image` - Name of custom rootfs image (from `vmm image import`)
-- `--kernel` - Name of custom kernel (from `vmm kernel import`)
+- `--cpus` - Number of vCPUs (default: 1, configurable)
+- `--memory` - Memory in MB (default: 512, configurable)
+- `--disk` - Disk size in MB (default: 1024, configurable) - rootfs is resized to this size
+- `--ssh-key` - Path to SSH public key file for root access (configurable)
+- `--dns` - Custom DNS server (can be repeated for multiple servers, configurable)
+- `--image` - Name of custom rootfs image (from `vmm image import`, configurable)
+- `--kernel` - Name of custom kernel (from `vmm kernel import`, configurable)
 - `--mount` - Mount host directory in VM (format: `/host/path:tag[:ro|rw]`, can be repeated)
+
+Note: Flags marked "configurable" can have defaults set in `~/.config/vmm/config.json` under `vm_defaults`. See "Configurable VM Defaults" section below.
 
 ## Common Development Tasks
 
@@ -405,6 +408,59 @@ sudo vmm create myvm --kernel my-kernel --ssh-key ~/.ssh/id_ed25519.pub
 # Delete a kernel
 sudo vmm kernel delete my-kernel
 ```
+
+### Configurable VM Defaults (`internal/config/config.go`, `cmd/vmm/main.go`)
+**Feature**: Set default values for `vmm create` parameters in the config file.
+**Implementation**:
+- Added `VMDefaults` struct with fields: `CPUs`, `MemoryMB`, `DiskSizeMB`, `Image`, `Kernel`, `SSHKeyPath`, `DNSServers`
+- Added `vm_defaults` section to config file (optional, omitted if empty)
+- Added `GetVMDefaults()` helper method to Config
+- Updated `createCmd()` to resolve: CLI flag → config default → hardcoded fallback
+- Updated `vmm config show` to display VM defaults with source indication
+- SSH key path supports `~` expansion for home directory
+
+**Config fields**:
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `cpus` | int | 1 | Number of vCPUs |
+| `memory_mb` | int | 512 | Memory in MB |
+| `disk_size_mb` | int | 1024 | Disk size in MB |
+| `image` | string | (default) | Rootfs image name |
+| `kernel` | string | (default) | Kernel name |
+| `ssh_key_path` | string | (none) | Path to SSH public key |
+| `dns_servers` | []string | [8.8.8.8, 8.8.4.4, 1.1.1.1] | DNS servers |
+
+**Example config** (`~/.config/vmm/config.json`):
+```json
+{
+  "data_dir": "/var/lib/vmm",
+  "bridge_name": "vmm-br0",
+  "subnet": "172.16.0.0/16",
+  "gateway": "172.16.0.1",
+  "host_interface": "eth0",
+  "vm_defaults": {
+    "cpus": 2,
+    "memory_mb": 1024,
+    "disk_size_mb": 4096,
+    "ssh_key_path": "~/.ssh/id_ed25519.pub",
+    "kernel": "kernel-6.1"
+  }
+}
+```
+
+**Usage**:
+```bash
+# View current defaults (shows source: config or default)
+vmm config show
+
+# Create VM using config defaults
+sudo vmm create myvm
+
+# Override config default with CLI flag
+sudo vmm create myvm --cpus 4 --memory 2048
+```
+
+**Backward compatibility**: Existing configs without `vm_defaults` continue to work unchanged.
 
 ## Future Improvements (Not Yet Implemented)
 

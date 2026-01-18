@@ -15,15 +15,35 @@ const (
 	DefaultGateway    = "172.16.0.1"
 )
 
+// VMDefaults holds default values for VM creation
+type VMDefaults struct {
+	CPUs       int      `json:"cpus,omitempty"`
+	MemoryMB   int      `json:"memory_mb,omitempty"`
+	DiskSizeMB int      `json:"disk_size_mb,omitempty"`
+	Image      string   `json:"image,omitempty"`
+	Kernel     string   `json:"kernel,omitempty"`
+	SSHKeyPath string   `json:"ssh_key_path,omitempty"`
+	DNSServers []string `json:"dns_servers,omitempty"`
+}
+
 // Config holds the global VMM configuration
 type Config struct {
-	DataDir       string `json:"data_dir"`
-	BridgeName    string `json:"bridge_name"`
-	Subnet        string `json:"subnet"`
-	Gateway       string `json:"gateway"`
-	HostInterface string `json:"host_interface"`
-	KernelPath    string `json:"kernel_path"`
-	RootfsPath    string `json:"rootfs_path"`
+	DataDir       string      `json:"data_dir"`
+	BridgeName    string      `json:"bridge_name"`
+	Subnet        string      `json:"subnet"`
+	Gateway       string      `json:"gateway"`
+	HostInterface string      `json:"host_interface"`
+	KernelPath    string      `json:"kernel_path"`
+	RootfsPath    string      `json:"rootfs_path"`
+	VMDefaults    *VMDefaults `json:"vm_defaults,omitempty"`
+}
+
+// GetVMDefaults returns the VM defaults, or an empty struct if none configured
+func (c *Config) GetVMDefaults() VMDefaults {
+	if c.VMDefaults == nil {
+		return VMDefaults{}
+	}
+	return *c.VMDefaults
 }
 
 // Paths returns commonly used paths derived from the config
