@@ -34,6 +34,7 @@ The install script will:
 - Install the binary to `/usr/local/bin`
 - Download Firecracker v1.11.0
 - Create data directories in `/var/lib/vmm`
+- Install `build-kernel.sh` to `/usr/local/share/vmm` (for `vmm kernel build`)
 
 ### One time Setup
 

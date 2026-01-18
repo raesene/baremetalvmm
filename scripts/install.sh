@@ -133,6 +133,19 @@ install_vmm
 echo "Creating data directories..."
 mkdir -p "$DATA_DIR"/{config,vms,images/kernels,images/rootfs,mounts,sockets,logs,state}
 
+# Install build-kernel.sh script
+SCRIPT_DIR="/usr/local/share/vmm"
+mkdir -p "$SCRIPT_DIR"
+if [ -f "scripts/build-kernel.sh" ]; then
+    cp scripts/build-kernel.sh "$SCRIPT_DIR/build-kernel.sh"
+    chmod +x "$SCRIPT_DIR/build-kernel.sh"
+    echo "Installed build-kernel.sh to $SCRIPT_DIR"
+elif [ -f "$(dirname "$0")/build-kernel.sh" ]; then
+    cp "$(dirname "$0")/build-kernel.sh" "$SCRIPT_DIR/build-kernel.sh"
+    chmod +x "$SCRIPT_DIR/build-kernel.sh"
+    echo "Installed build-kernel.sh to $SCRIPT_DIR"
+fi
+
 # Download Firecracker if not present
 FC_VERSION="v1.11.0"
 FC_BIN="/usr/local/bin/firecracker"
