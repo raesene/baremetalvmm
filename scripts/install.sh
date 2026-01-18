@@ -24,6 +24,21 @@ if [ ! -e /dev/kvm ]; then
     echo "Ensure your CPU supports virtualization and it's enabled in BIOS."
 fi
 
+# Download helper - tries curl first, falls back to wget
+download_file() {
+    local url="$1"
+    local output="$2"
+
+    if command -v curl &> /dev/null; then
+        curl -fsSL -o "$output" "$url"
+    elif command -v wget &> /dev/null; then
+        wget -q -O "$output" "$url"
+    else
+        echo "Error: Neither curl nor wget is installed. Please install one of them."
+        return 1
+    fi
+}
+
 # Detect architecture
 detect_arch() {
     local arch=$(uname -m)
@@ -51,7 +66,7 @@ download_prebuilt() {
     local url="https://github.com/${GITHUB_REPO}/releases/download/v${VMM_VERSION}/vmm_${VMM_VERSION}_linux_${arch}.tar.gz"
     echo "Downloading VMM v${VMM_VERSION} for linux/${arch}..."
 
-    if curl -fsSL -o /tmp/vmm.tar.gz "$url"; then
+    if download_file "$url" /tmp/vmm.tar.gz; then
         echo "Extracting..."
         tar -xzf /tmp/vmm.tar.gz -C /tmp vmm
         cp /tmp/vmm "$INSTALL_DIR/vmm"
@@ -124,8 +139,11 @@ FC_BIN="/usr/local/bin/firecracker"
 if [ ! -f "$FC_BIN" ]; then
     echo "Downloading Firecracker $FC_VERSION..."
     ARCH=$(uname -m)
-    curl -L -o /tmp/firecracker.tgz \
-        "https://github.com/firecracker-microvm/firecracker/releases/download/${FC_VERSION}/firecracker-${FC_VERSION}-${ARCH}.tgz"
+    FC_URL="https://github.com/firecracker-microvm/firecracker/releases/download/${FC_VERSION}/firecracker-${FC_VERSION}-${ARCH}.tgz"
+    if ! download_file "$FC_URL" /tmp/firecracker.tgz; then
+        echo "Error: Failed to download Firecracker"
+        exit 1
+    fi
     tar -xzf /tmp/firecracker.tgz -C /tmp
     cp "/tmp/release-${FC_VERSION}-${ARCH}/firecracker-${FC_VERSION}-${ARCH}" "$FC_BIN"
     chmod +x "$FC_BIN"

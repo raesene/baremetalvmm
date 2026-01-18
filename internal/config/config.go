@@ -1,9 +1,11 @@
 package config
 
 import (
+	"bufio"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -37,6 +39,32 @@ type Paths struct {
 	Mounts   string
 }
 
+// detectDefaultInterface finds the network interface used for the default route
+// by reading /proc/net/route. Returns "eth0" as fallback if detection fails.
+func detectDefaultInterface() string {
+	file, err := os.Open("/proc/net/route")
+	if err != nil {
+		return "eth0"
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	// Skip header line
+	scanner.Scan()
+
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) >= 2 {
+			// Default route has destination 00000000
+			if fields[1] == "00000000" {
+				return fields[0]
+			}
+		}
+	}
+
+	return "eth0"
+}
+
 // DefaultConfig returns a configuration with sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
@@ -44,7 +72,7 @@ func DefaultConfig() *Config {
 		BridgeName:    DefaultBridgeName,
 		Subnet:        DefaultSubnet,
 		Gateway:       DefaultGateway,
-		HostInterface: "eth0",
+		HostInterface: detectDefaultInterface(),
 	}
 }
 
