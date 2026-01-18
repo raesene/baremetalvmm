@@ -46,7 +46,7 @@ baremetalvmm/
 - Default subnet: `172.16.0.0/16`
 - Gateway: `172.16.0.1`
 - Config file: `~/.config/vmm/config.json`
-- **Important**: `host_interface` must match actual network interface (e.g., `eth0`, `wlp3s0`, `enp0s3`)
+- `host_interface` is auto-detected from the default route (falls back to `eth0` if detection fails)
 
 ### 2. VM Management (`internal/vm/`)
 - VM states: `created`, `starting`, `running`, `stopping`, `stopped`, `error`
@@ -339,6 +339,26 @@ sudo vmm start myvm
 - Auto-mounted to `/mnt/<tag>` via fstab at boot
 - Read-only mounts are enforced at both fstab level and Firecracker block device level
 
+### Host Interface Auto-Detection (`internal/config/config.go`)
+**Feature**: Automatically detect the correct network interface for NAT.
+**Problem**: Default config hardcoded `eth0`, but systems use various interface names (e.g., `wlp3s0`, `ens33`, `enp0s3`).
+**Implementation**:
+- Added `detectDefaultInterface()` function that reads `/proc/net/route`
+- Finds the interface associated with the default route (destination `00000000`)
+- Falls back to `eth0` if detection fails
+- Called by `DefaultConfig()` when creating new configurations
+
+**Result**: `vmm config init` now automatically uses the correct interface without manual editing.
+
+### Install Script wget Fallback (`scripts/install.sh`)
+**Feature**: Install script works on systems without curl.
+**Problem**: Original script required curl, but some minimal systems only have wget.
+**Implementation**:
+- Added `download_file()` helper function
+- Tries curl first, falls back to wget if curl unavailable
+- Used for both VMM binary and Firecracker downloads
+- Provides clear error if neither is available
+
 ## Future Improvements (Not Yet Implemented)
 
 1. **Cloud-init** - Full cloud-init support for more flexible VM initialization
@@ -393,9 +413,9 @@ ping 172.16.0.2  # First VM's IP
 ip route | grep default
 # Example output: default via 192.168.1.1 dev wlp3s0
 
-# Update config if needed
+# Check config (host_interface is auto-detected on config init)
 cat ~/.config/vmm/config.json
-# Ensure "host_interface" matches the interface name (e.g., "wlp3s0")
+# If needed, manually edit "host_interface" to match the interface name
 ```
 
 ### Test outbound connectivity from VM
