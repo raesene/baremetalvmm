@@ -36,6 +36,30 @@ The install script will:
 - Create data directories in `/var/lib/vmm`
 - Install `build-kernel.sh` to `/usr/local/share/vmm` (for `vmm kernel build`)
 
+### Uninstallation
+
+To completely remove VMM and all associated resources:
+
+```bash
+sudo ./scripts/uninstall.sh
+```
+
+The uninstall script will:
+- Stop all running VMs (Firecracker processes)
+- Remove network resources (bridge, TAP devices, iptables rules)
+- Remove all VM data (`/var/lib/vmm`)
+- Remove user configuration (`~/.config/vmm`)
+- Remove the systemd service (if installed)
+- Remove binaries (`vmm`, `firecracker`, `build-kernel.sh`)
+
+Use `--yes` or `-y` to skip the confirmation prompt:
+
+```bash
+sudo ./scripts/uninstall.sh --yes
+```
+
+**Note**: The script is idempotent and safe to run multiple times.
+
 ### One time Setup
 
 First up (one time only) run the init command
@@ -717,6 +741,7 @@ go test ./...
 │   └── mount/                # Host directory mount management
 ├── scripts/
 │   ├── install.sh            # Installation script
+│   ├── uninstall.sh          # Uninstallation script
 │   ├── install-service.sh    # Systemd service installation (optional)
 │   ├── build-kernel.sh       # Custom kernel build script
 │   └── vmm.service           # Systemd service unit file
