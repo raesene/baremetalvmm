@@ -105,6 +105,10 @@ vmm config init
 vmm version [--json]
 vmm autostart   # Hidden, used by systemd
 vmm autostop    # Hidden, used by systemd
+vmm tailscale enable   # Enable Tailscale subnet routing
+vmm tailscale disable  # Disable Tailscale subnet routing
+vmm tailscale status   # Check Tailscale routing status
+vmm tailscale accept   # Show instructions for accepting routes
 ```
 
 ### Create flags
@@ -503,6 +507,57 @@ vmm --version
 # Build with version info (local development)
 make build && ./vmm version
 ```
+
+### Tailscale Subnet Routing (`cmd/vmm/main.go`)
+**Feature**: Expose entire VMM network to Tailscale devices without port forwarding.
+**Implementation**:
+- Added `vmm tailscale` command group with four subcommands: `enable`, `disable`, `status`, `accept`
+- `enable` configures machine as Tailscale subnet router
+- Enables kernel IP forwarding (persistent via sysctl.conf)
+- Advertises `172.16.0.0/16` subnet to tailnet
+- `disable` removes subnet advertisement
+- `status` checks Tailscale and IP forwarding status
+- `accept` shows instructions for accepting routes on other devices
+
+**How it works**:
+1. VMM host advertises the VMM subnet (172.16.0.0/16) to your tailnet
+2. Other Tailscale devices accept the route with `--accept-routes`
+3. All VMs are directly accessible via their 172.16.x.x IPs from any Tailscale device
+4. No need for individual port forwarding rules per VM
+
+**Requirements**:
+- Tailscale installed and running on the host
+- VMM running as root (for sysctl and tailscale commands)
+- Other Tailscale devices must accept routes with `--accept-routes`
+
+**Usage**:
+```bash
+# Enable subnet routing on VMM host
+sudo vmm tailscale enable
+
+# Check routing status
+vmm tailscale status
+
+# On another Tailscale device, accept the routes
+sudo tailscale up --accept-routes=172.16.0.0/16
+
+# Access VMs from any Tailscale device
+ssh root@172.16.0.2
+curl http://172.16.0.3:8000
+
+# Show instructions for other users
+vmm tailscale accept
+
+# Disable subnet routing when done
+sudo vmm tailscale disable
+```
+
+**Benefits over port forwarding**:
+- No need to manage individual port forward rules
+- All VMs automatically accessible from any Tailscale device
+- Direct IP access (e.g., `ssh 172.16.0.2` instead of `ssh -p 2222 localhost`)
+- Simplifies multi-service deployments (multiple VMs can run the same ports)
+- Works across networks and locations via Tailscale mesh
 
 ## Future Improvements (Not Yet Implemented)
 

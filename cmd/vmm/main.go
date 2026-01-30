@@ -55,6 +55,7 @@ func main() {
 		kernelCmd(),
 		portForwardCmd(),
 		mountCmd(),
+		tailscaleCmd(),
 		versionCmd(),
 		autostartCmd(),
 		autostopCmd(),
@@ -1221,6 +1222,152 @@ Example:
 	}
 
 	cmd.AddCommand(syncCmd, listCmd)
+	return cmd
+}
+
+func tailscaleCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "tailscale",
+		Short: "Manage Tailscale subnet routing",
+		Long: `Manage Tailscale subnet router to expose VMM network to your tailnet.
+
+Enabling subnet routing allows all VMs to be accessible from any device
+on your Tailscale network without individual port forwarding.`,
+	}
+
+	var acceptRoutes bool
+
+	enableCmd := &cobra.Command{
+		Use:   "enable",
+		Short: "Enable Tailscale subnet routing for VMM network",
+		Long: `Enable Tailscale subnet router to advertise VMM network.
+
+This will:
+1. Enable IPv4 and IPv6 forwarding in the kernel (persistent)
+2. Configure UDP GRO forwarding for better performance
+3. Advertise the VMM subnet to your tailnet
+4. Optionally accept routes from other tailnet peers
+5. Make all VMs accessible from other Tailscale devices
+
+After running this command, on other Tailscale devices run:
+  sudo tailscale up --accept-routes`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			tsMgr := network.NewTailscaleManager(cfg.Subnet)
+
+			fmt.Println("Enabling Tailscale subnet routing...")
+
+			if err := tsMgr.EnableSubnetRouting(acceptRoutes); err != nil {
+				return err
+			}
+
+			fmt.Printf("\nTailscale subnet routing enabled\n")
+			fmt.Printf("  Subnet: %s\n", cfg.Subnet)
+			fmt.Printf("  IPv4 forwarding: enabled (persistent)\n")
+			fmt.Printf("  IPv6 forwarding: enabled (persistent)\n")
+			fmt.Printf("  UDP GRO: configured\n")
+			if acceptRoutes {
+				fmt.Printf("  Route acceptance: enabled\n")
+			}
+			fmt.Printf("\nNext steps:\n")
+			fmt.Printf("  1. Go to another machine on your tailnet\n")
+			fmt.Printf("  2. Run: sudo tailscale up --accept-routes\n")
+			fmt.Printf("  3. Access VMs from any Tailscale device:\n")
+			fmt.Printf("     - SSH: ssh root@<vm-ip>\n")
+			fmt.Printf("     - HTTP: curl http://<vm-ip>:<port>\n")
+			fmt.Printf("\nTo check your tailnet status:\n")
+			fmt.Printf("  vmm tailscale status\n")
+
+			return nil
+		},
+	}
+	enableCmd.Flags().BoolVar(&acceptRoutes, "accept-routes", false, "Also accept routes from other tailnet peers")
+
+	disableCmd := &cobra.Command{
+		Use:   "disable",
+		Short: "Disable Tailscale subnet routing",
+		Long:  `Disable Tailscale subnet routing by removing the advertised subnet.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			tsMgr := network.NewTailscaleManager(cfg.Subnet)
+
+			fmt.Println("Disabling Tailscale subnet routing...")
+
+			if err := tsMgr.DisableSubnetRouting(); err != nil {
+				return err
+			}
+
+			fmt.Println("Tailscale subnet routing disabled")
+			fmt.Println("Note: IP forwarding remains enabled. Disable it manually with:")
+			fmt.Println("  sudo sysctl -w net.ipv4.ip_forward=0")
+
+			return nil
+		},
+	}
+
+	statusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "Check Tailscale subnet routing status",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			tsMgr := network.NewTailscaleManager(cfg.Subnet)
+
+			status, err := tsMgr.GetStatus()
+			if err != nil {
+				return err
+			}
+
+			if !status.Installed {
+				fmt.Println("Tailscale: not installed")
+				return nil
+			}
+
+			if !status.Running {
+				fmt.Println("Tailscale: not running")
+				return nil
+			}
+
+			if status.DNSName != "" {
+				fmt.Printf("Tailscale: running (DNS name: %s)\n", status.DNSName)
+			} else {
+				fmt.Println("Tailscale: running")
+			}
+
+			if status.BackendState != "" {
+				fmt.Printf("State: %s\n", status.BackendState)
+			}
+
+			ipv4Status := "disabled"
+			if status.IPv4Forwarding {
+				ipv4Status = "enabled"
+			}
+			fmt.Printf("IPv4 forwarding: %s\n", ipv4Status)
+
+			ipv6Status := "disabled"
+			if status.IPv6Forwarding {
+				ipv6Status = "enabled"
+			}
+			fmt.Printf("IPv6 forwarding: %s\n", ipv6Status)
+
+			fmt.Printf("\nVMM Subnet: %s\n", cfg.Subnet)
+			fmt.Println("\nTo enable subnet routing:")
+			fmt.Println("  sudo vmm tailscale enable")
+			fmt.Println("\nTo access from another machine:")
+			fmt.Println("  sudo tailscale up --accept-routes")
+
+			return nil
+		},
+	}
+
+	acceptCmd := &cobra.Command{
+		Use:   "accept",
+		Short: "Show instructions for accepting subnet routes",
+		Long:  `Display instructions for accepting the VMM subnet routes on another Tailscale device.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			tsMgr := network.NewTailscaleManager(cfg.Subnet)
+			fmt.Print(tsMgr.FormatAcceptInstructions())
+			return nil
+		},
+	}
+
+	cmd.AddCommand(enableCmd, disableCmd, statusCmd, acceptCmd)
 	return cmd
 }
 
