@@ -16,6 +16,7 @@ VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker
 - **Networking**: Linux TAP devices, bridges, iptables
 - **Storage**: JSON-based VM configs, ext4 rootfs images
 - **Service**: systemd for auto-start
+- **CI/CD**: GitHub Actions (GoReleaser for binary releases, kernel build workflow)
 
 ## Directory Structure
 
@@ -29,11 +30,16 @@ baremetalvmm/
 │   ├── network/network.go    # TAP, bridge, iptables management
 │   ├── image/image.go        # Kernel/rootfs download and management
 │   └── mount/mount.go        # Host directory mount management
+├── .github/workflows/
+│   ├── release.yaml          # GoReleaser binary release on v* tags
+│   └── build-kernel.yml      # Automated kernel build + GitHub release
 ├── scripts/
-│   ├── install.sh            # Installation script (binary + Firecracker)
+│   ├── install.sh            # Installation script (binary + Firecracker + kernel)
+│   ├── uninstall.sh          # Complete removal script
 │   ├── install-service.sh    # Systemd service installation (optional)
 │   ├── build-kernel.sh       # Custom kernel build script
 │   └── vmm.service           # Systemd unit file
+├── .goreleaser.yaml          # GoReleaser configuration
 ├── go.mod, go.sum            # Dependencies
 ├── Makefile                  # Build with version info for local development
 ├── README.md                 # User documentation
@@ -70,7 +76,9 @@ baremetalvmm/
 - Port forwarding via DNAT rules
 
 ### 5. Image Management (`internal/image/`)
-- Downloads kernel/rootfs from Firecracker quickstart URLs
+- Downloads default kernel from GitHub releases (`kernel-*` tagged releases), falls back to Firecracker S3 URL
+- Downloads default rootfs from Firecracker quickstart URLs
+- Queries GitHub API (`api.github.com/repos/raesene/baremetalvmm/releases`) for latest kernel
 - Creates per-VM rootfs copies for persistence
 - Stored in `/var/lib/vmm/images/`
 
@@ -373,8 +381,9 @@ sudo vmm start myvm
 **Implementation**:
 - Added `download_file()` helper function
 - Tries curl first, falls back to wget if curl unavailable
-- Used for both VMM binary and Firecracker downloads
+- Used for VMM binary, Firecracker, and kernel downloads
 - Provides clear error if neither is available
+- Also downloads pre-built kernel from GitHub releases (queries API for latest `kernel-*` release)
 
 ### Custom Kernel Support (`internal/image/image.go`, `cmd/vmm/main.go`, `scripts/build-kernel.sh`)
 **Feature**: Import and manage custom Linux kernels for VMs.
@@ -394,10 +403,11 @@ sudo vmm start myvm
 - Verifies it's an executable (ET_EXEC)
 
 **Build script features**:
+- Dynamically resolves latest patch version from `kernel.org/releases.json` (falls back to hardcoded versions if `jq` unavailable)
 - Downloads kernel source from kernel.org
 - Creates Firecracker-compatible kernel configuration
-- Supports versions: 5.10, 6.1, 6.6
-- Includes all required options: virtio, serial console, ext4, networking
+- Supports series: 5.10, 6.1, 6.6
+- Includes all required options: virtio, serial console, ext4, networking, Docker support (overlay, cgroups, namespaces, iptables/nftables)
 
 **Usage**:
 ```bash
@@ -503,6 +513,33 @@ vmm --version
 # Build with version info (local development)
 make build && ./vmm version
 ```
+
+### CI Kernel Build (`.github/workflows/build-kernel.yml`)
+**Feature**: Automated kernel builds via GitHub Actions, published as GitHub releases.
+**Implementation**:
+- Workflow triggers: manual dispatch (configurable `kernel_series`), push to `scripts/build-kernel.sh` or workflow file, weekly schedule (Monday 06:00 UTC)
+- Queries `kernel.org/releases.json` for latest patch version in the 6.1 series
+- Skips build if a release with tag `kernel-<version>` already exists
+- Runs `scripts/build-kernel.sh` to compile kernel
+- Creates GitHub release with tag `kernel-<version>`, attaches `vmlinux.bin`
+- Workflow has `contents: write` permission for creating releases
+
+**GitHub release tagging convention**:
+- `v*` tags → software releases (GoReleaser binary builds)
+- `kernel-*` tags → kernel releases (built by kernel workflow)
+
+**Kernel download chain**:
+- `scripts/install.sh` → queries GitHub API for latest `kernel-*` release, downloads `vmlinux.bin`
+- `vmm image pull` (Go) → `findLatestKernelURL()` queries GitHub API, falls back to `FallbackKernelURL` (S3)
+- Both use `api.github.com/repos/raesene/baremetalvmm/releases` to find kernel assets
+
+### Dynamic Kernel Version Resolution (`scripts/build-kernel.sh`)
+**Feature**: Build script resolves the latest patch version dynamically from kernel.org.
+**Problem**: Kernel patch versions were hardcoded, causing builds to use stale versions.
+**Implementation**:
+- `get_kernel_url()` queries `kernel.org/releases.json` via `jq` to find latest patch in a series
+- Falls back to hardcoded versions if `jq` is unavailable or query fails
+- Logs the resolved version: "Resolved kernel series 6.1 to version 6.1.162"
 
 ## Future Improvements (Not Yet Implemented)
 
