@@ -186,6 +186,52 @@ if [ ! -f "$FC_BIN" ]; then
     echo "Firecracker installed to $FC_BIN"
 fi
 
+# Download kernel from GitHub releases if not present
+KERNEL_PATH="$DATA_DIR/images/kernels/vmlinux.bin"
+if [ ! -f "$KERNEL_PATH" ]; then
+    echo "Downloading pre-built kernel from GitHub releases..."
+    KERNEL_URL=""
+
+    # Query GitHub API for latest kernel-* release
+    API_URL="https://api.github.com/repos/${GITHUB_REPO}/releases"
+    RELEASES_JSON=""
+    if command -v curl &> /dev/null; then
+        RELEASES_JSON=$(curl -fsSL "$API_URL" 2>/dev/null)
+    elif command -v wget &> /dev/null; then
+        RELEASES_JSON=$(wget -qO- "$API_URL" 2>/dev/null)
+    fi
+
+    if [ -n "$RELEASES_JSON" ]; then
+        # Find the latest release with a kernel-* tag and extract the vmlinux.bin asset URL
+        if command -v jq &> /dev/null; then
+            KERNEL_URL=$(echo "$RELEASES_JSON" | jq -r '
+                [.[] | select(.tag_name | startswith("kernel-"))] |
+                first |
+                .assets[] | select(.name == "vmlinux.bin") |
+                .browser_download_url' 2>/dev/null)
+        else
+            # Fallback: parse JSON with grep/sed (works without jq)
+            KERNEL_URL=$(echo "$RELEASES_JSON" | \
+                grep -A 50 '"tag_name": "kernel-' | \
+                grep '"browser_download_url".*vmlinux.bin' | \
+                head -1 | \
+                sed -E 's/.*"browser_download_url": "([^"]+)".*/\1/')
+        fi
+    fi
+
+    if [ -n "$KERNEL_URL" ] && [ "$KERNEL_URL" != "null" ]; then
+        if download_file "$KERNEL_URL" "$KERNEL_PATH"; then
+            echo "Kernel downloaded to $KERNEL_PATH"
+        else
+            echo "Warning: Failed to download kernel. Run 'sudo vmm image pull' later to download it."
+        fi
+    else
+        echo "Warning: Could not find kernel release. Run 'sudo vmm image pull' later to download it."
+    fi
+else
+    echo "Kernel already exists at $KERNEL_PATH"
+fi
+
 echo ""
 echo "Installation complete!"
 echo ""

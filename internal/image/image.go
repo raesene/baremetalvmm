@@ -2,6 +2,7 @@ package image
 
 import (
 	"debug/elf"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -373,14 +374,66 @@ func (m *Manager) DeleteImage(imageName string) error {
 }
 
 const (
-	// Default Firecracker-compatible kernel and rootfs URLs
-	// These are from the Firecracker quickstart guide
-	DefaultKernelURL = "https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/x86_64/kernels/vmlinux.bin"
+	// GitHub repo for kernel releases
+	GitHubRepo = "raesene/baremetalvmm"
+	GitHubAPI  = "https://api.github.com/repos/" + GitHubRepo + "/releases"
+
+	// Fallback kernel URL - used if GitHub API query fails
+	FallbackKernelURL = "https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/x86_64/kernels/vmlinux.bin"
+
+	// Default rootfs URL (Firecracker quickstart)
 	DefaultRootfsURL = "https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/x86_64/rootfs/bionic.rootfs.ext4"
 
 	DefaultKernelName = "vmlinux.bin"
 	DefaultRootfsName = "rootfs.ext4"
 )
+
+// ghRelease represents a GitHub release (subset of fields we need)
+type ghRelease struct {
+	TagName string    `json:"tag_name"`
+	Assets  []ghAsset `json:"assets"`
+}
+
+// ghAsset represents a GitHub release asset
+type ghAsset struct {
+	Name               string `json:"name"`
+	BrowserDownloadURL string `json:"browser_download_url"`
+}
+
+// findLatestKernelURL queries GitHub releases for the latest kernel-* release
+// and returns the download URL for the vmlinux.bin asset.
+// Returns empty string if no kernel release is found.
+func findLatestKernelURL() string {
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get(GitHubAPI)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+
+	var releases []ghRelease
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return ""
+	}
+
+	// Find the first (most recent) release with a kernel-* tag
+	for _, rel := range releases {
+		if !strings.HasPrefix(rel.TagName, "kernel-") {
+			continue
+		}
+		for _, asset := range rel.Assets {
+			if asset.Name == DefaultKernelName {
+				return asset.BrowserDownloadURL
+			}
+		}
+	}
+
+	return ""
+}
 
 // Manager handles kernel and rootfs image management
 type Manager struct {
@@ -404,7 +457,17 @@ func (m *Manager) EnsureDefaultImages() error {
 	// Download kernel if not exists
 	if _, err := os.Stat(kernelPath); os.IsNotExist(err) {
 		fmt.Println("Downloading default kernel...")
-		if err := m.downloadFile(DefaultKernelURL, kernelPath); err != nil {
+
+		// Try GitHub releases first, fall back to static URL
+		kernelURL := findLatestKernelURL()
+		if kernelURL != "" {
+			fmt.Println("  Found kernel in GitHub releases")
+		} else {
+			fmt.Println("  GitHub releases unavailable, using fallback URL")
+			kernelURL = FallbackKernelURL
+		}
+
+		if err := m.downloadFile(kernelURL, kernelPath); err != nil {
 			return fmt.Errorf("failed to download kernel: %w", err)
 		}
 		fmt.Println("Kernel downloaded successfully")

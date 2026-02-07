@@ -1,0 +1,96 @@
+name: Build Firecracker Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_series:
+        description: 'Kernel series to build (e.g. 6.1)'
+        required: false
+        default: '6.1'
+  push:
+    paths:
+      - 'scripts/build-kernel.sh'
+      - '.github/workflows/build-kernel.yml'
+    branches:
+      - main
+  schedule:
+    # Weekly on Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KERNEL_SERIES: ${{ github.event.inputs.kernel_series || '6.1' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Query kernel.org for latest patch version
+        id: kernel_version
+        run: |
+          LATEST=$(curl -fsSL https://www.kernel.org/releases.json | \
+            jq -r --arg series "$KERNEL_SERIES" \
+            '[.releases[] | select(.version | startswith($series + ".")) | .version] | sort_by(split(".") | map(tonumber)) | last')
+
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "Could not determine latest kernel version for series $KERNEL_SERIES"
+            exit 1
+          fi
+
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Found latest kernel version: $LATEST"
+
+      - name: Check if release already exists
+        id: check_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="kernel-${{ steps.kernel_version.outputs.version }}"
+          if gh release view "$TAG" &>/dev/null; then
+            echo "Release $TAG already exists, skipping build"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release $TAG does not exist, proceeding with build"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install build dependencies
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential flex bison bc libelf-dev libssl-dev wget curl jq
+
+      - name: Build kernel
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          chmod +x scripts/build-kernel.sh
+          sudo bash scripts/build-kernel.sh \
+            --version "$KERNEL_SERIES" \
+            --name vmlinux.bin \
+            --output "${{ github.workspace }}"
+
+      - name: Create GitHub release
+        if: steps.check_release.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="kernel-${{ steps.kernel_version.outputs.version }}"
+          TITLE="Kernel ${{ steps.kernel_version.outputs.version }}"
+          NOTES="Firecracker-compatible Linux kernel ${{ steps.kernel_version.outputs.version }}
+
+          Built from source with Firecracker recommended config plus:
+          - Docker support (overlay, cgroups, namespaces)
+          - iptables/nftables networking
+          - Virtio block and network drivers
+          - No modules (all built-in)
+
+          Built by GitHub Actions from \`scripts/build-kernel.sh\`."
+
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            vmlinux.bin
