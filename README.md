@@ -6,7 +6,7 @@ The goal of the project is to allow for small development VMs to be spun up base
 
 The goal of the project is to be useful in cases where you want something like Docker, but want some more isolation that Docker provides, or you want to do lower level tasks in the VM that don't suit Docker well. N.B we're not there yet!
 
-Pretty much all of the coding has been done with [Claude code](https://github.com/anthropics/claude-code) using Opus 4.5.
+Pretty much all of the coding has been done with [Claude code](https://github.com/anthropics/claude-code).
 
 ## Requirements
 
@@ -34,8 +34,9 @@ The install script will:
 - Install the binary to `/usr/local/bin`
 - Download Firecracker v1.11.0
 - Download a pre-built Linux 6.1 kernel from GitHub releases
+- Download a pre-built Ubuntu 24.04 rootfs from GitHub releases (falls back to Firecracker S3 URL)
 - Create data directories in `/var/lib/vmm`
-- Install `build-kernel.sh` to `/usr/local/share/vmm` (for `vmm kernel build`)
+- Install `build-kernel.sh` and `build-rootfs.sh` to `/usr/local/share/vmm`
 
 ### Uninstallation
 
@@ -51,7 +52,7 @@ The uninstall script will:
 - Remove all VM data (`/var/lib/vmm`)
 - Remove user configuration (`~/.config/vmm`)
 - Remove the systemd service (if installed)
-- Remove binaries (`vmm`, `firecracker`, `build-kernel.sh`)
+- Remove binaries (`vmm`, `firecracker`, `build-kernel.sh`, `build-rootfs.sh`)
 
 Use `--yes` or `-y` to skip the confirmation prompt:
 
@@ -69,7 +70,7 @@ First up (one time only) run the init command
 vmm config init
 ```
 
-Next up we need to pull the default kernel and root image. The kernel is a pre-built Linux 6.1 kernel from our GitHub releases, and the rootfs is from the Firecracker project. We can change the rootfs with more commands and also use custom kernels (see Custom Kernels section). Again this is one-time, they should be present for future runs
+Next up we need to pull the default kernel and root image. The kernel is a pre-built Linux 6.1 kernel from our GitHub releases, and the rootfs is a pre-built Ubuntu 24.04 image also from our GitHub releases. We can change the rootfs with more commands and also use custom kernels (see Custom Kernels section). Again this is one-time, they should be present for future runs
 
 ```bash
 sudo vmm image pull
@@ -109,7 +110,7 @@ sudo vmm delete myvm
 
 ## Custom Rootfs and kernel
 
-By default, `vmm image pull` downloads a pre-built Linux 6.1 kernel from our GitHub releases (built automatically via CI) and a rootfs from the Firecracker project. The default rootfs isn't amazingly useful or up to date, but it's a good starting point. If you want to run more complex use-cases it makes sense to get a custom rootfs.
+By default, `vmm image pull` downloads a pre-built Linux 6.1 kernel and an Ubuntu 24.04 rootfs from our GitHub releases (both built automatically via CI). The default rootfs includes systemd, OpenSSH server, and basic networking tools. If you want to run more complex use-cases it makes sense to get a custom rootfs.
 
 ### Custom rootfs
 
@@ -123,7 +124,7 @@ sudo vmm image import ubuntu:24.04 --name ubuntu-24.04
 
 ### Custom kernel
 
-You'll likely want something newer the 4.4 based kernel. Here we've got a build script that should be able to set-up a newer kernel. Be aware it's going to download and compile a Linux kernel, so it'll take a while if you're running on a not very powerful machine and it needs disk space.
+If you want a different kernel version, you can build one from source. Be aware it's going to download and compile a Linux kernel, so it'll take a while if you're running on a not very powerful machine and it needs disk space.
 
 This command should give you a relatively modern 6.1 based kernel.
 
@@ -745,6 +746,7 @@ go test ./...
 │   ├── uninstall.sh          # Uninstallation script
 │   ├── install-service.sh    # Systemd service installation (optional)
 │   ├── build-kernel.sh       # Custom kernel build script
+│   ├── build-rootfs.sh       # Custom rootfs build script
 │   └── vmm.service           # Systemd service unit file
 └── go.mod                    # Go modules
 ```
