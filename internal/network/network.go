@@ -136,12 +136,12 @@ func (m *Manager) RemovePortForward(hostPort, guestPort int, guestIP, protocol s
 
 // setupNAT configures iptables for NAT
 func (m *Manager) setupNAT() error {
-	// MASQUERADE for outbound traffic
+	// MASQUERADE for outbound traffic (match any interface except the bridge itself)
 	if err := m.runCmd("iptables", "-t", "nat", "-C", "POSTROUTING",
-		"-s", m.Subnet, "-o", m.HostInterface, "-j", "MASQUERADE"); err != nil {
+		"-s", m.Subnet, "!", "-o", m.BridgeName, "-j", "MASQUERADE"); err != nil {
 		// Rule doesn't exist, add it
 		if err := m.runCmd("iptables", "-t", "nat", "-A", "POSTROUTING",
-			"-s", m.Subnet, "-o", m.HostInterface, "-j", "MASQUERADE"); err != nil {
+			"-s", m.Subnet, "!", "-o", m.BridgeName, "-j", "MASQUERADE"); err != nil {
 			return err
 		}
 	}
