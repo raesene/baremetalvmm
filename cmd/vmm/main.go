@@ -494,16 +494,8 @@ func startCmd() *cobra.Command {
 				}
 			}
 
-			// Allocate IP (use VM index based on creation order for simplicity)
-			vms, _ := vm.List(paths.VMs)
-			vmIndex := 0
-			for i, v := range vms {
-				if v.Name == name {
-					vmIndex = i
-					break
-				}
-			}
-			ip, err := netMgr.AllocateIP(vmIndex)
+			// Allocate IP, skipping any already in use
+			ip, err := netMgr.AllocateIP(usedVMIPs(paths.VMs))
 			if err != nil {
 				return fmt.Errorf("failed to allocate IP: %w", err)
 			}
@@ -1296,7 +1288,7 @@ func autostartCmd() *cobra.Command {
 			}
 
 			started := 0
-			for i, v := range vms {
+			for _, v := range vms {
 				// Skip VMs not marked for autostart
 				if !v.AutoStart {
 					continue
@@ -1382,7 +1374,7 @@ func autostartCmd() *cobra.Command {
 				}
 
 				// Allocate IP
-				ip, _ := netMgr.AllocateIP(i)
+				ip, _ := netMgr.AllocateIP(usedVMIPs(paths.VMs))
 				v.IPAddress = ip
 
 				// Start VM
@@ -1714,15 +1706,7 @@ func startClusterVM(vmName string) (string, error) {
 		}
 	}
 
-	vms, _ := vm.List(paths.VMs)
-	vmIndex := 0
-	for i, v := range vms {
-		if v.Name == vmName {
-			vmIndex = i
-			break
-		}
-	}
-	ip, err := netMgr.AllocateIP(vmIndex)
+	ip, err := netMgr.AllocateIP(usedVMIPs(paths.VMs))
 	if err != nil {
 		return "", fmt.Errorf("failed to allocate IP: %w", err)
 	}
@@ -2000,6 +1984,17 @@ func completeImageNames(cmd *cobra.Command, args []string, toComplete string) ([
 		names = append(names, r)
 	}
 	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
+func usedVMIPs(vmsDir string) []string {
+	vms, _ := vm.List(vmsDir)
+	var ips []string
+	for _, v := range vms {
+		if v.IPAddress != "" {
+			ips = append(ips, v.IPAddress)
+		}
+	}
+	return ips
 }
 
 func expandHomePath(path string) string {

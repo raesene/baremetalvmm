@@ -85,33 +85,43 @@ func (m *Manager) DeleteTap(tapName string) error {
 	return m.runCmd("ip", "link", "del", tapName)
 }
 
-// AllocateIP allocates an IP address for a VM
-// Uses a simple sequential allocation based on VM index
-func (m *Manager) AllocateIP(vmIndex int) (string, error) {
-	// Parse the subnet to get the base address
+// AllocateIP finds the next free IP in the subnet, skipping any in usedIPs.
+// The gateway (.1) is always reserved.
+func (m *Manager) AllocateIP(usedIPs []string) (string, error) {
 	_, ipnet, err := net.ParseCIDR(m.Subnet)
 	if err != nil {
 		return "", fmt.Errorf("invalid subnet: %w", err)
 	}
 
-	// Start from .2 (gateway is .1)
-	// Each VM gets the next available IP
-	ip := ipnet.IP.To4()
-	if ip == nil {
+	baseIP := ipnet.IP.To4()
+	if baseIP == nil {
 		return "", fmt.Errorf("invalid IPv4 subnet")
 	}
 
-	// Calculate IP: base + 2 + vmIndex
-	offset := 2 + vmIndex
-	ip[2] = byte(offset / 256)
-	ip[3] = byte(offset % 256)
+	taken := make(map[string]bool)
+	for _, ip := range usedIPs {
+		taken[ip] = true
+	}
+	taken[m.Gateway] = true
 
-	// Make sure we don't exceed the subnet
-	if !ipnet.Contains(ip) {
-		return "", fmt.Errorf("IP allocation exceeded subnet range")
+	// Start from .2 and find the first unused IP
+	for offset := 2; offset < 65534; offset++ {
+		candidate := make(net.IP, 4)
+		copy(candidate, baseIP)
+		candidate[2] = byte(offset / 256)
+		candidate[3] = byte(offset % 256)
+
+		if !ipnet.Contains(candidate) {
+			break
+		}
+
+		addr := candidate.String()
+		if !taken[addr] {
+			return addr, nil
+		}
 	}
 
-	return ip.String(), nil
+	return "", fmt.Errorf("no free IP addresses in subnet %s", m.Subnet)
 }
 
 // AddPortForward adds a DNAT rule for port forwarding
