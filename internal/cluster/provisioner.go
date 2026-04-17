@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 )
 
 type SSHClient struct {
@@ -27,17 +28,35 @@ func NewSSHClient(ip, keyPath string) *SSHClient {
 }
 
 func (s *SSHClient) Connect() error {
+	var authMethods []ssh.AuthMethod
+
+	// Try SSH agent first (handles passphrase-protected keys that are already unlocked)
+	if agentSock := os.Getenv("SSH_AUTH_SOCK"); agentSock != "" {
+		if conn, err := net.Dial("unix", agentSock); err == nil {
+			authMethods = append(authMethods, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
+		}
+	}
+
+	// Fall back to reading the key file directly (works for unencrypted keys)
 	keyData, err := os.ReadFile(s.KeyPath)
 	if err != nil {
-		return fmt.Errorf("failed to read SSH key %s: %w", s.KeyPath, err)
+		if len(authMethods) == 0 {
+			return fmt.Errorf("failed to read SSH key %s: %w", s.KeyPath, err)
+		}
+	} else {
+		signer, err := ssh.ParsePrivateKey(keyData)
+		if err != nil {
+			if len(authMethods) == 0 {
+				return fmt.Errorf("failed to parse SSH key (if the key has a passphrase, ensure ssh-agent is running with the key loaded): %w", err)
+			}
+		} else {
+			authMethods = append(authMethods, ssh.PublicKeys(signer))
+		}
 	}
-	signer, err := ssh.ParsePrivateKey(keyData)
-	if err != nil {
-		return fmt.Errorf("failed to parse SSH key: %w", err)
-	}
+
 	config := &ssh.ClientConfig{
 		User:            s.User,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		Auth:            authMethods,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         10 * time.Second,
 	}
