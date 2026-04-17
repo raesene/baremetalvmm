@@ -247,6 +247,12 @@ func createCmd() *cobra.Command {
 	cmd.Flags().StringVar(&imageName, "image", "", "Name of rootfs image to use (from 'vmm image import')")
 	cmd.Flags().StringVar(&kernelName, "kernel", "", "Name of kernel to use (from 'vmm kernel import')")
 	cmd.Flags().StringArrayVar(&mounts, "mount", nil, "Mount host directory in VM (format: /host/path:tag[:ro|rw])")
+	cmd.RegisterFlagCompletionFunc("kernel", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return completeKernelNames(cmd, nil, toComplete)
+	})
+	cmd.RegisterFlagCompletionFunc("image", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return completeImageNames(cmd, nil, toComplete)
+	})
 
 	return cmd
 }
@@ -255,9 +261,10 @@ func deleteCmd() *cobra.Command {
 	var force bool
 
 	cmd := &cobra.Command{
-		Use:   "delete <name>",
-		Short: "Delete a microVM",
-		Args:  cobra.ExactArgs(1),
+		Use:               "delete <name>",
+		Short:             "Delete a microVM",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			paths := cfg.GetPaths()
@@ -377,9 +384,10 @@ func listCmd() *cobra.Command {
 
 func startCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "start <name>",
-		Short: "Start a microVM",
-		Args:  cobra.ExactArgs(1),
+		Use:               "start <name>",
+		Short:             "Start a microVM",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			paths := cfg.GetPaths()
@@ -546,9 +554,10 @@ func startCmd() *cobra.Command {
 
 func stopCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "stop <name>",
-		Short: "Stop a microVM",
-		Args:  cobra.ExactArgs(1),
+		Use:               "stop <name>",
+		Short:             "Stop a microVM",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			paths := cfg.GetPaths()
@@ -610,9 +619,10 @@ func sshCmd() *cobra.Command {
 	var user string
 
 	cmd := &cobra.Command{
-		Use:   "ssh <name> [-- <ssh-args>]",
-		Short: "SSH into a microVM",
-		Args:  cobra.MinimumNArgs(1),
+		Use:               "ssh <name> [-- <ssh-args>]",
+		Short:             "SSH into a microVM",
+		Args:              cobra.MinimumNArgs(1),
+		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			paths := cfg.GetPaths()
@@ -888,9 +898,10 @@ Examples:
 	importCmd.MarkFlagRequired("name")
 
 	deleteCmd := &cobra.Command{
-		Use:   "delete <name>",
-		Short: "Delete an imported image",
-		Args:  cobra.ExactArgs(1),
+		Use:               "delete <name>",
+		Short:             "Delete an imported image",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeImageNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			paths := cfg.GetPaths()
@@ -986,9 +997,10 @@ Examples:
 	importCmd.MarkFlagRequired("name")
 
 	deleteCmd := &cobra.Command{
-		Use:   "delete <name>",
-		Short: "Delete a custom kernel",
-		Args:  cobra.ExactArgs(1),
+		Use:               "delete <name>",
+		Short:             "Delete a custom kernel",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeKernelNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			paths := cfg.GetPaths()
@@ -1079,9 +1091,10 @@ Examples:
 
 func portForwardCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "port-forward <name> <host-port>:<guest-port>",
-		Short: "Forward a port from host to VM",
-		Args:  cobra.ExactArgs(2),
+		Use:               "port-forward <name> <host-port>:<guest-port>",
+		Short:             "Forward a port from host to VM",
+		Args:              cobra.ExactArgs(2),
+		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			portSpec := args[1]
@@ -1130,8 +1143,9 @@ func mountCmd() *cobra.Command {
 	}
 
 	syncCmd := &cobra.Command{
-		Use:   "sync <vm-name> <tag>",
-		Short: "Sync a mount image from host directory",
+		Use:               "sync <vm-name> <tag>",
+		Short:             "Sync a mount image from host directory",
+		ValidArgsFunction: completeVMNames,
 		Long: `Refresh a mount image with the current contents of the host directory.
 
 This command updates the ext4 image used for the mount with the latest
@@ -1187,9 +1201,10 @@ Example:
 	}
 
 	listCmd := &cobra.Command{
-		Use:   "list <vm-name>",
-		Short: "List mounts for a VM",
-		Args:  cobra.ExactArgs(1),
+		Use:               "list <vm-name>",
+		Short:             "List mounts for a VM",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			vmName := args[0]
 			paths := cfg.GetPaths()
@@ -1648,6 +1663,12 @@ func clusterCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&sshKeyPath, "ssh-key", "", "Path to SSH public key file")
 	cmd.Flags().StringVar(&imageName, "image", "", "Name of rootfs image to use")
 	cmd.Flags().StringVar(&kernelName, "kernel", "", "Name of kernel to use")
+	cmd.RegisterFlagCompletionFunc("kernel", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return completeKernelNames(cmd, nil, toComplete)
+	})
+	cmd.RegisterFlagCompletionFunc("image", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return completeImageNames(cmd, nil, toComplete)
+	})
 
 	return cmd
 }
@@ -1744,9 +1765,10 @@ func clusterDeleteCmd() *cobra.Command {
 	var force bool
 
 	cmd := &cobra.Command{
-		Use:   "delete <name>",
-		Short: "Delete a Kubernetes cluster and all its VMs",
-		Args:  cobra.ExactArgs(1),
+		Use:               "delete <name>",
+		Short:             "Delete a Kubernetes cluster and all its VMs",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeClusterNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			paths := cfg.GetPaths()
@@ -1870,9 +1892,10 @@ func clusterListCmd() *cobra.Command {
 
 func clusterKubeconfigCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "kubeconfig <name>",
-		Short: "Print or re-merge cluster kubeconfig",
-		Args:  cobra.ExactArgs(1),
+		Use:               "kubeconfig <name>",
+		Short:             "Print or re-merge cluster kubeconfig",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeClusterNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			paths := cfg.GetPaths()
@@ -1912,6 +1935,71 @@ func clusterKubeconfigCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func completeVMNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) != 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	paths := cfg.GetPaths()
+	vms, err := vm.List(paths.VMs)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var names []string
+	for _, v := range vms {
+		names = append(names, v.Name)
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
+func completeClusterNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) != 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	paths := cfg.GetPaths()
+	clusters, err := cluster.List(paths.Clusters)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var names []string
+	for _, cl := range clusters {
+		names = append(names, cl.Name)
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
+func completeKernelNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) != 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	paths := cfg.GetPaths()
+	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
+	kernels, err := imgMgr.ListKernels()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return kernels, cobra.ShellCompDirectiveNoFileComp
+}
+
+func completeImageNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) != 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	paths := cfg.GetPaths()
+	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
+	rootfs, err := imgMgr.ListRootfs()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var names []string
+	for _, r := range rootfs {
+		if len(r) > 5 && r[len(r)-5:] == ".ext4" {
+			r = r[:len(r)-5]
+		}
+		names = append(names, r)
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
 func expandHomePath(path string) string {

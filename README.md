@@ -77,6 +77,21 @@ Next up we need to pull the default kernel and root image. The kernel is a pre-b
 sudo vmm image pull
 ```
 
+### Shell Completion
+
+VMM supports shell completion for bash, zsh, and fish. Completions include command names, VM names, cluster names, kernel names, and image names.
+
+```bash
+# Bash (add to ~/.bashrc for persistence)
+source <(vmm completion bash)
+
+# Zsh (add to ~/.zshrc for persistence)
+source <(vmm completion zsh)
+
+# Fish
+vmm completion fish | source
+```
+
 ### Basic usage
 
 First up we create a VM. Key elements we can configure here are number of CPUs, amount of memory, amount of disk space and importantly an SSH key to use to connect to the VM once it's started. there also also other options for things like custom images (see later in README) and custom DNS servers.
@@ -326,6 +341,14 @@ You also need an SSH key for VM access:
 
 ```bash
 ssh-keygen -t ed25519  # if you don't already have one
+```
+
+If your SSH key has a passphrase, make sure it's loaded in ssh-agent and use `sudo -E` to preserve the agent socket:
+
+```bash
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+sudo -E vmm cluster create ...
 ```
 
 ### Creating a Cluster
