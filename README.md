@@ -316,15 +316,13 @@ VMM can create Kubernetes clusters from multiple Firecracker VMs, similar to [ki
 
 ### Prerequisites
 
-Before creating a cluster, you need a Kubernetes-compatible kernel. The default kernel doesn't include all the required features (BPF JIT, VXLAN, cgroups v2 bandwidth control, etc.), so you must build one:
+A Kubernetes-compatible kernel (`k8s-kernel`) is downloaded automatically during installation. This is a 6.6 LTS kernel with BPF JIT, VXLAN, and cgroups v2 bandwidth control enabled for Cilium CNI support. If you don't have it, you can build one manually:
 
 ```bash
-# Build a 6.6 LTS kernel with Kubernetes support
-# Kernel 6.6+ is required for Cilium's tcx link support
 sudo vmm kernel build --version 6.6 --name k8s-kernel
 ```
 
-This takes 5-15 minutes depending on your system. You also need an SSH key for VM access:
+You also need an SSH key for VM access:
 
 ```bash
 ssh-keygen -t ed25519  # if you don't already have one
