@@ -137,7 +137,7 @@ get_kernel_url() {
 get_firecracker_config_url() {
     local arch="$(uname -m)"
     # Firecracker provides recommended configs in their repo
-    echo "https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/resources/guest_configs/microvm-kernel-${arch}-6.1.config"
+    echo "https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/resources/guest_configs/microvm-kernel-ci-${arch}-6.1.config"
 }
 
 download_kernel() {
@@ -169,7 +169,7 @@ create_kernel_config() {
     cd "$kernel_dir"
 
     # Download Firecracker's recommended config
-    local config_url="https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/resources/guest_configs/microvm-kernel-${arch}-6.1.config"
+    local config_url="https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/resources/guest_configs/microvm-kernel-ci-${arch}-6.1.config"
 
     if ! wget -q -O .config "$config_url"; then
         log_warn "Failed to download Firecracker config, using defconfig as base"
@@ -200,6 +200,13 @@ create_kernel_config() {
     ./scripts/config --enable CONFIG_NETFILTER_NETLINK
     ./scripts/config --enable CONFIG_NETFILTER_NETLINK_QUEUE
     ./scripts/config --enable CONFIG_NETFILTER_NETLINK_LOG
+
+    # Xtables match modules (used by iptables/Cilium)
+    ./scripts/config --enable CONFIG_NETFILTER_XT_MATCH_COMMENT
+    ./scripts/config --enable CONFIG_NETFILTER_XT_MATCH_MULTIPORT
+    ./scripts/config --enable CONFIG_NETFILTER_XT_MATCH_MARK
+    ./scripts/config --enable CONFIG_NETFILTER_XT_MATCH_STATISTIC
+    ./scripts/config --enable CONFIG_NETFILTER_XT_MATCH_CONNTRACK
 
     # nf_tables (used by iptables-nft on modern systems)
     ./scripts/config --enable CONFIG_NF_TABLES
@@ -247,13 +254,16 @@ create_kernel_config() {
     ./scripts/config --enable CONFIG_IP6_NF_NAT
     ./scripts/config --enable CONFIG_IP6_NF_TARGET_MASQUERADE
 
-    # Network device drivers (required for Docker)
+    # Network device drivers (required for Docker and Cilium)
     ./scripts/config --enable CONFIG_BRIDGE
     ./scripts/config --enable CONFIG_VETH
     ./scripts/config --enable CONFIG_VLAN_8021Q
     ./scripts/config --enable CONFIG_MACVLAN
     ./scripts/config --enable CONFIG_IPVLAN
     ./scripts/config --enable CONFIG_DUMMY
+    ./scripts/config --enable CONFIG_VXLAN
+    ./scripts/config --enable CONFIG_GENEVE
+    ./scripts/config --enable CONFIG_TUN
 
     # Bridge netfilter (for Docker bridge networks)
     ./scripts/config --enable CONFIG_NF_TABLES_BRIDGE
@@ -277,6 +287,7 @@ create_kernel_config() {
     ./scripts/config --enable CONFIG_CGROUP_CPUACCT
     ./scripts/config --enable CONFIG_MEMCG
     ./scripts/config --enable CONFIG_CGROUP_SCHED
+    ./scripts/config --enable CONFIG_CFS_BANDWIDTH
     ./scripts/config --enable CONFIG_CGROUP_BPF
 
     # Namespaces (required for Docker container isolation)
@@ -287,14 +298,27 @@ create_kernel_config() {
     ./scripts/config --enable CONFIG_PID_NS
     ./scripts/config --enable CONFIG_NET_NS
 
-    # Disable modules - we want everything built-in
-    ./scripts/config --disable CONFIG_MODULES
+    # Kernel config access from running kernel (for diagnostics)
+    ./scripts/config --enable CONFIG_IKCONFIG
+    ./scripts/config --enable CONFIG_IKCONFIG_PROC
+
+    # Keep modules enabled (BPF_JIT depends on CONFIG_MODULES in 6.1)
+    # All our required features are built-in via --enable above
+    ./scripts/config --enable CONFIG_MODULES
 
     # Disable initramfs - we boot directly to rootfs
     ./scripts/config --disable CONFIG_BLK_DEV_INITRD
 
     # Update the config to resolve dependencies
     make olddefconfig
+
+    # Verify critical options survived olddefconfig
+    for opt in CONFIG_BPF_JIT CONFIG_BPF_SYSCALL CONFIG_CFS_BANDWIDTH CONFIG_CGROUPS; do
+        if ! grep -q "^${opt}=y" .config; then
+            log_error "CRITICAL: ${opt} not enabled after olddefconfig! Check dependencies."
+            grep "${opt}" .config || echo "${opt} not found in .config"
+        fi
+    done
 }
 
 build_kernel() {

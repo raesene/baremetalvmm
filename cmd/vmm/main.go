@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/raesene/baremetalvmm/internal/cluster"
 	"github.com/raesene/baremetalvmm/internal/config"
 	"github.com/raesene/baremetalvmm/internal/firecracker"
 	"github.com/raesene/baremetalvmm/internal/image"
@@ -55,6 +56,7 @@ func main() {
 		kernelCmd(),
 		portForwardCmd(),
 		mountCmd(),
+		clusterCmd(),
 		versionCmd(),
 		autostartCmd(),
 		autostopCmd(),
@@ -1454,3 +1456,472 @@ func autostopCmd() *cobra.Command {
 		},
 	}
 }
+
+func clusterCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "cluster",
+		Short: "Manage Kubernetes clusters",
+	}
+	cmd.AddCommand(
+		clusterCreateCmd(),
+		clusterDeleteCmd(),
+		clusterListCmd(),
+		clusterKubeconfigCmd(),
+	)
+	return cmd
+}
+
+func clusterCreateCmd() *cobra.Command {
+	var workers int
+	var cpus int
+	var memory int
+	var disk int
+	var k8sVersion string
+	var sshKeyPath string
+	var imageName string
+	var kernelName string
+
+	cmd := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create a Kubernetes cluster from microVMs",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			if err := cfg.EnsureDirectories(); err != nil {
+				return fmt.Errorf("failed to create directories: %w", err)
+			}
+
+			paths := cfg.GetPaths()
+
+			if cluster.Exists(paths.Clusters, name) {
+				return fmt.Errorf("cluster '%s' already exists", name)
+			}
+
+			// Resolve SSH key path
+			defaults := cfg.GetVMDefaults()
+			if !cmd.Flags().Changed("ssh-key") && defaults.SSHKeyPath != "" {
+				sshKeyPath = defaults.SSHKeyPath
+			}
+			if sshKeyPath == "" {
+				return fmt.Errorf("SSH key is required for cluster creation (use --ssh-key or set in config)")
+			}
+			sshKeyPath = expandHomePath(sshKeyPath)
+
+			// Resolve private key path from public key path
+			sshPrivateKeyPath := sshKeyPath
+			if len(sshKeyPath) > 4 && sshKeyPath[len(sshKeyPath)-4:] == ".pub" {
+				sshPrivateKeyPath = sshKeyPath[:len(sshKeyPath)-4]
+			}
+			if _, err := os.Stat(sshPrivateKeyPath); err != nil {
+				return fmt.Errorf("SSH private key not found at %s: %w", sshPrivateKeyPath, err)
+			}
+
+			// Validate resources
+			if cpus < 2 {
+				return fmt.Errorf("Kubernetes requires at least 2 CPUs (got %d)", cpus)
+			}
+			if memory < 2048 {
+				return fmt.Errorf("Kubernetes requires at least 2048 MB memory (got %d)", memory)
+			}
+
+			// Create cluster config
+			cl := cluster.NewCluster(name, workers, k8sVersion)
+			cl.CPUs = cpus
+			cl.MemoryMB = memory
+			cl.DiskSizeMB = disk
+			cl.SSHKeyPath = sshKeyPath
+			cl.Image = imageName
+			cl.Kernel = kernelName
+
+			// Read SSH public key
+			keyData, err := os.ReadFile(sshKeyPath)
+			if err != nil {
+				return fmt.Errorf("failed to read SSH public key from %s: %w", sshKeyPath, err)
+			}
+			sshPubKey := string(keyData)
+
+			// Validate image/kernel exist if specified
+			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
+			if imageName != "" && !imgMgr.ImageExists(imageName) {
+				return fmt.Errorf("image '%s' not found", imageName)
+			}
+			if kernelName != "" && !imgMgr.KernelExists(kernelName) {
+				return fmt.Errorf("kernel '%s' not found", kernelName)
+			}
+
+			// Save cluster config
+			if err := cl.Save(paths.Clusters); err != nil {
+				return fmt.Errorf("failed to save cluster config: %w", err)
+			}
+
+			fmt.Printf("Creating cluster '%s' with Kubernetes %s (%d control-plane + %d workers)\n",
+				name, k8sVersion, 1, workers)
+
+			// Create all VMs
+			allVMs := cl.AllVMs()
+			for _, vmName := range allVMs {
+				if vm.Exists(paths.VMs, vmName) {
+					return fmt.Errorf("VM '%s' already exists", vmName)
+				}
+				newVM := vm.NewVM(vmName)
+				newVM.CPUs = cl.CPUs
+				newVM.MemoryMB = cl.MemoryMB
+				newVM.DiskSizeMB = cl.DiskSizeMB
+				newVM.Image = cl.Image
+				newVM.Kernel = cl.Kernel
+				newVM.MacAddress = newVM.GenerateMacAddress()
+				newVM.TapDevice = network.GenerateTapName(newVM.ID)
+				newVM.SSHPublicKey = sshPubKey
+				newVM.SocketPath = fmt.Sprintf("%s/%s.sock", paths.Sockets, vmName)
+
+				if err := newVM.Save(paths.VMs); err != nil {
+					return fmt.Errorf("failed to save VM '%s': %w", vmName, err)
+				}
+				fmt.Printf("  Created VM '%s'\n", vmName)
+			}
+
+			// Start all VMs
+			fmt.Println("Starting all VMs...")
+			var nodeInfos []cluster.NodeInfo
+			for _, vmName := range allVMs {
+				ip, err := startClusterVM(vmName)
+				if err != nil {
+					cl.State = cluster.StateError
+					cl.Save(paths.Clusters)
+					return fmt.Errorf("failed to start VM '%s': %w", vmName, err)
+				}
+				nodeInfos = append(nodeInfos, cluster.NodeInfo{Name: vmName, IP: ip})
+				fmt.Printf("  Started VM '%s' (%s)\n", vmName, ip)
+			}
+
+			// Provision Kubernetes
+			fmt.Println("\nProvisioning Kubernetes cluster...")
+			if err := cluster.ProvisionCluster(cl, sshPrivateKeyPath, nodeInfos); err != nil {
+				cl.State = cluster.StateError
+				cl.Save(paths.Clusters)
+				return fmt.Errorf("cluster provisioning failed: %w\nVMs are left running for debugging. Use 'vmm cluster delete %s -f' to clean up", err, name)
+			}
+
+			// Extract and merge kubeconfig
+			fmt.Println("Configuring kubeconfig...")
+			cpClient, err := cluster.WaitForSSH(cl.ControlPlaneIP, sshPrivateKeyPath, 30*time.Second)
+			if err != nil {
+				cl.State = cluster.StateError
+				cl.Save(paths.Clusters)
+				return fmt.Errorf("failed to connect to control plane for kubeconfig: %w", err)
+			}
+			defer cpClient.Close()
+
+			kubeconfigYAML, err := cluster.ExtractKubeconfig(cpClient)
+			if err != nil {
+				cl.State = cluster.StateError
+				cl.Save(paths.Clusters)
+				return fmt.Errorf("failed to extract kubeconfig: %w", err)
+			}
+
+			if err := cluster.MergeKubeconfig(name, kubeconfigYAML); err != nil {
+				cl.State = cluster.StateError
+				cl.Save(paths.Clusters)
+				return fmt.Errorf("failed to merge kubeconfig: %w", err)
+			}
+
+			cl.State = cluster.StateRunning
+			cl.Save(paths.Clusters)
+
+			fmt.Printf("\nCluster '%s' is ready!\n", name)
+			fmt.Printf("  Kubernetes: %s\n", cl.K8sVersion)
+			fmt.Printf("  Control plane: %s\n", cl.ControlPlaneIP)
+			fmt.Printf("  Nodes: %d\n", len(allVMs))
+			fmt.Printf("  Context: vmm-%s\n", name)
+			fmt.Printf("\nUse: kubectl --context vmm-%s get nodes\n", name)
+
+			return nil
+		},
+	}
+
+	cmd.Flags().IntVar(&workers, "workers", 0, "Number of worker nodes")
+	cmd.Flags().IntVar(&cpus, "cpus", 2, "CPUs per node")
+	cmd.Flags().IntVar(&memory, "memory", 4096, "Memory per node in MB")
+	cmd.Flags().IntVar(&disk, "disk", 10240, "Disk per node in MB")
+	cmd.Flags().StringVar(&k8sVersion, "k8s-version", "1.31.4", "Kubernetes version")
+	cmd.Flags().StringVar(&sshKeyPath, "ssh-key", "", "Path to SSH public key file")
+	cmd.Flags().StringVar(&imageName, "image", "", "Name of rootfs image to use")
+	cmd.Flags().StringVar(&kernelName, "kernel", "", "Name of kernel to use")
+
+	return cmd
+}
+
+func startClusterVM(vmName string) (string, error) {
+	paths := cfg.GetPaths()
+
+	existingVM, err := vm.Load(paths.VMs, vmName)
+	if err != nil {
+		return "", fmt.Errorf("VM '%s' not found", vmName)
+	}
+
+	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
+	if err := imgMgr.EnsureDefaultImages(); err != nil {
+		return "", fmt.Errorf("failed to ensure images: %w", err)
+	}
+
+	vmRootfs, err := imgMgr.CreateVMRootfs(vmName, paths.VMs, existingVM.DiskSizeMB, existingVM.Image)
+	if err != nil {
+		return "", fmt.Errorf("failed to create VM rootfs: %w", err)
+	}
+	existingVM.RootfsPath = vmRootfs
+	existingVM.KernelPath = imgMgr.GetKernelPath(existingVM.Kernel)
+
+	if existingVM.SSHPublicKey != "" {
+		if err := image.InjectSSHKey(existingVM.RootfsPath, existingVM.SSHPublicKey); err != nil {
+			return "", fmt.Errorf("failed to inject SSH key: %w", err)
+		}
+	}
+
+	if err := image.InjectDNSConfig(existingVM.RootfsPath, existingVM.DNSServers); err != nil {
+		return "", fmt.Errorf("failed to inject DNS config: %w", err)
+	}
+
+	netMgr := network.NewManager(cfg.BridgeName, cfg.Subnet, cfg.Gateway, cfg.HostInterface)
+	if err := netMgr.EnsureBridge(); err != nil {
+		return "", fmt.Errorf("failed to setup bridge: %w", err)
+	}
+
+	if !netMgr.TapExists(existingVM.TapDevice) {
+		if err := netMgr.CreateTap(existingVM.TapDevice); err != nil {
+			return "", fmt.Errorf("failed to create TAP device: %w", err)
+		}
+	}
+
+	vms, _ := vm.List(paths.VMs)
+	vmIndex := 0
+	for i, v := range vms {
+		if v.Name == vmName {
+			vmIndex = i
+			break
+		}
+	}
+	ip, err := netMgr.AllocateIP(vmIndex)
+	if err != nil {
+		return "", fmt.Errorf("failed to allocate IP: %w", err)
+	}
+	existingVM.IPAddress = ip
+
+	existingVM.State = vm.StateStarting
+	existingVM.Save(paths.VMs)
+
+	ctx := context.Background()
+	fcClient := firecracker.NewClient()
+	vmCfg := &firecracker.VMConfig{
+		SocketPath: existingVM.SocketPath,
+		KernelPath: existingVM.KernelPath,
+		RootfsPath: existingVM.RootfsPath,
+		CPUs:       existingVM.CPUs,
+		MemoryMB:   existingVM.MemoryMB,
+		TapDevice:  existingVM.TapDevice,
+		MacAddress: existingVM.MacAddress,
+		LogPath:    fmt.Sprintf("%s/%s.log", paths.Logs, vmName),
+		IPAddress:  existingVM.IPAddress,
+		Gateway:    cfg.Gateway,
+	}
+
+	machine, err := fcClient.StartVM(ctx, vmCfg)
+	if err != nil {
+		existingVM.State = vm.StateError
+		existingVM.Save(paths.VMs)
+		return "", fmt.Errorf("failed to start VM: %w", err)
+	}
+
+	existingVM.State = vm.StateRunning
+	existingVM.PID = fcClient.GetVMPID(machine)
+	existingVM.StartedAt = time.Now()
+	existingVM.Save(paths.VMs)
+
+	return ip, nil
+}
+
+func clusterDeleteCmd() *cobra.Command {
+	var force bool
+
+	cmd := &cobra.Command{
+		Use:   "delete <name>",
+		Short: "Delete a Kubernetes cluster and all its VMs",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			paths := cfg.GetPaths()
+
+			cl, err := cluster.Load(paths.Clusters, name)
+			if err != nil {
+				return fmt.Errorf("cluster '%s' not found", name)
+			}
+
+			if cl.State == cluster.StateRunning && !force {
+				return fmt.Errorf("cluster '%s' is running. Use --force to delete", name)
+			}
+
+			fmt.Printf("Deleting cluster '%s'...\n", name)
+
+			// Delete all VMs
+			fcClient := firecracker.NewClient()
+			netMgr := network.NewManager(cfg.BridgeName, cfg.Subnet, cfg.Gateway, cfg.HostInterface)
+			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
+
+			for _, vmName := range cl.AllVMs() {
+				existingVM, err := vm.Load(paths.VMs, vmName)
+				if err != nil {
+					fmt.Printf("  Warning: VM '%s' not found, skipping\n", vmName)
+					continue
+				}
+
+				fcClient.UpdateVMState(existingVM)
+				if existingVM.State == vm.StateRunning {
+					fmt.Printf("  Stopping VM '%s'...\n", vmName)
+					ctx := context.Background()
+					if err := fcClient.StopVM(ctx, existingVM.SocketPath); err != nil {
+						fmt.Printf("  Warning: failed to stop VM '%s': %v\n", vmName, err)
+					}
+				}
+
+				if existingVM.TapDevice != "" && netMgr.TapExists(existingVM.TapDevice) {
+					netMgr.DeleteTap(existingVM.TapDevice)
+				}
+				imgMgr.DeleteVMRootfs(vmName, paths.VMs)
+
+				if len(existingVM.Mounts) > 0 {
+					mountMgr := mount.NewManager(paths.Mounts)
+					mountMgr.DeleteAllMountImages(vmName, existingVM.Mounts)
+				}
+
+				os.Remove(existingVM.SocketPath)
+				vm.Delete(paths.VMs, vmName)
+				fmt.Printf("  Deleted VM '%s'\n", vmName)
+			}
+
+			// Remove kubeconfig context
+			if err := cluster.RemoveKubeconfigContext(name); err != nil {
+				fmt.Printf("Warning: failed to remove kubeconfig context: %v\n", err)
+			}
+
+			// Delete cluster config
+			if err := cluster.Delete(paths.Clusters, name); err != nil {
+				return fmt.Errorf("failed to delete cluster config: %w", err)
+			}
+
+			fmt.Printf("Cluster '%s' deleted\n", name)
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "Force delete running cluster")
+
+	return cmd
+}
+
+func clusterListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "list",
+		Aliases: []string{"ls"},
+		Short:   "List Kubernetes clusters",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			paths := cfg.GetPaths()
+
+			clusters, err := cluster.List(paths.Clusters)
+			if err != nil {
+				return fmt.Errorf("failed to list clusters: %w", err)
+			}
+
+			if len(clusters) == 0 {
+				fmt.Println("No clusters found")
+				return nil
+			}
+
+			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			fmt.Fprintln(w, "NAME\tSTATE\tK8S VERSION\tNODES\tCONTROL PLANE IP\tCONTEXT")
+			for _, cl := range clusters {
+				// Update VM states
+				fcClient := firecracker.NewClient()
+				allRunning := true
+				for _, vmName := range cl.AllVMs() {
+					v, err := vm.Load(paths.VMs, vmName)
+					if err != nil {
+						allRunning = false
+						continue
+					}
+					fcClient.UpdateVMState(v)
+					if v.State != vm.StateRunning {
+						allRunning = false
+					}
+				}
+				state := string(cl.State)
+				if cl.State == cluster.StateRunning && !allRunning {
+					state = "degraded"
+				}
+
+				nodes := 1 + len(cl.WorkerVMs)
+				fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\tvmm-%s\n",
+					cl.Name, state, cl.K8sVersion, nodes, cl.ControlPlaneIP, cl.Name)
+			}
+			w.Flush()
+			return nil
+		},
+	}
+}
+
+func clusterKubeconfigCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "kubeconfig <name>",
+		Short: "Print or re-merge cluster kubeconfig",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			paths := cfg.GetPaths()
+
+			cl, err := cluster.Load(paths.Clusters, name)
+			if err != nil {
+				return fmt.Errorf("cluster '%s' not found", name)
+			}
+
+			if cl.ControlPlaneIP == "" {
+				return fmt.Errorf("cluster '%s' has no control plane IP (not yet started?)", name)
+			}
+
+			// Resolve SSH private key path
+			sshPrivateKeyPath := cl.SSHKeyPath
+			if len(sshPrivateKeyPath) > 4 && sshPrivateKeyPath[len(sshPrivateKeyPath)-4:] == ".pub" {
+				sshPrivateKeyPath = sshPrivateKeyPath[:len(sshPrivateKeyPath)-4]
+			}
+			sshPrivateKeyPath = expandHomePath(sshPrivateKeyPath)
+
+			cpClient, err := cluster.WaitForSSH(cl.ControlPlaneIP, sshPrivateKeyPath, 30*time.Second)
+			if err != nil {
+				return fmt.Errorf("failed to connect to control plane: %w", err)
+			}
+			defer cpClient.Close()
+
+			kubeconfigYAML, err := cluster.ExtractKubeconfig(cpClient)
+			if err != nil {
+				return fmt.Errorf("failed to extract kubeconfig: %w", err)
+			}
+
+			if err := cluster.MergeKubeconfig(name, kubeconfigYAML); err != nil {
+				return fmt.Errorf("failed to merge kubeconfig: %w", err)
+			}
+
+			fmt.Printf("Kubeconfig merged for cluster '%s' (context: vmm-%s)\n", name, name)
+			return nil
+		},
+	}
+}
+
+func expandHomePath(path string) string {
+	if len(path) > 0 && path[0] == '~' {
+		home, _ := os.UserHomeDir()
+		if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" && sudoUser != "root" {
+			home = "/home/" + sudoUser
+		}
+		return home + path[1:]
+	}
+	return path
+}
+

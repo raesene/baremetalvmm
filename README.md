@@ -309,6 +309,131 @@ vmm config show
 
 **Note**: The `vm_defaults` section is optional. Existing configs without it will continue to work unchanged, using the built-in defaults.
 
+## Kubernetes Clusters
+
+VMM can create Kubernetes clusters from multiple Firecracker VMs, similar to [kind](https://kind.sigs.k8s.io/) but with VM-level isolation for each node. Clusters are bootstrapped with kubeadm and use Cilium as the CNI plugin.
+
+### Prerequisites
+
+Before creating a cluster, you need a Kubernetes-compatible kernel. The default kernel doesn't include all the required features (BPF JIT, VXLAN, cgroups v2 bandwidth control, etc.), so you must build one:
+
+```bash
+# Build a 6.6 LTS kernel with Kubernetes support
+# Kernel 6.6+ is required for Cilium's tcx link support
+sudo vmm kernel build --version 6.6 --name k8s-kernel
+```
+
+This takes 5-15 minutes depending on your system. You also need an SSH key for VM access:
+
+```bash
+ssh-keygen -t ed25519  # if you don't already have one
+```
+
+### Creating a Cluster
+
+```bash
+# Single-node cluster (control plane only, like 'kind create cluster')
+sudo vmm cluster create mycluster --ssh-key ~/.ssh/id_ed25519.pub --kernel k8s-kernel
+
+# Multi-node cluster with 2 workers (3 VMs total)
+sudo vmm cluster create mycluster --workers 2 --ssh-key ~/.ssh/id_ed25519.pub --kernel k8s-kernel
+
+# With custom resources
+sudo vmm cluster create mycluster --workers 2 \
+  --cpus 4 --memory 8192 --disk 20480 \
+  --ssh-key ~/.ssh/id_ed25519.pub \
+  --kernel k8s-kernel \
+  --k8s-version 1.30.0
+```
+
+The create command:
+1. Creates Firecracker VMs (`{name}-control-plane`, `{name}-worker-1`, etc.)
+2. Installs containerd, kubeadm, kubelet, and kubectl via SSH
+3. Runs `kubeadm init` on the control plane
+4. Installs Cilium CNI (with kube-proxy replacement)
+5. Joins worker nodes to the cluster
+6. Merges kubeconfig into `~/.kube/config` as context `vmm-{name}`
+
+### Using a Cluster
+
+Once created, the cluster is immediately usable via kubectl:
+
+```bash
+# Use the cluster context
+kubectl --context vmm-mycluster get nodes
+kubectl --context vmm-mycluster get pods -n kube-system
+
+# Or set it as the default context
+kubectl config use-context vmm-mycluster
+kubectl get nodes
+```
+
+You can also SSH into individual nodes for debugging:
+
+```bash
+vmm ssh mycluster-control-plane
+vmm ssh mycluster-worker-1
+```
+
+### Cluster Commands
+
+| Command | Description |
+|---------|-------------|
+| `vmm cluster create <name>` | Create a Kubernetes cluster |
+| `vmm cluster delete <name>` | Delete a cluster and all its VMs |
+| `vmm cluster list` | List all clusters |
+| `vmm cluster kubeconfig <name>` | Re-extract and merge kubeconfig |
+
+### Create Options
+
+```bash
+vmm cluster create <name> [flags]
+
+Flags:
+  --workers int        Number of worker nodes (default 0, control-plane only)
+  --cpus int           vCPUs per node (default 2)
+  --memory int         Memory per node in MB (default 4096)
+  --disk int           Disk per node in MB (default 10240)
+  --k8s-version string Kubernetes version (default "1.31.4")
+  --ssh-key string     Path to SSH public key (required)
+  --kernel string      Kernel name (k8s-kernel recommended)
+  --image string       Rootfs image name
+```
+
+### Deleting a Cluster
+
+```bash
+# Delete with confirmation
+sudo vmm cluster delete mycluster
+
+# Force delete without confirmation
+sudo vmm cluster delete mycluster -f
+```
+
+This stops and deletes all VMs in the cluster and removes the kubeconfig context.
+
+### Cluster Defaults
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| Workers | 0 | Control plane only (single-node cluster) |
+| CPUs | 2 | Minimum 2 required for kubeadm |
+| Memory | 4096 MB | Minimum 2048 MB required |
+| Disk | 10240 MB (10 GB) | Needs space for container images |
+| Kubernetes | 1.31.4 | Any version available from pkgs.k8s.io |
+| CNI | Cilium | With kube-proxy replacement enabled |
+| Pod CIDR | 10.244.0.0/16 | Doesn't conflict with VM bridge network |
+| Service CIDR | 10.96.0.0/12 | Standard Kubernetes default |
+
+### What Gets Installed in Each VM
+
+- **containerd** (from Ubuntu repos) with SystemdCgroup enabled
+- **kubeadm**, **kubelet**, **kubectl** (from pkgs.k8s.io)
+- **Cilium CLI** (on control plane only)
+- Kernel modules and sysctl settings for networking and cgroups
+- BPF filesystem mount for Cilium
+- Shared mount propagation for Kubernetes volumes
+
 ## Architecture
 
 ```
@@ -366,6 +491,7 @@ IP addresses are allocated sequentially from 172.16.0.2 when a VM is started (no
 /var/lib/vmm/
 ├── config/           # Global configuration
 ├── vms/              # VM configurations and rootfs
+├── clusters/         # Cluster configurations (JSON)
 ├── images/
 │   ├── kernels/      # Linux kernel images
 │   └── rootfs/       # Root filesystem images
@@ -737,6 +863,7 @@ go test ./...
 ├── internal/
 │   ├── config/               # Configuration management
 │   ├── vm/                   # VM struct and persistence
+│   ├── cluster/              # Kubernetes cluster management
 │   ├── firecracker/          # Firecracker SDK wrapper
 │   ├── network/              # TAP/bridge networking
 │   ├── image/                # Kernel/rootfs management

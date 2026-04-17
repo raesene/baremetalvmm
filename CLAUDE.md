@@ -26,6 +26,10 @@ baremetalvmm/
 ├── internal/
 │   ├── config/config.go      # Global config, paths, defaults
 │   ├── vm/vm.go              # VM struct, state machine, persistence
+│   ├── cluster/              # Kubernetes cluster management
+│   │   ├── cluster.go        # Cluster struct, state, JSON persistence
+│   │   ├── provisioner.go    # SSH-based kubeadm/Cilium bootstrap
+│   │   └── kubeconfig.go     # Kubeconfig extraction and merging
 │   ├── firecracker/client.go # Firecracker SDK wrapper
 │   ├── network/network.go    # TAP, bridge, iptables management
 │   ├── image/image.go        # Kernel/rootfs download and management
@@ -90,6 +94,16 @@ baremetalvmm/
 - Supports read-only and read-write mounts
 - Auto-mounts in guest via fstab injection
 
+### 7. Cluster Management (`internal/cluster/`)
+- Creates Kubernetes clusters from multiple Firecracker VMs using kubeadm
+- SSH-based provisioning via `golang.org/x/crypto/ssh`
+- Cilium CNI with kube-proxy replacement
+- Cluster state stored as JSON in `/var/lib/vmm/clusters/<name>.json`
+- Kubeconfig merging into `~/.kube/config` using `gopkg.in/yaml.v3`
+- Cluster states: `creating`, `running`, `stopped`, `error`
+- VM naming convention: `{cluster}-control-plane`, `{cluster}-worker-N`
+- Requires kernel 6.6+ with BPF JIT, VXLAN, cgroups v2 bandwidth support
+
 ## CLI Commands
 
 ```
@@ -110,6 +124,10 @@ vmm kernel list
 vmm kernel import <path> --name <name> [-f]
 vmm kernel delete <name>
 vmm kernel build --version <version> --name <name>
+vmm cluster create <name> [--workers N] [--cpus N] [--memory MB] [--disk MB] [--k8s-version VER] [--ssh-key PATH] [--image NAME] [--kernel NAME]
+vmm cluster delete <name> [-f]
+vmm cluster list
+vmm cluster kubeconfig <name>
 vmm config show
 vmm config init
 vmm version [--json]
@@ -187,6 +205,8 @@ Key Go packages:
 - `github.com/firecracker-microvm/firecracker-go-sdk` - Firecracker API
 - `github.com/google/uuid` - VM ID generation
 - `github.com/sirupsen/logrus` - Logging (via SDK)
+- `golang.org/x/crypto` - SSH client for cluster provisioning
+- `gopkg.in/yaml.v3` - Kubeconfig YAML manipulation
 
 ## Known Limitations
 
@@ -578,6 +598,55 @@ sudo bash scripts/build-rootfs.sh --name rootfs.ext4 --size 512 --output /tmp
 
 # Decompress for use
 gunzip /tmp/rootfs.ext4.gz
+```
+
+### Kubernetes Cluster Management (`internal/cluster/`, `cmd/vmm/main.go`)
+**Feature**: Create Kubernetes clusters from multiple Firecracker VMs (like kind but with VM isolation).
+**Implementation**:
+- `internal/cluster/cluster.go` - Cluster state model with JSON persistence (mirrors vm.go pattern)
+- `internal/cluster/provisioner.go` - SSH-based bootstrap: containerd, kubeadm, Cilium CNI
+- `internal/cluster/kubeconfig.go` - Extract kubeconfig from control plane, merge into `~/.kube/config`
+- `cmd/vmm/main.go` - `vmm cluster` command group (create, delete, list, kubeconfig)
+
+**Dependencies added**: `golang.org/x/crypto` (SSH), `gopkg.in/yaml.v3` (kubeconfig YAML)
+
+**Cluster provisioning sequence**:
+1. Create VMs: `{name}-control-plane`, `{name}-worker-1..N`
+2. Start all VMs, wait for SSH (poll every 2s, 120s timeout)
+3. Install containerd on all nodes (parallel)
+4. Install kubeadm/kubelet/kubectl on all nodes (parallel)
+5. `kubeadm init` on control plane with `--skip-phases=addon/kube-proxy --ignore-preflight-errors=SystemVerification`
+6. Install Cilium CLI, `cilium install --set kubeProxyReplacement=true`
+7. Join workers with `kubeadm join` (parallel)
+8. Wait for all nodes Ready (poll, 5min timeout)
+9. Extract kubeconfig, merge as context `vmm-{name}`
+
+**Kernel requirements**: Kernel 6.6+ required (Cilium 1.19+ needs tcx links). Must have: `CONFIG_BPF_JIT`, `CONFIG_MODULES`, `CONFIG_VXLAN`, `CONFIG_CFS_BANDWIDTH`, `CONFIG_CGROUPS`, all netfilter/xtables modules. See `scripts/build-kernel.sh`.
+
+**VM bootstrap details**:
+- `mount --make-rshared /` for Kubernetes volume mounts and Cilium
+- `mount -t bpf bpf /sys/fs/bpf` for Cilium BPF programs
+- containerd with `SystemdCgroup = true`
+- `--ignore-preflight-errors=SystemVerification` because Firecracker VMs have no `/lib/modules/`
+
+**Defaults**: 0 workers, 2 CPUs, 4096 MB RAM, 10240 MB disk, k8s version 1.31.4
+
+**Usage**:
+```bash
+# Build a Kubernetes-compatible kernel first
+sudo vmm kernel build --version 6.6 --name k8s-kernel
+
+# Single-node cluster
+sudo vmm cluster create test1 --ssh-key ~/.ssh/id_ed25519.pub --kernel k8s-kernel
+
+# Multi-node cluster
+sudo vmm cluster create test2 --workers 2 --ssh-key ~/.ssh/id_ed25519.pub --kernel k8s-kernel
+
+# Use cluster
+kubectl --context vmm-test1 get nodes
+
+# Delete cluster
+sudo vmm cluster delete test1 -f
 ```
 
 ## Future Improvements (Not Yet Implemented)

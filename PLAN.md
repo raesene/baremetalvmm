@@ -40,11 +40,15 @@ After evaluating the options, **Firecracker** was chosen as the VMM engine becau
 | Image Management | Done | Downloads Firecracker quickstart images |
 | systemd Integration | Done | Auto-start/stop on boot |
 | SSH Access | Done | SSH key injection via `--ssh-key` flag |
+| Custom Rootfs Images | Done | Docker image import and custom build script |
+| Custom Kernels | Done | Import, build from source (5.10, 6.1, 6.6) |
+| Host Directory Mounts | Done | ext4 block device mounts via fstab |
+| Configurable Defaults | Done | `vm_defaults` in config.json |
+| Kubernetes Clusters | Done | kubeadm + Cilium CNI, single/multi-node |
 
 ### What's Not Yet Implemented
 
 - **Cloud-init support** - For more flexible VM initialization
-- **Custom rootfs images** - Currently uses Firecracker quickstart image
 - **Jailer integration** - For production security hardening
 - **VM snapshots** - Save/restore VM state
 - **Web UI** - Browser-based management interface
