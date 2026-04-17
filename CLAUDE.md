@@ -37,13 +37,15 @@ baremetalvmm/
 ├── .github/workflows/
 │   ├── release.yaml          # GoReleaser binary release on v* tags
 │   ├── build-kernel.yml      # Automated kernel build + GitHub release
-│   └── build-rootfs.yml      # Automated rootfs build + GitHub release
+│   ├── build-rootfs.yml      # Automated rootfs build + GitHub release
+│   └── build-k8s-rootfs.yml  # Automated k8s rootfs build + GitHub release
 ├── scripts/
 │   ├── install.sh            # Installation script (binary + Firecracker + kernel + rootfs)
 │   ├── uninstall.sh          # Complete removal script
 │   ├── install-service.sh    # Systemd service installation (optional)
 │   ├── build-kernel.sh       # Custom kernel build script
 │   ├── build-rootfs.sh       # Custom rootfs build script
+│   ├── build-k8s-rootfs.sh   # K8s rootfs build script (containerd + kubeadm pre-installed)
 │   └── vmm.service           # Systemd unit file
 ├── .goreleaser.yaml          # GoReleaser configuration
 ├── go.mod, go.sum            # Dependencies
@@ -551,6 +553,7 @@ make build && ./vmm version
 - `kernel-*` tags → default kernel releases (6.1 series, built by kernel workflow)
 - `k8s-kernel-*` tags → Kubernetes kernel releases (6.6 series, built by kernel workflow)
 - `rootfs-*` tags → rootfs releases (built by rootfs workflow, format: `rootfs-24.04-YYYYMMDD`)
+- `k8s-rootfs-*` tags → Kubernetes rootfs releases (built by k8s-rootfs workflow, format: `k8s-rootfs-<k8s-version>`)
 
 **Kernel download chain**:
 - `scripts/install.sh` → queries GitHub API for latest `kernel-*` release (downloads `vmlinux.bin`) and latest `k8s-kernel-*` release (downloads `k8s-vmlinux.bin` as `k8s-kernel`)
@@ -741,4 +744,38 @@ cat ~/.config/vmm/config.json
 ```bash
 vmm ssh myvm -- 'getent hosts google.com'  # Test DNS
 vmm ssh myvm -- 'curl -s http://example.com'  # Test HTTP
+```
+
+### Pre-built Kubernetes Rootfs (`scripts/build-k8s-rootfs.sh`, `.github/workflows/build-k8s-rootfs.yml`)
+**Feature**: Pre-bake containerd + kubeadm/kubelet/kubectl into rootfs images to speed up cluster creation.
+**Problem**: Cluster creation spent 30-60s per node downloading and installing packages at runtime.
+**Implementation**:
+- `scripts/build-k8s-rootfs.sh` extends the base rootfs build to also install containerd, kubeadm, kubelet, kubectl, and configure SystemdCgroup + k8s sysctl
+- `.github/workflows/build-k8s-rootfs.yml` builds and publishes as GitHub releases with tag `k8s-rootfs-<version>`
+- Workflow queries `dl.k8s.io/release/stable.txt` for latest stable version; runs weekly Monday 08:00 UTC
+- `findLatestK8sRootfsURL()` in image.go queries GitHub API for matching `k8s-rootfs-*` releases
+- `FindK8sRootfs()` checks locally for existing k8s rootfs images matching the requested version
+- `DownloadK8sRootfs()` downloads from GitHub releases if not available locally
+- `cluster create` auto-detects k8s rootfs: checks local → downloads from GitHub → falls back to installing at runtime
+- `provisioner.go` detects pre-installed kubeadm via `which kubeadm` and skips `installContainerd`/`installKubeadm`, running only the lightweight `preparePreinstalledNode` instead (modprobe, sysctl, mount, restart containerd)
+- A marker file `/etc/vmm-k8s-version` is written into the rootfs for future version verification
+
+**GitHub release tagging**: `k8s-rootfs-<version>` (e.g., `k8s-rootfs-1.35.3`)
+
+**Default k8s version**: Updated from 1.31.4 to 1.35.3
+
+**Usage**:
+```bash
+# Build locally
+sudo bash scripts/build-k8s-rootfs.sh --k8s-version 1.35.3 --name k8s-rootfs.ext4 --size 2048 --output /tmp
+
+# Import manually
+gunzip /tmp/k8s-rootfs.ext4.gz
+sudo cp /tmp/k8s-rootfs.ext4 /var/lib/vmm/images/rootfs/k8s-1.35.3.ext4
+
+# Cluster create auto-detects (or downloads) k8s rootfs
+sudo vmm cluster create test1 --ssh-key ~/.ssh/id_ed25519.pub --kernel k8s-kernel
+
+# Or specify explicitly
+sudo vmm cluster create test1 --image k8s-1.35.3 --kernel k8s-kernel --ssh-key ~/.ssh/id_ed25519.pub
 ```

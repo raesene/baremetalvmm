@@ -754,6 +754,103 @@ func listFiles(dir string) ([]string, error) {
 	return files, nil
 }
 
+// findLatestK8sRootfsURL queries GitHub releases for the latest k8s-rootfs-* release
+// matching the given k8s major.minor version. Returns the download URL and full k8s version.
+func findLatestK8sRootfsURL(k8sVersion string) (string, string) {
+	parts := strings.SplitN(k8sVersion, ".", 3)
+	if len(parts) < 2 {
+		return "", ""
+	}
+	majorMinor := parts[0] + "." + parts[1]
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get(GitHubAPI)
+	if err != nil {
+		return "", ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", ""
+	}
+
+	var releases []ghRelease
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return "", ""
+	}
+
+	for _, rel := range releases {
+		if !strings.HasPrefix(rel.TagName, "k8s-rootfs-"+majorMinor) {
+			continue
+		}
+		version := strings.TrimPrefix(rel.TagName, "k8s-rootfs-")
+		for _, asset := range rel.Assets {
+			if asset.Name == "k8s-rootfs.ext4.gz" {
+				return asset.BrowserDownloadURL, version
+			}
+		}
+	}
+
+	return "", ""
+}
+
+// FindK8sRootfs checks if a k8s rootfs image for the given version exists locally,
+// and if not, tries to download one from GitHub releases.
+// Returns the image name if found/downloaded, or empty string.
+func (m *Manager) FindK8sRootfs(k8sVersion string) string {
+	parts := strings.SplitN(k8sVersion, ".", 3)
+	if len(parts) < 2 {
+		return ""
+	}
+	majorMinor := parts[0] + "." + parts[1]
+
+	// Check for exact version match first
+	exactName := "k8s-" + k8sVersion
+	if m.ImageExists(exactName) {
+		return exactName
+	}
+
+	// Check for major.minor match (any patch)
+	entries, err := os.ReadDir(m.RootfsDir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			if strings.HasPrefix(name, "k8s-"+majorMinor) && strings.HasSuffix(name, ".ext4") {
+				return strings.TrimSuffix(name, ".ext4")
+			}
+		}
+	}
+
+	return ""
+}
+
+// DownloadK8sRootfs downloads a pre-built k8s rootfs from GitHub releases.
+// Returns the image name if successful, or empty string.
+func (m *Manager) DownloadK8sRootfs(k8sVersion string) (string, error) {
+	url, version := findLatestK8sRootfsURL(k8sVersion)
+	if url == "" {
+		return "", fmt.Errorf("no pre-built Kubernetes rootfs found for version %s", k8sVersion)
+	}
+
+	imageName := "k8s-" + version
+	destPath := filepath.Join(m.RootfsDir, imageName+".ext4")
+
+	if _, err := os.Stat(destPath); err == nil {
+		return imageName, nil
+	}
+
+	fmt.Printf("Downloading pre-built Kubernetes %s rootfs...\n", version)
+	if err := m.downloadAndDecompressGzip(url, destPath); err != nil {
+		return "", fmt.Errorf("failed to download k8s rootfs: %w", err)
+	}
+	fmt.Printf("Kubernetes rootfs downloaded: %s\n", imageName)
+
+	return imageName, nil
+}
+
 // DefaultDNSServers are used when no custom DNS servers are specified
 var DefaultDNSServers = []string{"8.8.8.8", "8.8.4.4", "1.1.1.1"}
 

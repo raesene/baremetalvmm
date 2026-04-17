@@ -1557,6 +1557,22 @@ func clusterCreateCmd() *cobra.Command {
 				return fmt.Errorf("kernel '%s' not found", kernelName)
 			}
 
+			// Auto-detect k8s rootfs if no image specified
+			if imageName == "" {
+				if found := imgMgr.FindK8sRootfs(k8sVersion); found != "" {
+					fmt.Printf("Using pre-built Kubernetes rootfs: %s\n", found)
+					imageName = found
+					cl.Image = imageName
+				} else {
+					downloaded, err := imgMgr.DownloadK8sRootfs(k8sVersion)
+					if err == nil && downloaded != "" {
+						fmt.Printf("Using downloaded Kubernetes rootfs: %s\n", downloaded)
+						imageName = downloaded
+						cl.Image = imageName
+					}
+				}
+			}
+
 			// Save cluster config
 			if err := cl.Save(paths.Clusters); err != nil {
 				return fmt.Errorf("failed to save cluster config: %w", err)
@@ -1651,7 +1667,7 @@ func clusterCreateCmd() *cobra.Command {
 	cmd.Flags().IntVar(&cpus, "cpus", 2, "CPUs per node")
 	cmd.Flags().IntVar(&memory, "memory", 4096, "Memory per node in MB")
 	cmd.Flags().IntVar(&disk, "disk", 10240, "Disk per node in MB")
-	cmd.Flags().StringVar(&k8sVersion, "k8s-version", "1.31.4", "Kubernetes version")
+	cmd.Flags().StringVar(&k8sVersion, "k8s-version", "1.35.3", "Kubernetes version")
 	cmd.Flags().StringVar(&sshKeyPath, "ssh-key", "", "Path to SSH public key file")
 	cmd.Flags().StringVar(&imageName, "image", "", "Name of rootfs image to use")
 	cmd.Flags().StringVar(&kernelName, "kernel", "", "Name of kernel to use")

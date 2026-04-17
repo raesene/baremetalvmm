@@ -272,6 +272,32 @@ type NodeInfo struct {
 	IP   string
 }
 
+func checkKubeadmPreinstalled(client *SSHClient) bool {
+	_, err := client.Run("which kubeadm")
+	return err == nil
+}
+
+func preparePreinstalledNode(client *SSHClient) error {
+	commands := []string{
+		"modprobe overlay 2>/dev/null || true",
+		"modprobe br_netfilter 2>/dev/null || true",
+		"sysctl -w net.ipv4.ip_forward=1",
+		`if [ -d /proc/sys/net/bridge ]; then
+sysctl -w net.bridge.bridge-nf-call-iptables=1 2>/dev/null || true
+sysctl -w net.bridge.bridge-nf-call-ip6tables=1 2>/dev/null || true
+fi`,
+		"mount --make-rshared /",
+		"mount -t bpf bpf /sys/fs/bpf || true",
+		"systemctl restart containerd",
+	}
+	for _, cmd := range commands {
+		if _, err := client.Run(cmd); err != nil {
+			return fmt.Errorf("prepare step failed: %w\nCommand: %s", err, cmd)
+		}
+	}
+	return nil
+}
+
 func ProvisionCluster(cl *Cluster, sshKeyPath string, nodes []NodeInfo) error {
 	if len(nodes) == 0 {
 		return fmt.Errorf("no nodes to provision")
@@ -295,25 +321,40 @@ func ProvisionCluster(cl *Cluster, sshKeyPath string, nodes []NodeInfo) error {
 	}
 	fmt.Println("All VMs are SSH-accessible.")
 
-	// Install containerd on all nodes in parallel
-	fmt.Println("Installing containerd on all nodes...")
-	if err := runOnAllNodes(clients, nodes, func(c *SSHClient, name string) error {
-		fmt.Printf("  Installing containerd on %s...\n", name)
-		return installContainerd(c)
-	}); err != nil {
-		return err
-	}
-	fmt.Println("Containerd installed on all nodes.")
+	// Check if kubeadm is pre-installed (k8s rootfs image)
+	preinstalled := checkKubeadmPreinstalled(clients[cpNode.Name])
 
-	// Install kubeadm on all nodes in parallel
-	fmt.Printf("Installing kubeadm %s on all nodes...\n", cl.K8sVersion)
-	if err := runOnAllNodes(clients, nodes, func(c *SSHClient, name string) error {
-		fmt.Printf("  Installing kubeadm on %s...\n", name)
-		return installKubeadm(c, cl.K8sVersion)
-	}); err != nil {
-		return err
+	if preinstalled {
+		fmt.Println("Kubernetes components detected in rootfs image, skipping installation.")
+		fmt.Println("Preparing nodes...")
+		if err := runOnAllNodes(clients, nodes, func(c *SSHClient, name string) error {
+			fmt.Printf("  Preparing %s...\n", name)
+			return preparePreinstalledNode(c)
+		}); err != nil {
+			return err
+		}
+		fmt.Println("All nodes prepared.")
+	} else {
+		// Install containerd on all nodes in parallel
+		fmt.Println("Installing containerd on all nodes...")
+		if err := runOnAllNodes(clients, nodes, func(c *SSHClient, name string) error {
+			fmt.Printf("  Installing containerd on %s...\n", name)
+			return installContainerd(c)
+		}); err != nil {
+			return err
+		}
+		fmt.Println("Containerd installed on all nodes.")
+
+		// Install kubeadm on all nodes in parallel
+		fmt.Printf("Installing kubeadm %s on all nodes...\n", cl.K8sVersion)
+		if err := runOnAllNodes(clients, nodes, func(c *SSHClient, name string) error {
+			fmt.Printf("  Installing kubeadm on %s...\n", name)
+			return installKubeadm(c, cl.K8sVersion)
+		}); err != nil {
+			return err
+		}
+		fmt.Println("Kubeadm installed on all nodes.")
 	}
-	fmt.Println("Kubeadm installed on all nodes.")
 
 	// Initialize control plane
 	fmt.Printf("Initializing control plane on %s...\n", cpNode.Name)

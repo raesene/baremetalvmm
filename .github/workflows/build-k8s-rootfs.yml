@@ -1,0 +1,126 @@
+name: Build Kubernetes Rootfs
+
+on:
+  workflow_dispatch:
+    inputs:
+      k8s_version:
+        description: 'Kubernetes version (e.g. 1.35.3). Leave empty for latest stable.'
+        required: false
+        default: ''
+      base_image:
+        description: 'Docker base image (e.g. ubuntu:24.04)'
+        required: false
+        default: 'ubuntu:24.04'
+  push:
+    paths:
+      - 'scripts/build-k8s-rootfs.sh'
+      - '.github/workflows/build-k8s-rootfs.yml'
+    branches:
+      - main
+  schedule:
+    # Weekly on Monday at 08:00 UTC (after kernel and rootfs builds)
+    - cron: '0 8 * * 1'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      BASE_IMAGE: ${{ github.event.inputs.base_image || 'ubuntu:24.04' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine Kubernetes version
+        id: k8s
+        run: |
+          INPUT_VERSION="${{ github.event.inputs.k8s_version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            K8S_VERSION="$INPUT_VERSION"
+            echo "Using manually specified version: $K8S_VERSION"
+          else
+            # Query dl.k8s.io for the latest stable version
+            K8S_VERSION=$(curl -sL https://dl.k8s.io/release/stable.txt | sed 's/^v//')
+            if [ -z "$K8S_VERSION" ]; then
+              echo "Failed to determine latest Kubernetes version"
+              exit 1
+            fi
+            echo "Resolved latest stable Kubernetes version: $K8S_VERSION"
+          fi
+          echo "version=$K8S_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Kubernetes version: $K8S_VERSION"
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          K8S_VERSION="${{ steps.k8s.outputs.version }}"
+          TAG="k8s-rootfs-${K8S_VERSION}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $TAG"
+
+      - name: Check if release already exists
+        id: check_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if gh release view "$TAG" &>/dev/null; then
+            echo "Release $TAG already exists, skipping build"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release $TAG does not exist, proceeding with build"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build Kubernetes rootfs
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          chmod +x scripts/build-k8s-rootfs.sh
+          sudo bash scripts/build-k8s-rootfs.sh \
+            --k8s-version "${{ steps.k8s.outputs.version }}" \
+            --base-image "$BASE_IMAGE" \
+            --name k8s-rootfs.ext4 \
+            --size 2048 \
+            --output "${{ github.workspace }}"
+
+      - name: Create GitHub release
+        if: steps.check_release.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          K8S_VERSION="${{ steps.k8s.outputs.version }}"
+          TITLE="Kubernetes $K8S_VERSION Rootfs"
+          NOTES="Firecracker-compatible Ubuntu 24.04 rootfs with Kubernetes $K8S_VERSION pre-installed.
+
+          Pre-configured with:
+          - systemd init system
+          - OpenSSH server (root key-only login)
+          - containerd (SystemdCgroup enabled)
+          - kubeadm, kubelet, kubectl $K8S_VERSION
+          - iproute2, iputils-ping, dbus, kmod
+          - Serial console on ttyS0
+          - systemd-networkd
+          - Kubernetes sysctl and module configuration
+
+          Built from \`$BASE_IMAGE\` by GitHub Actions using \`scripts/build-k8s-rootfs.sh\`.
+
+          Use with vmm:
+          \`\`\`
+          # Download and import
+          gunzip k8s-rootfs.ext4.gz
+          sudo mv k8s-rootfs.ext4 /var/lib/vmm/images/rootfs/k8s-${K8S_VERSION}.ext4
+
+          # Or use vmm image pull (auto-detected)
+          sudo vmm image pull
+
+          # Create cluster (skips containerd/kubeadm installation)
+          sudo vmm cluster create mycluster --image k8s-${K8S_VERSION} --kernel k8s-kernel --ssh-key ~/.ssh/id_ed25519.pub
+          \`\`\`"
+
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            k8s-rootfs.ext4.gz
