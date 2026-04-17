@@ -35,7 +35,7 @@ After evaluating the options, **Firecracker** was chosen as the VMM engine becau
 | VM Delete | Done | With `--force` option for running VMs |
 | VM Listing | Done | Works as root and non-root users |
 | Bridge Networking | Done | vmm-br0 with NAT/MASQUERADE |
-| IP Allocation | Done | Sequential from 172.16.0.2 via kernel args |
+| IP Allocation | Done | Next-free-IP allocation from 172.16.0.2, skips in-use addresses |
 | Port Forwarding | Done | iptables DNAT rules |
 | Image Management | Done | Downloads Firecracker quickstart images |
 | systemd Integration | Done | Auto-start/stop on boot |
@@ -45,6 +45,8 @@ After evaluating the options, **Firecracker** was chosen as the VMM engine becau
 | Host Directory Mounts | Done | ext4 block device mounts via fstab |
 | Configurable Defaults | Done | `vm_defaults` in config.json |
 | Kubernetes Clusters | Done | kubeadm + Cilium CNI, single/multi-node |
+| Shell Completion | Done | bash, zsh, fish with dynamic VM/cluster/kernel/image names |
+| SSH Agent Support | Done | Passphrase-protected keys via ssh-agent |
 
 ### What's Not Yet Implemented
 

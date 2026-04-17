@@ -505,7 +505,7 @@ Host Network (eth0)
   VM1 VM2 VM3     ← 172.16.0.2, 172.16.0.3, ...
 ```
 
-IP addresses are allocated sequentially from 172.16.0.2 when a VM is started (not when created). The IP is configured via kernel command line parameters, so VMs get network connectivity immediately on boot.
+IP addresses are allocated from 172.16.0.2 upward when a VM is started (not when created). Each start scans existing VMs and picks the next unused address, so multiple clusters and standalone VMs can coexist without IP collisions. The IP is configured via kernel command line parameters, so VMs get network connectivity immediately on boot.
 
 ## Directory Structure
 

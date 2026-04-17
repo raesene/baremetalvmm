@@ -77,7 +77,7 @@ baremetalvmm/
 ### 4. Networking (`internal/network/`)
 - Creates vmm-br0 bridge on first VM start
 - TAP device per VM (named `vmm-<id>`)
-- IP allocation: sequential from 172.16.0.2
+- IP allocation: next-free from 172.16.0.2, scans existing VMs to skip in-use addresses
 - NAT via iptables MASQUERADE
 - Port forwarding via DNAT rules
 
@@ -277,9 +277,9 @@ vmm create myvm --disk 20000  # 20GB disk
 **Feature**: VMs have full outbound internet access via NAT.
 **Implementation**:
 - `EnsureBridge()` always ensures NAT rules are in place (not just on bridge creation)
-- iptables MASQUERADE rule for outbound traffic
+- iptables MASQUERADE rule for outbound traffic (uses `! -o vmm-br0`, interface-agnostic)
 - FORWARD rules for bridge-to-host traffic
-- Uses `host_interface` from config (must match actual network interface)
+- MASQUERADE rule no longer depends on `host_interface` matching correctly
 
 ### DNS Configuration (`internal/image/image.go`)
 **Feature**: Automatic DNS configuration with customizable servers.
@@ -650,14 +650,43 @@ kubectl --context vmm-test1 get nodes
 sudo vmm cluster delete test1 -f
 ```
 
+### Shell Completion (`cmd/vmm/main.go`)
+**Feature**: Tab completion for commands, VM names, cluster names, kernel names, and image names.
+**Implementation**:
+- Cobra's built-in `completion` subcommand generates scripts for bash, zsh, and fish
+- `ValidArgsFunction` on all commands that take positional names (start, stop, delete, ssh, port-forward, mount list/sync, cluster delete, cluster kubeconfig)
+- `RegisterFlagCompletionFunc` for `--kernel` and `--image` flags on create commands
+- All completions return `ShellCompDirectiveNoFileComp` to suppress file suggestions
+
+**Usage**:
+```bash
+source <(vmm completion bash)   # or zsh/fish
+```
+
+### SSH Agent Support (`internal/cluster/provisioner.go`)
+**Feature**: Passphrase-protected SSH keys work via ssh-agent for cluster provisioning.
+**Implementation**:
+- SSH client tries `SSH_AUTH_SOCK` agent first, then falls back to reading key file directly
+- If key is encrypted and no agent is available, error message guides user to `ssh-add`
+- Requires `sudo -E` to preserve `SSH_AUTH_SOCK` when running with sudo
+
+### Interface-Agnostic NAT (`internal/network/network.go`)
+**Feature**: MASQUERADE rule works regardless of host network interface name.
+**Problem**: Previous rule used `-o <host_interface>`, which silently failed if config didn't match actual interface.
+**Fix**: Changed to `! -o vmm-br0` — NATs traffic from VMs going out any interface except back to the bridge.
+
+### Next-Free IP Allocation (`internal/network/network.go`, `cmd/vmm/main.go`)
+**Feature**: IP allocation scans existing VMs and picks the next unused address.
+**Problem**: Previous allocation used VM list index, causing IP collisions when running multiple clusters.
+**Fix**: `AllocateIP()` now takes a list of used IPs and finds the first free address from 172.16.0.2 upward.
+
 ## Future Improvements (Not Yet Implemented)
 
 1. **Cloud-init** - Full cloud-init support for more flexible VM initialization
 2. **Jailer integration** - Production security hardening
 3. **Resource quotas** - CPU/memory/disk limits
-4. **Better IP management** - Persistent IP allocation
-5. **Web UI** - Optional browser-based management
-6. **VM snapshots** - Save/restore VM state
+4. **Web UI** - Optional browser-based management
+5. **VM snapshots** - Save/restore VM state
 
 ## Code Style
 
