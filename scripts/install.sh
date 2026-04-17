@@ -242,6 +242,51 @@ else
     echo "Kernel already exists at $KERNEL_PATH"
 fi
 
+# Download Kubernetes-compatible kernel from GitHub releases if not present
+K8S_KERNEL_PATH="$DATA_DIR/images/kernels/k8s-kernel"
+if [ ! -f "$K8S_KERNEL_PATH" ]; then
+    echo "Downloading pre-built Kubernetes kernel from GitHub releases..."
+    K8S_KERNEL_URL=""
+
+    # Reuse RELEASES_JSON from above if available, otherwise fetch it
+    if [ -z "$RELEASES_JSON" ]; then
+        API_URL="https://api.github.com/repos/${GITHUB_REPO}/releases"
+        if command -v curl &> /dev/null; then
+            RELEASES_JSON=$(curl -fsSL "$API_URL" 2>/dev/null)
+        elif command -v wget &> /dev/null; then
+            RELEASES_JSON=$(wget -qO- "$API_URL" 2>/dev/null)
+        fi
+    fi
+
+    if [ -n "$RELEASES_JSON" ]; then
+        if command -v jq &> /dev/null; then
+            K8S_KERNEL_URL=$(echo "$RELEASES_JSON" | jq -r '
+                [.[] | select(.tag_name | startswith("k8s-kernel-"))] |
+                first |
+                .assets[] | select(.name == "k8s-vmlinux.bin") |
+                .browser_download_url' 2>/dev/null)
+        else
+            K8S_KERNEL_URL=$(echo "$RELEASES_JSON" | \
+                grep -A 50 '"tag_name": "k8s-kernel-' | \
+                grep '"browser_download_url".*k8s-vmlinux.bin' | \
+                head -1 | \
+                sed -E 's/.*"browser_download_url": "([^"]+)".*/\1/')
+        fi
+    fi
+
+    if [ -n "$K8S_KERNEL_URL" ] && [ "$K8S_KERNEL_URL" != "null" ]; then
+        if download_file "$K8S_KERNEL_URL" "$K8S_KERNEL_PATH"; then
+            echo "Kubernetes kernel downloaded to $K8S_KERNEL_PATH"
+        else
+            echo "Warning: Failed to download Kubernetes kernel. Build one with: sudo vmm kernel build --version 6.6 --name k8s-kernel"
+        fi
+    else
+        echo "No Kubernetes kernel release found. Build one with: sudo vmm kernel build --version 6.6 --name k8s-kernel"
+    fi
+else
+    echo "Kubernetes kernel already exists at $K8S_KERNEL_PATH"
+fi
+
 # Download rootfs from GitHub releases if not present
 ROOTFS_PATH="$DATA_DIR/images/rootfs/rootfs.ext4"
 if [ ! -f "$ROOTFS_PATH" ]; then
@@ -313,6 +358,9 @@ echo "  1. Initialize VMM:     vmm config init"
 echo "  2. Pull images:        sudo vmm image pull"
 echo "  3. Create a VM:        sudo vmm create myvm --ssh-key ~/.ssh/id_ed25519.pub"
 echo "  4. Start the VM:       sudo vmm start myvm"
+echo ""
+echo "For Kubernetes clusters:"
+echo "  sudo vmm cluster create mycluster --ssh-key ~/.ssh/id_ed25519.pub --kernel k8s-kernel"
 echo "  5. SSH into the VM:    vmm ssh myvm"
 echo ""
 echo "Optional - To enable auto-start on boot, run:"

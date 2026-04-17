@@ -21,7 +21,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-default:
     runs-on: ubuntu-latest
     env:
       KERNEL_SERIES: ${{ github.event.inputs.kernel_series || '6.1' }}
@@ -94,3 +94,87 @@ jobs:
             --title "$TITLE" \
             --notes "$NOTES" \
             vmlinux.bin
+
+  build-k8s:
+    runs-on: ubuntu-latest
+    env:
+      KERNEL_SERIES: '6.6'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Query kernel.org for latest 6.6 patch version
+        id: kernel_version
+        run: |
+          LATEST=$(curl -fsSL https://www.kernel.org/releases.json | \
+            jq -r --arg series "$KERNEL_SERIES" \
+            '[.releases[] | select(.version | startswith($series + ".")) | .version] | sort_by(split(".") | map(tonumber)) | last')
+
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "Could not determine latest kernel version for series $KERNEL_SERIES"
+            exit 1
+          fi
+
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Found latest kernel version: $LATEST"
+
+      - name: Check if release already exists
+        id: check_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="k8s-kernel-${{ steps.kernel_version.outputs.version }}"
+          if gh release view "$TAG" &>/dev/null; then
+            echo "Release $TAG already exists, skipping build"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release $TAG does not exist, proceeding with build"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install build dependencies
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential flex bison bc libelf-dev libssl-dev wget curl jq
+
+      - name: Build Kubernetes-compatible kernel
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          chmod +x scripts/build-kernel.sh
+          sudo bash scripts/build-kernel.sh \
+            --version "$KERNEL_SERIES" \
+            --name k8s-vmlinux.bin \
+            --output "${{ github.workspace }}"
+
+      - name: Create GitHub release
+        if: steps.check_release.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="k8s-kernel-${{ steps.kernel_version.outputs.version }}"
+          TITLE="Kubernetes Kernel ${{ steps.kernel_version.outputs.version }}"
+          NOTES="Firecracker-compatible Linux kernel ${{ steps.kernel_version.outputs.version }} for Kubernetes clusters.
+
+          Built from the 6.6 LTS series with full Kubernetes and Cilium CNI support:
+          - BPF JIT and EBPF subsystem (required by Cilium)
+          - VXLAN and Geneve tunnel devices (Cilium networking)
+          - Cgroups v2 with CPU bandwidth control (Kubernetes resource limits)
+          - Namespaces, overlay filesystem, bridge networking
+          - iptables/nftables with all match modules
+          - Docker/containerd support (overlay, cgroups, namespaces)
+          - Virtio block and network drivers
+          - Kernel modules enabled (required for BPF JIT)
+
+          Use with \`vmm cluster create\`:
+          \`\`\`
+          sudo vmm kernel import k8s-vmlinux.bin --name k8s-kernel
+          sudo vmm cluster create mycluster --kernel k8s-kernel --ssh-key ~/.ssh/id_ed25519.pub
+          \`\`\`
+
+          Built by GitHub Actions from \`scripts/build-kernel.sh\`."
+
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            k8s-vmlinux.bin

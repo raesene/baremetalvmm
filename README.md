@@ -34,6 +34,7 @@ The install script will:
 - Install the binary to `/usr/local/bin`
 - Download Firecracker v1.11.0
 - Download a pre-built Linux 6.1 kernel from GitHub releases
+- Download a pre-built Kubernetes-compatible 6.6 kernel from GitHub releases (for `vmm cluster`)
 - Download a pre-built Ubuntu 24.04 rootfs from GitHub releases (falls back to Firecracker S3 URL)
 - Create data directories in `/var/lib/vmm`
 - Install `build-kernel.sh` and `build-rootfs.sh` to `/usr/local/share/vmm`

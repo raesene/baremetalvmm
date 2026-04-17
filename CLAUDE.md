@@ -548,11 +548,12 @@ make build && ./vmm version
 
 **GitHub release tagging convention**:
 - `v*` tags → software releases (GoReleaser binary builds)
-- `kernel-*` tags → kernel releases (built by kernel workflow)
+- `kernel-*` tags → default kernel releases (6.1 series, built by kernel workflow)
+- `k8s-kernel-*` tags → Kubernetes kernel releases (6.6 series, built by kernel workflow)
 - `rootfs-*` tags → rootfs releases (built by rootfs workflow, format: `rootfs-24.04-YYYYMMDD`)
 
 **Kernel download chain**:
-- `scripts/install.sh` → queries GitHub API for latest `kernel-*` release, downloads `vmlinux.bin`
+- `scripts/install.sh` → queries GitHub API for latest `kernel-*` release (downloads `vmlinux.bin`) and latest `k8s-kernel-*` release (downloads `k8s-vmlinux.bin` as `k8s-kernel`)
 - `vmm image pull` (Go) → `findLatestKernelURL()` queries GitHub API, falls back to `FallbackKernelURL` (S3)
 - Both use `api.github.com/repos/raesene/baremetalvmm/releases` to find kernel assets
 
