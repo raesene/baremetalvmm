@@ -228,6 +228,13 @@ else
     echo "  /usr/local/bin/vmm not found"
 fi
 
+if [ -f /usr/local/bin/vmm-web ]; then
+    rm -f /usr/local/bin/vmm-web
+    echo -e "  ${GREEN}Removed /usr/local/bin/vmm-web${NC}"
+else
+    echo "  /usr/local/bin/vmm-web not found"
+fi
+
 if [ -f /usr/local/bin/firecracker ]; then
     rm -f /usr/local/bin/firecracker
     echo -e "  ${GREEN}Removed /usr/local/bin/firecracker${NC}"

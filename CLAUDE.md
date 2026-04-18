@@ -4,7 +4,7 @@ This file provides context for Claude or other AI assistants working on this cod
 
 ## Project Overview
 
-VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker microVMs on Ubuntu 24.04. It's designed for development environments supporting 10-50 concurrent VMs.
+VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker microVMs on Ubuntu 24.04. It's designed for development environments supporting 10-50 concurrent VMs. It includes an optional web UI (`vmm-web`) for browser-based management.
 
 **Status**: Core functionality complete and tested. See PLAN.md for implementation status.
 
@@ -13,6 +13,7 @@ VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker
 - **Language**: Go 1.21+
 - **VMM Engine**: Firecracker v1.11.0 (via firecracker-go-sdk)
 - **CLI Framework**: Cobra (github.com/spf13/cobra)
+- **Web UI**: Chi router, html/template, HTMX, Tailwind CSS
 - **Networking**: Linux TAP devices, bridges, iptables
 - **Storage**: JSON-based VM configs, ext4 rootfs images
 - **Service**: systemd for auto-start
@@ -23,6 +24,7 @@ VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker
 ```
 baremetalvmm/
 ├── cmd/vmm/main.go           # CLI entry point, all command definitions
+├── cmd/vmm-web/main.go       # Web UI entry point
 ├── internal/
 │   ├── config/config.go      # Global config, paths, defaults
 │   ├── vm/vm.go              # VM struct, state machine, persistence
@@ -33,7 +35,17 @@ baremetalvmm/
 │   ├── firecracker/client.go # Firecracker SDK wrapper
 │   ├── network/network.go    # TAP, bridge, iptables management
 │   ├── image/image.go        # Kernel/rootfs download and management
-│   └── mount/mount.go        # Host directory mount management
+│   ├── mount/mount.go        # Host directory mount management
+│   └── web/                  # Web UI (separate binary, optional)
+│       ├── server.go         # Chi router, middleware, template rendering
+│       ├── auth.go           # Session auth, rate limiting, CSRF
+│       ├── handlers_vm.go    # VM CRUD handlers (HTML + JSON API)
+│       ├── handlers_cluster.go # Cluster handlers (HTML + JSON API)
+│       └── handlers_dashboard.go # Dashboard, SSE health stream
+├── web/
+│   ├── embed.go              # go:embed directive for assets
+│   ├── templates/            # HTML templates (layout, login, dashboard, etc.)
+│   └── static/               # htmx.min.js, sse.js, style.css
 ├── .github/workflows/
 │   ├── release.yaml          # GoReleaser binary release on v* tags
 │   ├── build-kernel.yml      # Automated kernel build + GitHub release
@@ -683,13 +695,37 @@ source <(vmm completion bash)   # or zsh/fish
 **Problem**: Previous allocation used VM list index, causing IP collisions when running multiple clusters.
 **Fix**: `AllocateIP()` now takes a list of used IPs and finds the first free address from 172.16.0.2 upward.
 
+### Web UI (`cmd/vmm-web/`, `internal/web/`, `web/`)
+**Feature**: Browser-based dashboard for managing VMs and clusters, plus a JSON REST API.
+**Implementation**:
+- Separate binary (`vmm-web`) using Chi router, HTMX + Go templates, Tailwind CSS via CDN
+- `internal/web/server.go` - Chi router setup, middleware stack (logging, security headers, auth, CSRF)
+- `internal/web/auth.go` - Session-based auth with `VMM_WEB_PASSWORD` env var, rate-limited login, Bearer token support for API
+- `internal/web/handlers_vm.go` - VM CRUD (HTML pages + `/api/v1/` JSON endpoints), HTMX partial updates for start/stop
+- `internal/web/handlers_cluster.go` - Cluster CRUD (HTML + JSON API)
+- `internal/web/handlers_dashboard.go` - Dashboard with stats, SSE broker for live VM status polling
+- `web/embed.go` - `go:embed` directive embeds templates and static assets into the binary
+- `web/templates/` - 9 HTML templates using `{{template "layout.html" .}}` pattern with `{{define "content"}}` blocks
+- `web/static/` - HTMX 2.0.4, SSE extension, custom CSS with status badges
+- Default listen: `127.0.0.1:8080`, explicit `--listen 0.0.0.0:8080` for remote access
+- Security: HttpOnly SameSite=Strict cookies, CSRF on forms/HTMX, CSP headers, login rate limiting (5/min)
+- All VM/cluster operations reuse the same `internal/` packages as the CLI
+
+**Dependencies added**: `github.com/go-chi/chi/v5`
+
+**Usage**:
+```bash
+VMM_WEB_PASSWORD=mypassword sudo -E vmm-web --listen 0.0.0.0:8080
+```
+
+**API endpoints**: `/api/v1/vms`, `/api/v1/vms/{name}`, `/api/v1/vms/{name}/start`, `/api/v1/vms/{name}/stop`, `/api/v1/clusters`, `/api/v1/health`
+
 ## Future Improvements (Not Yet Implemented)
 
 1. **Cloud-init** - Full cloud-init support for more flexible VM initialization
 2. **Jailer integration** - Production security hardening
 3. **Resource quotas** - CPU/memory/disk limits
-4. **Web UI** - Optional browser-based management
-5. **VM snapshots** - Save/restore VM state
+4. **VM snapshots** - Save/restore VM state
 
 ## Code Style
 

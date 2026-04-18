@@ -1,0 +1,85 @@
+{{template "layout.html" .}}
+{{define "content"}}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Create Virtual Machine</h1>
+    <p class="text-gray-600 mt-1">Configure and create a new Firecracker microVM</p>
+</div>
+
+<div class="bg-white rounded-lg shadow p-6 max-w-2xl">
+    <form method="POST" action="/vms">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+        <div class="mb-4">
+            <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <input type="text" id="name" name="name" required pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*"
+                placeholder="my-vm"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <p class="text-xs text-gray-500 mt-1">Alphanumeric characters, dots, dashes, and underscores.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+                <label for="cpus" class="block text-sm font-medium text-gray-700 mb-1">vCPUs</label>
+                <input type="number" id="cpus" name="cpus" value="{{.Defaults.CPUs}}" min="1" max="32"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="memory" class="block text-sm font-medium text-gray-700 mb-1">Memory (MB)</label>
+                <input type="number" id="memory" name="memory" value="{{.Defaults.MemoryMB}}" min="128" step="128"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="disk" class="block text-sm font-medium text-gray-700 mb-1">Disk (MB)</label>
+                <input type="number" id="disk" name="disk" value="{{.Defaults.DiskSizeMB}}" min="256" step="256"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <label for="ssh_key" class="block text-sm font-medium text-gray-700 mb-1">SSH Public Key (optional)</label>
+            <textarea id="ssh_key" name="ssh_key" rows="3" placeholder="ssh-ed25519 AAAA..."
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm">{{.Defaults.SSHKey}}</textarea>
+        </div>
+
+        {{if .Kernels}}
+        <div class="mb-4">
+            <label for="kernel" class="block text-sm font-medium text-gray-700 mb-1">Kernel</label>
+            <select id="kernel" name="kernel"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Default</option>
+                {{range .Kernels}}
+                <option value="{{.}}" {{if eq . $.Defaults.Kernel}}selected{{end}}>{{.}}</option>
+                {{end}}
+            </select>
+        </div>
+        {{end}}
+
+        {{if .Images}}
+        <div class="mb-4">
+            <label for="image" class="block text-sm font-medium text-gray-700 mb-1">Image</label>
+            <select id="image" name="image"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Default</option>
+                {{range .Images}}
+                <option value="{{.}}" {{if eq . $.Defaults.Image}}selected{{end}}>{{.}}</option>
+                {{end}}
+            </select>
+        </div>
+        {{end}}
+
+        <div class="mb-6">
+            <label for="dns" class="block text-sm font-medium text-gray-700 mb-1">DNS Servers (comma-separated, optional)</label>
+            <input type="text" id="dns" name="dns" placeholder="8.8.8.8, 8.8.4.4"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <button type="submit"
+                class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 font-medium text-sm">
+                Create VM
+            </button>
+            <a href="/vms" class="text-gray-600 hover:text-gray-800 text-sm">Cancel</a>
+        </div>
+    </form>
+</div>
+{{end}}

@@ -1,0 +1,100 @@
+{{template "layout.html" .}}
+{{define "content"}}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
+    <p class="text-gray-600 mt-1">System overview</p>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="text-sm font-medium text-gray-500">Total VMs</div>
+        <div class="mt-1 text-3xl font-bold text-gray-900">{{.Stats.TotalVMs}}</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="text-sm font-medium text-gray-500">Running</div>
+        <div class="mt-1 text-3xl font-bold text-green-600">{{.Stats.RunningVMs}}</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="text-sm font-medium text-gray-500">Stopped</div>
+        <div class="mt-1 text-3xl font-bold text-gray-500">{{.Stats.StoppedVMs}}</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="text-sm font-medium text-gray-500">Clusters</div>
+        <div class="mt-1 text-3xl font-bold text-gray-900">{{.Stats.TotalClusters}}</div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-gray-900">Virtual Machines</h2>
+            <a href="/vms/new" class="text-sm text-blue-600 hover:text-blue-800 font-medium">Create New</a>
+        </div>
+        <div id="vm-list" hx-ext="sse" sse-connect="/events" sse-swap="vm-update">
+            {{if .VMs}}
+            <div class="divide-y divide-gray-200">
+                {{range .VMs}}
+                <div class="px-6 py-3 flex items-center justify-between" id="vm-row-{{.Name}}">
+                    <div>
+                        <a href="/vms/{{.Name}}" class="font-medium text-blue-600 hover:text-blue-800">{{.Name}}</a>
+                        <div class="text-sm text-gray-500">{{.CPUs}} vCPU, {{.MemoryMB}} MB{{if .IPAddress}} &middot; {{.IPAddress}}{{end}}</div>
+                    </div>
+                    <span class="badge badge-{{.State}}">{{.State}}</span>
+                </div>
+                {{end}}
+            </div>
+            {{else}}
+            <div class="px-6 py-8 text-center text-gray-500">
+                No VMs found. <a href="/vms/new" class="text-blue-600 hover:text-blue-800">Create one</a>.
+            </div>
+            {{end}}
+        </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-gray-900">Clusters</h2>
+            <a href="/clusters/new" class="text-sm text-blue-600 hover:text-blue-800 font-medium">Create New</a>
+        </div>
+        {{if .Clusters}}
+        <div class="divide-y divide-gray-200">
+            {{range .Clusters}}
+            <div class="px-6 py-3 flex items-center justify-between">
+                <div>
+                    <a href="/clusters" class="font-medium text-blue-600 hover:text-blue-800">{{.Name}}</a>
+                    <div class="text-sm text-gray-500">{{len .WorkerVMs}} workers</div>
+                </div>
+                <span class="badge badge-{{.State}}">{{.State}}</span>
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <div class="px-6 py-8 text-center text-gray-500">
+            No clusters found. <a href="/clusters/new" class="text-blue-600 hover:text-blue-800">Create one</a>.
+        </div>
+        {{end}}
+    </div>
+</div>
+
+<div class="mt-6 bg-white rounded-lg shadow">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-900">Resource Usage</h2>
+    </div>
+    <div class="px-6 py-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+                <div class="text-sm font-medium text-gray-500 mb-1">Total vCPUs Allocated</div>
+                <div class="text-xl font-bold text-gray-900">{{.Stats.TotalCPUs}}</div>
+            </div>
+            <div>
+                <div class="text-sm font-medium text-gray-500 mb-1">Total Memory Allocated</div>
+                <div class="text-xl font-bold text-gray-900">{{.Stats.TotalMemoryMB}} MB</div>
+            </div>
+            <div>
+                <div class="text-sm font-medium text-gray-500 mb-1">Total Disk Allocated</div>
+                <div class="text-xl font-bold text-gray-900">{{.Stats.TotalDiskMB}} MB</div>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}

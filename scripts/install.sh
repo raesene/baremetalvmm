@@ -90,10 +90,15 @@ download_prebuilt() {
 
     if download_file "$url" /tmp/vmm.tar.gz; then
         echo "Extracting..."
-        tar -xzf /tmp/vmm.tar.gz -C /tmp vmm
+        tar -xzf /tmp/vmm.tar.gz -C /tmp vmm vmm-web 2>/dev/null || tar -xzf /tmp/vmm.tar.gz -C /tmp vmm
         cp /tmp/vmm "$INSTALL_DIR/vmm"
         chmod +x "$INSTALL_DIR/vmm"
-        rm -f /tmp/vmm.tar.gz /tmp/vmm
+        if [ -f /tmp/vmm-web ]; then
+            cp /tmp/vmm-web "$INSTALL_DIR/vmm-web"
+            chmod +x "$INSTALL_DIR/vmm-web"
+            echo "VMM Web UI installed to $INSTALL_DIR/vmm-web"
+        fi
+        rm -f /tmp/vmm.tar.gz /tmp/vmm /tmp/vmm-web
         echo "VMM installed to $INSTALL_DIR/vmm"
         return 0
     else
@@ -111,6 +116,12 @@ build_from_source() {
         cp vmm "$INSTALL_DIR/vmm"
         chmod +x "$INSTALL_DIR/vmm"
         echo "VMM installed to $INSTALL_DIR/vmm"
+
+        echo "Building VMM Web UI from source..."
+        go build -o vmm-web ./cmd/vmm-web/
+        cp vmm-web "$INSTALL_DIR/vmm-web"
+        chmod +x "$INSTALL_DIR/vmm-web"
+        echo "VMM Web UI installed to $INSTALL_DIR/vmm-web"
         return 0
     else
         echo "Error: Go is not installed. Cannot build from source."
@@ -358,11 +369,16 @@ echo "  1. Initialize VMM:     vmm config init"
 echo "  2. Pull images:        sudo vmm image pull"
 echo "  3. Create a VM:        sudo vmm create myvm --ssh-key ~/.ssh/id_ed25519.pub"
 echo "  4. Start the VM:       sudo vmm start myvm"
+echo "  5. SSH into the VM:    vmm ssh myvm"
 echo ""
 echo "For Kubernetes clusters:"
 echo "  sudo vmm cluster create mycluster --ssh-key ~/.ssh/id_ed25519.pub --kernel k8s-kernel"
-echo "  5. SSH into the VM:    vmm ssh myvm"
 echo ""
+if [ -f "$INSTALL_DIR/vmm-web" ]; then
+echo "Web UI (optional):"
+echo "  VMM_WEB_PASSWORD=<password> sudo -E vmm-web --listen 0.0.0.0:8080"
+echo ""
+fi
 echo "Optional - To enable auto-start on boot, run:"
 echo "  sudo ./scripts/install-service.sh"
 echo ""

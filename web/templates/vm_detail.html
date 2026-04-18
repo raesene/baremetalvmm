@@ -1,0 +1,162 @@
+{{template "layout.html" .}}
+{{define "content"}}
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <div class="flex items-center space-x-3">
+            <h1 class="text-2xl font-bold text-gray-900">{{.VM.Name}}</h1>
+            <span class="badge badge-{{.VM.State}}">{{.VM.State}}</span>
+        </div>
+        <p class="text-gray-500 mt-1">ID: {{.VM.ID}}</p>
+    </div>
+    <div class="flex items-center space-x-3">
+        {{if eq (printf "%s" .VM.State) "running"}}
+        <form method="POST" action="/vms/{{.VM.Name}}/stop">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600 font-medium text-sm">Stop</button>
+        </form>
+        {{else if or (eq (printf "%s" .VM.State) "stopped") (eq (printf "%s" .VM.State) "created")}}
+        <form method="POST" action="/vms/{{.VM.Name}}/start">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 font-medium text-sm">Start</button>
+        </form>
+        {{end}}
+        <form method="POST" action="/vms/{{.VM.Name}}/delete" onsubmit="return confirm('Delete VM {{.VM.Name}}?')">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <input type="hidden" name="_method" value="DELETE">
+            <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 font-medium text-sm">Delete</button>
+        </form>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Configuration</h2>
+        <dl class="space-y-3">
+            <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">vCPUs</dt>
+                <dd class="text-sm font-medium text-gray-900">{{.VM.CPUs}}</dd>
+            </div>
+            <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">Memory</dt>
+                <dd class="text-sm font-medium text-gray-900">{{.VM.MemoryMB}} MB</dd>
+            </div>
+            <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">Disk</dt>
+                <dd class="text-sm font-medium text-gray-900">{{.VM.DiskSizeMB}} MB</dd>
+            </div>
+            {{if .VM.Image}}
+            <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">Image</dt>
+                <dd class="text-sm font-medium text-gray-900">{{.VM.Image}}</dd>
+            </div>
+            {{end}}
+            {{if .VM.Kernel}}
+            <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">Kernel</dt>
+                <dd class="text-sm font-medium text-gray-900">{{.VM.Kernel}}</dd>
+            </div>
+            {{end}}
+            <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">SSH Key</dt>
+                <dd class="text-sm font-medium text-gray-900">{{if .VM.SSHPublicKey}}Configured{{else}}Not set{{end}}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Network</h2>
+        <dl class="space-y-3">
+            <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">IP Address</dt>
+                <dd class="text-sm font-medium text-gray-900">{{if .VM.IPAddress}}{{.VM.IPAddress}}{{else}}-{{end}}</dd>
+            </div>
+            <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">MAC Address</dt>
+                <dd class="text-sm font-medium text-gray-900 font-mono">{{.VM.MacAddress}}</dd>
+            </div>
+            <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">TAP Device</dt>
+                <dd class="text-sm font-medium text-gray-900 font-mono">{{.VM.TapDevice}}</dd>
+            </div>
+            {{if .VM.DNSServers}}
+            <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">DNS Servers</dt>
+                <dd class="text-sm font-medium text-gray-900">{{range $i, $dns := .VM.DNSServers}}{{if $i}}, {{end}}{{$dns}}{{end}}</dd>
+            </div>
+            {{end}}
+        </dl>
+    </div>
+
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Runtime</h2>
+        <dl class="space-y-3">
+            <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">PID</dt>
+                <dd class="text-sm font-medium text-gray-900">{{if .VM.PID}}{{.VM.PID}}{{else}}-{{end}}</dd>
+            </div>
+            <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">Socket</dt>
+                <dd class="text-sm font-medium text-gray-900 font-mono text-xs">{{.VM.SocketPath}}</dd>
+            </div>
+            <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">Created</dt>
+                <dd class="text-sm font-medium text-gray-900">{{.VM.CreatedAt.Format "2006-01-02 15:04:05"}}</dd>
+            </div>
+            {{if not .VM.StartedAt.IsZero}}
+            <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">Started</dt>
+                <dd class="text-sm font-medium text-gray-900">{{.VM.StartedAt.Format "2006-01-02 15:04:05"}}</dd>
+            </div>
+            {{end}}
+        </dl>
+    </div>
+
+    {{if .VM.PortForwards}}
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Port Forwards</h2>
+        <table class="min-w-full">
+            <thead>
+                <tr class="text-left text-xs font-medium text-gray-500 uppercase">
+                    <th class="pb-2">Host Port</th>
+                    <th class="pb-2">Guest Port</th>
+                    <th class="pb-2">Protocol</th>
+                </tr>
+            </thead>
+            <tbody class="text-sm text-gray-700">
+                {{range .VM.PortForwards}}
+                <tr>
+                    <td class="py-1">{{.HostPort}}</td>
+                    <td class="py-1">{{.GuestPort}}</td>
+                    <td class="py-1">{{.Protocol}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    {{end}}
+
+    {{if .VM.Mounts}}
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Mounts</h2>
+        <table class="min-w-full">
+            <thead>
+                <tr class="text-left text-xs font-medium text-gray-500 uppercase">
+                    <th class="pb-2">Host Path</th>
+                    <th class="pb-2">Guest Mount</th>
+                    <th class="pb-2">Mode</th>
+                </tr>
+            </thead>
+            <tbody class="text-sm text-gray-700">
+                {{range .VM.Mounts}}
+                <tr>
+                    <td class="py-1 font-mono text-xs">{{.HostPath}}</td>
+                    <td class="py-1 font-mono text-xs">/mnt/{{.GuestTag}}</td>
+                    <td class="py-1">{{if .ReadOnly}}read-only{{else}}read-write{{end}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    {{end}}
+</div>
+{{end}}

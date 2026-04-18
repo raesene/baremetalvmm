@@ -29,9 +29,9 @@ sudo ./scripts/install.sh
 ```
 
 The install script will:
-- Download the pre-built `vmm` binary from GitHub releases (amd64/arm64)
+- Download the pre-built `vmm` and `vmm-web` binaries from GitHub releases (amd64/arm64)
 - Fall back to building from source if download fails
-- Install the binary to `/usr/local/bin`
+- Install the binaries to `/usr/local/bin`
 - Download Firecracker v1.11.0
 - Download a pre-built Linux 6.1 kernel from GitHub releases
 - Download a pre-built Kubernetes-compatible 6.6 kernel from GitHub releases (for `vmm cluster`)
@@ -53,7 +53,7 @@ The uninstall script will:
 - Remove all VM data (`/var/lib/vmm`)
 - Remove user configuration (`~/.config/vmm`)
 - Remove the systemd service (if installed)
-- Remove binaries (`vmm`, `firecracker`, `build-kernel.sh`, `build-rootfs.sh`)
+- Remove binaries (`vmm`, `vmm-web`, `firecracker`, `build-kernel.sh`, `build-rootfs.sh`)
 
 Use `--yes` or `-y` to skip the confirmation prompt:
 
@@ -456,24 +456,99 @@ This stops and deletes all VMs in the cluster and removes the kubeconfig context
 - BPF filesystem mount for Cilium
 - Shared mount propagation for Kubernetes volumes
 
+## Web UI
+
+VMM includes an optional web-based dashboard (`vmm-web`) for managing and monitoring VMs from a browser. It's a separate binary that reuses the same internal libraries as the CLI, so all operations are consistent between both interfaces.
+
+### Starting the Web UI
+
+The web UI requires a password set via the `VMM_WEB_PASSWORD` environment variable:
+
+```bash
+# Listen on localhost only (default)
+VMM_WEB_PASSWORD=mysecretpassword sudo -E vmm-web
+
+# Listen on all interfaces for remote access
+VMM_WEB_PASSWORD=mysecretpassword sudo -E vmm-web --listen 0.0.0.0:8080
+```
+
+Then open `http://<host>:8080` in a browser and log in with username `admin` and the password you set.
+
+### Features
+
+- **Dashboard** - Overview of all VMs and clusters with resource usage stats
+- **VM Management** - Create, start, stop, and delete VMs from the browser
+- **Cluster Management** - Create and delete Kubernetes clusters
+- **Live Status** - VM status updates via Server-Sent Events (no page refresh needed)
+- **JSON API** - REST API at `/api/v1/` for scripting and automation
+- **Authentication** - Session-based login with rate-limited password attempts
+
+### JSON API
+
+The web UI also exposes a JSON API for scripting. Authenticate by logging in via the browser to get a session token, then use it as a Bearer token:
+
+```bash
+# List VMs
+curl -H "Authorization: Bearer <session-token>" http://localhost:8080/api/v1/vms
+
+# Create a VM
+curl -X POST -H "Authorization: Bearer <session-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"myvm","cpus":2,"memory_mb":1024}' \
+  http://localhost:8080/api/v1/vms
+
+# Start a VM
+curl -X POST -H "Authorization: Bearer <session-token>" \
+  http://localhost:8080/api/v1/vms/myvm/start
+
+# Health check (no auth required)
+curl http://localhost:8080/api/v1/health
+```
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/health` | Health check (no auth) |
+| GET | `/api/v1/vms` | List all VMs |
+| POST | `/api/v1/vms` | Create a VM |
+| GET | `/api/v1/vms/{name}` | Get VM details |
+| POST | `/api/v1/vms/{name}/start` | Start a VM |
+| POST | `/api/v1/vms/{name}/stop` | Stop a VM |
+| DELETE | `/api/v1/vms/{name}` | Delete a VM |
+| GET | `/api/v1/clusters` | List clusters |
+| POST | `/api/v1/clusters` | Create a cluster |
+| DELETE | `/api/v1/clusters/{name}` | Delete a cluster |
+
+### Security
+
+- **Default bind address** is `127.0.0.1:8080` (localhost only). You must explicitly pass `--listen 0.0.0.0:8080` to allow remote access.
+- **Login rate limiting** - 5 attempts per minute per IP address.
+- **Session cookies** are `HttpOnly` and `SameSite=Strict`.
+- **CSRF protection** on all state-changing requests.
+- **Security headers** - CSP, X-Frame-Options DENY, X-Content-Type-Options nosniff.
+- The web server runs as root (required for Firecracker operations). For production use, consider putting it behind a reverse proxy with TLS (e.g., nginx, Caddy).
+
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      vmm CLI                             │
-├─────────────────────────────────────────────────────────┤
-│  create | start | stop | delete | list | ssh | ...      │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
+┌───────────────────────────┐  ┌───────────────────────────┐
+│         vmm CLI           │  │     vmm-web (HTTP)        │
+├───────────────────────────┤  ├───────────────────────────┤
+│  create | start | stop    │  │  Dashboard | VM mgmt      │
+│  delete | list | ssh ...  │  │  Cluster mgmt | REST API  │
+└─────────────┬─────────────┘  └─────────────┬─────────────┘
+              │                               │
+              └───────────┬───────────────────┘
+                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │                  Internal Components                     │
 ├──────────────┬──────────────┬──────────────┬────────────┤
 │   Config     │   Network    │    Image     │ Firecracker│
 │   Store      │   Manager    │   Manager    │   Client   │
 └──────────────┴──────────────┴──────────────┴────────────┘
-                            │
-                            ▼
+                          │
+                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │                  Firecracker VMM                         │
 │              (One process per microVM)                   │
@@ -871,8 +946,12 @@ Ensure you're checking with `vmm list` (no sudo required). The tool correctly de
 git clone https://github.com/raesene/baremetalvmm.git
 cd baremetalvmm
 
-# Build
+# Build both binaries
+make build-all
+
+# Or build individually
 go build -o vmm ./cmd/vmm/
+go build -o vmm-web ./cmd/vmm-web/
 
 # Run tests
 go test ./...
@@ -881,7 +960,9 @@ go test ./...
 ### Project Structure
 
 ```
-├── cmd/vmm/main.go           # CLI entry point
+├── cmd/
+│   ├── vmm/main.go           # CLI entry point
+│   └── vmm-web/main.go       # Web UI entry point
 ├── internal/
 │   ├── config/               # Configuration management
 │   ├── vm/                   # VM struct and persistence
@@ -889,7 +970,12 @@ go test ./...
 │   ├── firecracker/          # Firecracker SDK wrapper
 │   ├── network/              # TAP/bridge networking
 │   ├── image/                # Kernel/rootfs management
-│   └── mount/                # Host directory mount management
+│   ├── mount/                # Host directory mount management
+│   └── web/                  # Web UI server, handlers, auth
+├── web/
+│   ├── embed.go              # Go embed directive for assets
+│   ├── templates/            # HTML templates (HTMX + Tailwind)
+│   └── static/               # JS/CSS assets (htmx, sse, styles)
 ├── scripts/
 │   ├── install.sh            # Installation script
 │   ├── uninstall.sh          # Uninstallation script

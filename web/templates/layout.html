@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{if .Title}}{{.Title}} - {{end}}VMM Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/htmx.min.js"></script>
+    <script src="/static/sse.js"></script>
+    <meta name="csrf-token" content="{{.CSRFToken}}">
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <nav class="bg-gray-900 text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center space-x-8">
+                    <a href="/dashboard" class="text-xl font-bold tracking-tight">VMM</a>
+                    <div class="flex space-x-4">
+                        <a href="/dashboard" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700 {{if eq .Active "dashboard"}}bg-gray-700{{end}}">Dashboard</a>
+                        <a href="/vms" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700 {{if eq .Active "vms"}}bg-gray-700{{end}}">VMs</a>
+                        <a href="/clusters" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700 {{if eq .Active "clusters"}}bg-gray-700{{end}}">Clusters</a>
+                    </div>
+                </div>
+                <form method="POST" action="/logout">
+                    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                    <button type="submit" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700">Logout</button>
+                </form>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {{if .Flash}}
+        <div class="flash flash-{{.FlashType}}" id="flash">{{.Flash}}</div>
+        {{end}}
+        {{template "content" .}}
+    </main>
+
+    <script>
+        // Auto-dismiss flash messages
+        setTimeout(function() {
+            var flash = document.getElementById('flash');
+            if (flash) flash.style.display = 'none';
+        }, 5000);
+
+        // Add CSRF token to HTMX requests
+        document.body.addEventListener('htmx:configRequest', function(event) {
+            var token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            event.detail.headers['X-CSRF-Token'] = token;
+        });
+    </script>
+</body>
+</html>
