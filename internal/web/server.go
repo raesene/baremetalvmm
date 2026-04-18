@@ -1,6 +1,8 @@
 package web
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -21,12 +23,16 @@ type Server struct {
 	listenAddr   string
 	sessions     *sessionStore
 	loginLimiter *rateLimiter
-	templates    *template.Template
+	templates    map[string]*template.Template
 	router       chi.Router
 	sseBroker    *SSEBroker
+	apiKey       string
 }
 
 func NewServer(cfg *config.Config, password, listenAddr string) (*Server, error) {
+	b := make([]byte, 32)
+	rand.Read(b)
+
 	s := &Server{
 		cfg:          cfg,
 		password:     password,
@@ -34,6 +40,7 @@ func NewServer(cfg *config.Config, password, listenAddr string) (*Server, error)
 		sessions:     newSessionStore(),
 		loginLimiter: newRateLimiter(),
 		sseBroker:    NewSSEBroker(),
+		apiKey:       hex.EncodeToString(b),
 	}
 
 	if err := s.loadTemplates(); err != nil {
@@ -50,10 +57,40 @@ func (s *Server) loadTemplates() error {
 		return err
 	}
 
-	s.templates, err = template.New("").Funcs(template.FuncMap{
+	funcMap := template.FuncMap{
 		"join": strings.Join,
-	}).ParseFS(tmplFS, "*.html")
-	return err
+	}
+
+	s.templates = make(map[string]*template.Template)
+
+	pages := []string{
+		"dashboard.html",
+		"vms.html",
+		"vm_create.html",
+		"vm_detail.html",
+		"clusters.html",
+		"cluster_create.html",
+		"api_key.html",
+	}
+
+	for _, page := range pages {
+		t, err := template.New("").Funcs(funcMap).ParseFS(tmplFS, "layout.html", page)
+		if err != nil {
+			return fmt.Errorf("parsing %s: %w", page, err)
+		}
+		s.templates[page] = t
+	}
+
+	// Standalone templates (no layout)
+	for _, name := range []string{"login.html", "vm_row.html"} {
+		t, err := template.New("").Funcs(funcMap).ParseFS(tmplFS, name)
+		if err != nil {
+			return fmt.Errorf("parsing %s: %w", name, err)
+		}
+		s.templates[name] = t
+	}
+
+	return nil
 }
 
 func (s *Server) setupRouter() {
@@ -90,6 +127,9 @@ func (s *Server) setupRouter() {
 
 		// SSE events
 		r.Get("/events", s.handleSSE)
+
+		// API key page
+		r.Get("/api-key", s.handleAPIKeyPage)
 
 		// VM HTML routes
 		r.Get("/vms", s.handleVMList)
@@ -136,6 +176,13 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
+func (s *Server) handleAPIKeyPage(w http.ResponseWriter, r *http.Request) {
+	s.renderPage(w, r, "api_key.html", "api-key", map[string]interface{}{
+		"APIKey":     s.apiKey,
+		"ListenAddr": s.listenAddr,
+	})
+}
+
 func (s *Server) Run() error {
 	go s.sseBroker.Start(s.cfg)
 	log.Printf("VMM Web UI listening on %s", s.listenAddr)
@@ -143,22 +190,32 @@ func (s *Server) Run() error {
 }
 
 func (s *Server) renderTemplate(w http.ResponseWriter, name string, data map[string]interface{}) {
-	if err := s.templates.ExecuteTemplate(w, name, data); err != nil {
+	t, ok := s.templates[name]
+	if !ok {
+		log.Printf("template %q not found", name)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := t.ExecuteTemplate(w, name, data); err != nil {
 		log.Printf("template error: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
 
 func (s *Server) renderPage(w http.ResponseWriter, r *http.Request, name string, active string, data map[string]interface{}) {
-	// Inject common data
 	data["Active"] = active
 
-	// Use session token as CSRF token
 	if cookie, err := r.Cookie("vmm_session"); err == nil {
 		data["CSRFToken"] = cookie.Value
 	}
 
-	if err := s.templates.ExecuteTemplate(w, name, data); err != nil {
+	t, ok := s.templates[name]
+	if !ok {
+		log.Printf("template %q not found", name)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := t.ExecuteTemplate(w, name, data); err != nil {
 		log.Printf("template error: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}

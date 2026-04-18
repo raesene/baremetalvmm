@@ -135,7 +135,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		// Check Authorization header for API access
 		if auth := r.Header.Get("Authorization"); len(auth) > 7 && auth[:7] == "Bearer " {
 			token := auth[7:]
-			if s.sessions.valid(token) {
+			if s.sessions.valid(token) || subtle.ConstantTimeCompare([]byte(token), []byte(s.apiKey)) == 1 {
 				next.ServeHTTP(w, r)
 				return
 			}

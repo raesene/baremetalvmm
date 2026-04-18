@@ -385,7 +385,9 @@ func (s *Server) deleteVM(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) renderVMRow(w http.ResponseWriter, v *vm.VM) {
-	s.templates.ExecuteTemplate(w, "vm_row.html", v)
+	if t, ok := s.templates["vm_row.html"]; ok {
+		t.ExecuteTemplate(w, "vm_row.html", v)
+	}
 }
 
 // JSON API handlers

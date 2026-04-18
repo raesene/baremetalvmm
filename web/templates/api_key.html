@@ -1,0 +1,67 @@
+{{template "layout.html" .}}
+{{define "content"}}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">API Access</h1>
+    <p class="text-gray-600 mt-1">Use this key to authenticate with the JSON API</p>
+</div>
+
+<div class="bg-white rounded-lg shadow p-6 max-w-2xl">
+    <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-2">API Key</label>
+        <div class="flex items-center space-x-2">
+            <code id="api-key" class="flex-1 px-4 py-3 bg-gray-50 border border-gray-300 rounded-md font-mono text-sm break-all select-all">{{.APIKey}}</code>
+            <button onclick="copyKey()" id="copy-btn"
+                class="px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium text-sm whitespace-nowrap">
+                Copy
+            </button>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">This key is generated when the server starts and remains valid until the server is restarted.</p>
+    </div>
+
+    <div class="border-t border-gray-200 pt-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-3">Usage Examples</h2>
+
+        <div class="mb-4">
+            <h3 class="text-sm font-medium text-gray-700 mb-1">List VMs</h3>
+            <pre class="px-4 py-3 bg-gray-900 text-green-400 rounded-md text-sm overflow-x-auto"><code>curl -H "Authorization: Bearer {{.APIKey}}" \
+  http://{{.ListenAddr}}/api/v1/vms</code></pre>
+        </div>
+
+        <div class="mb-4">
+            <h3 class="text-sm font-medium text-gray-700 mb-1">Create a VM</h3>
+            <pre class="px-4 py-3 bg-gray-900 text-green-400 rounded-md text-sm overflow-x-auto"><code>curl -X POST -H "Authorization: Bearer {{.APIKey}}" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"my-vm","cpus":2,"memory_mb":1024}' \
+  http://{{.ListenAddr}}/api/v1/vms</code></pre>
+        </div>
+
+        <div class="mb-4">
+            <h3 class="text-sm font-medium text-gray-700 mb-1">Start a VM</h3>
+            <pre class="px-4 py-3 bg-gray-900 text-green-400 rounded-md text-sm overflow-x-auto"><code>curl -X POST -H "Authorization: Bearer {{.APIKey}}" \
+  http://{{.ListenAddr}}/api/v1/vms/my-vm/start</code></pre>
+        </div>
+
+        <div>
+            <h3 class="text-sm font-medium text-gray-700 mb-1">Health Check (no auth required)</h3>
+            <pre class="px-4 py-3 bg-gray-900 text-green-400 rounded-md text-sm overflow-x-auto"><code>curl http://{{.ListenAddr}}/api/v1/health</code></pre>
+        </div>
+    </div>
+</div>
+
+<script>
+function copyKey() {
+    var key = document.getElementById('api-key').textContent;
+    navigator.clipboard.writeText(key).then(function() {
+        var btn = document.getElementById('copy-btn');
+        btn.textContent = 'Copied!';
+        btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+        btn.classList.add('bg-green-600');
+        setTimeout(function() {
+            btn.textContent = 'Copy';
+            btn.classList.remove('bg-green-600');
+            btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+        }, 2000);
+    });
+}
+</script>
+{{end}}
