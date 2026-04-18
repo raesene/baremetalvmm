@@ -1557,6 +1557,13 @@ func clusterCreateCmd() *cobra.Command {
 				return fmt.Errorf("kernel '%s' not found", kernelName)
 			}
 
+			// Default to k8s-kernel for clusters (requires 6.6+ for Cilium)
+			if !cmd.Flags().Changed("kernel") && imgMgr.KernelExists("k8s-kernel") {
+				kernelName = "k8s-kernel"
+				cl.Kernel = kernelName
+				fmt.Println("Using k8s-kernel (default for clusters)")
+			}
+
 			// Auto-detect k8s rootfs if no image specified
 			if imageName == "" {
 				if found := imgMgr.FindK8sRootfs(k8sVersion); found != "" {
