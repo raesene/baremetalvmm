@@ -1,5 +1,6 @@
-# Binaries (built vmm binary in root directory)
+# Binaries (built binaries in root directory)
 /vmm
+/vmm-web
 *.exe
 *.exe~
 *.dll
