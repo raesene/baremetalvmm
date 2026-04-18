@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -44,18 +45,21 @@ func (s *Server) handleClusterCreateForm(w http.ResponseWriter, r *http.Request)
 	defaults := s.cfg.GetVMDefaults()
 
 	sshKey := ""
+	sshKeyPath := ""
 	if defaults.SSHKeyPath != "" {
 		keyPath := expandHomePath(defaults.SSHKeyPath)
 		if data, err := os.ReadFile(keyPath); err == nil {
 			sshKey = string(data)
 		}
+		sshKeyPath = strings.TrimSuffix(defaults.SSHKeyPath, ".pub")
 	}
 
 	s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
 		"Kernels": kernels,
 		"Images":  images,
 		"Defaults": map[string]interface{}{
-			"SSHKey": sshKey,
+			"SSHKey":     sshKey,
+			"SSHKeyPath": sshKeyPath,
 		},
 		"DefaultCPUs":   2,
 		"DefaultMemory": 4096,
@@ -98,12 +102,21 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 		k8sVersion = "1.35.3"
 	}
 	sshKey := strings.TrimSpace(r.FormValue("ssh_key"))
+	sshKeyPath := strings.TrimSpace(r.FormValue("ssh_key_path"))
 	kernelName := r.FormValue("kernel")
 	imageName := r.FormValue("image")
 
 	if sshKey == "" {
 		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
 			"Flash":     "SSH key is required for cluster creation",
+			"FlashType": "error",
+		})
+		return
+	}
+
+	if sshKeyPath == "" {
+		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
+			"Flash":     "SSH private key path is required for cluster provisioning",
 			"FlashType": "error",
 		})
 		return
@@ -123,6 +136,7 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 	cl.DiskSizeMB = disk
 	cl.Image = imageName
 	cl.Kernel = kernelName
+	cl.SSHKeyPath = sshKeyPath
 
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
@@ -171,12 +185,89 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Note: Full cluster provisioning (start VMs, install k8s) is complex and long-running.
-	// For now, the web UI creates the cluster config and VMs. The user can start VMs
-	// individually, or we can add background provisioning in a future iteration.
-	// The cluster state remains "creating" - full provisioning should be run via CLI.
+	go s.provisionClusterInBackground(name)
 
 	http.Redirect(w, r, "/clusters", http.StatusSeeOther)
+}
+
+func (s *Server) provisionClusterInBackground(clusterName string) {
+	paths := s.cfg.GetPaths()
+
+	cl, err := cluster.Load(paths.Clusters, clusterName)
+	if err != nil {
+		log.Printf("cluster %s: failed to load config: %v", clusterName, err)
+		return
+	}
+
+	sshKeyPath := expandHomePath(cl.SSHKeyPath)
+
+	// Start all VMs sequentially
+	log.Printf("cluster %s: starting VMs...", clusterName)
+	var nodeInfos []cluster.NodeInfo
+	for _, vmName := range cl.AllVMs() {
+		existingVM, err := vm.Load(paths.VMs, vmName)
+		if err != nil {
+			log.Printf("cluster %s: failed to load VM %s: %v", clusterName, vmName, err)
+			cl.State = cluster.StateError
+			cl.Save(paths.Clusters)
+			return
+		}
+
+		fcClient := firecracker.NewClient()
+		fcClient.UpdateVMState(existingVM)
+		if existingVM.State == vm.StateRunning {
+			nodeInfos = append(nodeInfos, cluster.NodeInfo{Name: vmName, IP: existingVM.IPAddress})
+			continue
+		}
+
+		if err := s.startVM(existingVM); err != nil {
+			log.Printf("cluster %s: failed to start VM %s: %v", clusterName, vmName, err)
+			cl.State = cluster.StateError
+			cl.Save(paths.Clusters)
+			return
+		}
+		log.Printf("cluster %s: started VM %s (%s)", clusterName, vmName, existingVM.IPAddress)
+		nodeInfos = append(nodeInfos, cluster.NodeInfo{Name: vmName, IP: existingVM.IPAddress})
+	}
+
+	// Provision Kubernetes
+	log.Printf("cluster %s: provisioning Kubernetes...", clusterName)
+	if err := cluster.ProvisionCluster(cl, sshKeyPath, nodeInfos); err != nil {
+		log.Printf("cluster %s: provisioning failed: %v", clusterName, err)
+		cl.State = cluster.StateError
+		cl.Save(paths.Clusters)
+		return
+	}
+
+	// Extract and merge kubeconfig
+	log.Printf("cluster %s: extracting kubeconfig...", clusterName)
+	cpClient, err := cluster.WaitForSSH(cl.ControlPlaneIP, sshKeyPath, 30*time.Second)
+	if err != nil {
+		log.Printf("cluster %s: failed to connect for kubeconfig: %v", clusterName, err)
+		cl.State = cluster.StateError
+		cl.Save(paths.Clusters)
+		return
+	}
+	defer cpClient.Close()
+
+	kubeconfigYAML, err := cluster.ExtractKubeconfig(cpClient)
+	if err != nil {
+		log.Printf("cluster %s: failed to extract kubeconfig: %v", clusterName, err)
+		cl.State = cluster.StateError
+		cl.Save(paths.Clusters)
+		return
+	}
+
+	if err := cluster.MergeKubeconfig(clusterName, kubeconfigYAML); err != nil {
+		log.Printf("cluster %s: failed to merge kubeconfig: %v", clusterName, err)
+		cl.State = cluster.StateError
+		cl.Save(paths.Clusters)
+		return
+	}
+
+	cl.State = cluster.StateRunning
+	cl.Save(paths.Clusters)
+	log.Printf("cluster %s: provisioning complete, cluster is running", clusterName)
 }
 
 func (s *Server) handleClusterDelete(w http.ResponseWriter, r *http.Request) {
@@ -259,6 +350,7 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		DiskSizeMB int    `json:"disk_size_mb"`
 		K8sVersion string `json:"k8s_version"`
 		SSHKey     string `json:"ssh_key"`
+		SSHKeyPath string `json:"ssh_key_path"`
 		Kernel     string `json:"kernel"`
 		Image      string `json:"image"`
 	}
@@ -273,6 +365,10 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 	}
 	if req.SSHKey == "" {
 		jsonError(w, "SSH key is required", http.StatusBadRequest)
+		return
+	}
+	if req.SSHKeyPath == "" {
+		jsonError(w, "SSH key path is required for cluster provisioning", http.StatusBadRequest)
 		return
 	}
 	if req.CPUs == 0 {
@@ -302,6 +398,7 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 	cl.DiskSizeMB = req.DiskSizeMB
 	cl.Image = req.Image
 	cl.Kernel = req.Kernel
+	cl.SSHKeyPath = req.SSHKeyPath
 
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 	if req.Kernel == "" && imgMgr.KernelExists("k8s-kernel") {
@@ -337,6 +434,8 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
+
+	go s.provisionClusterInBackground(req.Name)
 
 	w.WriteHeader(http.StatusCreated)
 	jsonResponse(w, cl)

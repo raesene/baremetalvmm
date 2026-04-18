@@ -184,6 +184,80 @@ func (s *Server) handleVMDetail(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) startVM(existingVM *vm.VM) error {
+	paths := s.cfg.GetPaths()
+
+	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
+	if err := imgMgr.EnsureDefaultImages(); err != nil {
+		return fmt.Errorf("failed to ensure images: %w", err)
+	}
+
+	vmRootfs, err := imgMgr.CreateVMRootfs(existingVM.Name, paths.VMs, existingVM.DiskSizeMB, existingVM.Image)
+	if err != nil {
+		return fmt.Errorf("failed to create VM rootfs: %w", err)
+	}
+	existingVM.RootfsPath = vmRootfs
+	existingVM.KernelPath = imgMgr.GetKernelPath(existingVM.Kernel)
+
+	if existingVM.SSHPublicKey != "" {
+		if err := image.InjectSSHKey(existingVM.RootfsPath, existingVM.SSHPublicKey); err != nil {
+			return fmt.Errorf("failed to inject SSH key: %w", err)
+		}
+	}
+
+	if err := image.InjectDNSConfig(existingVM.RootfsPath, existingVM.DNSServers); err != nil {
+		return fmt.Errorf("failed to inject DNS config: %w", err)
+	}
+
+	netMgr := network.NewManager(s.cfg.BridgeName, s.cfg.Subnet, s.cfg.Gateway, s.cfg.HostInterface)
+	if err := netMgr.EnsureBridge(); err != nil {
+		return fmt.Errorf("failed to setup bridge: %w", err)
+	}
+
+	if !netMgr.TapExists(existingVM.TapDevice) {
+		if err := netMgr.CreateTap(existingVM.TapDevice); err != nil {
+			return fmt.Errorf("failed to create TAP device: %w", err)
+		}
+	}
+
+	ip, err := netMgr.AllocateIP(usedVMIPs(paths.VMs))
+	if err != nil {
+		return fmt.Errorf("failed to allocate IP: %w", err)
+	}
+	existingVM.IPAddress = ip
+
+	existingVM.State = vm.StateStarting
+	existingVM.Save(paths.VMs)
+
+	ctx := context.Background()
+	fcClient := firecracker.NewClient()
+	vmCfg := &firecracker.VMConfig{
+		SocketPath: existingVM.SocketPath,
+		KernelPath: existingVM.KernelPath,
+		RootfsPath: existingVM.RootfsPath,
+		CPUs:       existingVM.CPUs,
+		MemoryMB:   existingVM.MemoryMB,
+		TapDevice:  existingVM.TapDevice,
+		MacAddress: existingVM.MacAddress,
+		LogPath:    fmt.Sprintf("%s/%s.log", paths.Logs, existingVM.Name),
+		IPAddress:  existingVM.IPAddress,
+		Gateway:    s.cfg.Gateway,
+	}
+
+	machine, err := fcClient.StartVM(ctx, vmCfg)
+	if err != nil {
+		existingVM.State = vm.StateError
+		existingVM.Save(paths.VMs)
+		return fmt.Errorf("failed to start VM: %w", err)
+	}
+
+	existingVM.State = vm.StateRunning
+	existingVM.PID = fcClient.GetVMPID(machine)
+	existingVM.StartedAt = time.Now()
+	existingVM.Save(paths.VMs)
+	return nil
+}
+
 func (s *Server) handleVMStart(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	paths := s.cfg.GetPaths()
@@ -202,81 +276,10 @@ func (s *Server) handleVMStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
-	if err := imgMgr.EnsureDefaultImages(); err != nil {
-		httpError(w, r, "Failed to ensure images: "+err.Error(), http.StatusInternalServerError)
+	if err := s.startVM(existingVM); err != nil {
+		httpError(w, r, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	vmRootfs, err := imgMgr.CreateVMRootfs(name, paths.VMs, existingVM.DiskSizeMB, existingVM.Image)
-	if err != nil {
-		httpError(w, r, "Failed to create VM rootfs: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	existingVM.RootfsPath = vmRootfs
-	existingVM.KernelPath = imgMgr.GetKernelPath(existingVM.Kernel)
-
-	if existingVM.SSHPublicKey != "" {
-		if err := image.InjectSSHKey(existingVM.RootfsPath, existingVM.SSHPublicKey); err != nil {
-			httpError(w, r, "Failed to inject SSH key: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
-
-	if err := image.InjectDNSConfig(existingVM.RootfsPath, existingVM.DNSServers); err != nil {
-		httpError(w, r, "Failed to inject DNS config: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	netMgr := network.NewManager(s.cfg.BridgeName, s.cfg.Subnet, s.cfg.Gateway, s.cfg.HostInterface)
-	if err := netMgr.EnsureBridge(); err != nil {
-		httpError(w, r, "Failed to setup bridge: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if !netMgr.TapExists(existingVM.TapDevice) {
-		if err := netMgr.CreateTap(existingVM.TapDevice); err != nil {
-			httpError(w, r, "Failed to create TAP device: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
-
-	ip, err := netMgr.AllocateIP(usedVMIPs(paths.VMs))
-	if err != nil {
-		httpError(w, r, "Failed to allocate IP: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	existingVM.IPAddress = ip
-
-	existingVM.State = vm.StateStarting
-	existingVM.Save(paths.VMs)
-
-	ctx := context.Background()
-	vmCfg := &firecracker.VMConfig{
-		SocketPath: existingVM.SocketPath,
-		KernelPath: existingVM.KernelPath,
-		RootfsPath: existingVM.RootfsPath,
-		CPUs:       existingVM.CPUs,
-		MemoryMB:   existingVM.MemoryMB,
-		TapDevice:  existingVM.TapDevice,
-		MacAddress: existingVM.MacAddress,
-		LogPath:    fmt.Sprintf("%s/%s.log", paths.Logs, name),
-		IPAddress:  existingVM.IPAddress,
-		Gateway:    s.cfg.Gateway,
-	}
-
-	machine, err := fcClient.StartVM(ctx, vmCfg)
-	if err != nil {
-		existingVM.State = vm.StateError
-		existingVM.Save(paths.VMs)
-		httpError(w, r, "Failed to start VM: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	existingVM.State = vm.StateRunning
-	existingVM.PID = fcClient.GetVMPID(machine)
-	existingVM.StartedAt = time.Now()
-	existingVM.Save(paths.VMs)
 
 	if isHTMXRequest(r) {
 		s.renderVMRow(w, existingVM)

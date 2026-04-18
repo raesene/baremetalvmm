@@ -48,20 +48,4 @@
     </div>
 </div>
 
-<script>
-function copyKey() {
-    var key = document.getElementById('api-key').textContent;
-    navigator.clipboard.writeText(key).then(function() {
-        var btn = document.getElementById('copy-btn');
-        btn.textContent = 'Copied!';
-        btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-        btn.classList.add('bg-green-600');
-        setTimeout(function() {
-            btn.textContent = 'Copy';
-            btn.classList.remove('bg-green-600');
-            btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
-        }, 2000);
-    });
-}
-</script>
 {{end}}
