@@ -47,13 +47,15 @@ After evaluating the options, **Firecracker** was chosen as the VMM engine becau
 | Kubernetes Clusters | Done | kubeadm + Cilium CNI, single/multi-node |
 | Shell Completion | Done | bash, zsh, fish with dynamic VM/cluster/kernel/image names |
 | SSH Agent Support | Done | Passphrase-protected keys via ssh-agent |
+| Web UI | Done | Chi router, HTMX, Tailwind; dashboard, VM/cluster CRUD, REST API, SSE |
+| Pre-built K8s Rootfs | Done | CI-built rootfs with kubeadm/containerd, auto-detected by cluster create |
+| Descriptive Image Labels | Done | `vmm image list`, `vmm kernel list`, and web UI show descriptions based on naming convention |
 
 ### What's Not Yet Implemented
 
 - **Cloud-init support** - For more flexible VM initialization
 - **Jailer integration** - For production security hardening
 - **VM snapshots** - Save/restore VM state
-- **Web UI** - Browser-based management interface
 - **Resource quotas** - CPU/memory/disk enforcement
 
 ## VMM Options Explored

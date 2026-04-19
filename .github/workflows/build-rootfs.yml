@@ -66,8 +66,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
-          TITLE="Rootfs Ubuntu 24.04 ($(date +%Y-%m-%d))"
-          NOTES="Firecracker-compatible Ubuntu 24.04 rootfs image.
+          TITLE="Default Ubuntu 24.04 Rootfs ($(date +%Y-%m-%d)) — General-Purpose VMs"
+          NOTES="Firecracker-compatible Ubuntu 24.04 rootfs image for general-purpose VMs.
+
+          **Use this rootfs for standalone VMs** (\`vmm create\`). For Kubernetes clusters, use the \`k8s-rootfs-*\` release instead.
 
           Pre-configured with:
           - systemd init system
@@ -76,12 +78,15 @@ jobs:
           - Serial console on ttyS0
           - systemd-networkd
 
-          Built from \`$BASE_IMAGE\` by GitHub Actions using \`scripts/build-rootfs.sh\`.
+          **Pair with**: \`kernel-*\` (Default VM Kernel, Linux 6.1 LTS)
 
-          Download and decompress:
+          Quick start:
           \`\`\`
-          gunzip rootfs.ext4.gz
-          \`\`\`"
+          sudo vmm image pull          # downloads this rootfs + default kernel
+          sudo vmm create myvm --ssh-key ~/.ssh/id_ed25519.pub
+          \`\`\`
+
+          Built from \`$BASE_IMAGE\` by GitHub Actions using \`scripts/build-rootfs.sh\`."
 
           gh release create "$TAG" \
             --title "$TITLE" \

@@ -43,8 +43,8 @@ func (s *Server) handleVMCreateForm(w http.ResponseWriter, r *http.Request) {
 	paths := s.cfg.GetPaths()
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
-	kernels, _ := imgMgr.ListKernels()
-	images, _ := imgMgr.ListRootfs()
+	kernels, _ := imgMgr.ListKernelsWithInfo()
+	images, _ := imgMgr.ListRootfsWithInfo()
 	defaults := s.cfg.GetVMDefaults()
 
 	sshKey := ""

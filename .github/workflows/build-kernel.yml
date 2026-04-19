@@ -79,14 +79,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="kernel-${{ steps.kernel_version.outputs.version }}"
-          TITLE="Kernel ${{ steps.kernel_version.outputs.version }}"
-          NOTES="Firecracker-compatible Linux kernel ${{ steps.kernel_version.outputs.version }}
+          TITLE="Default VM Kernel ${{ steps.kernel_version.outputs.version }} (Linux ${KERNEL_SERIES} LTS)"
+          NOTES="Firecracker-compatible Linux kernel ${{ steps.kernel_version.outputs.version }} for general-purpose VMs.
 
-          Built from source with Firecracker recommended config plus:
+          **Use this kernel for standalone VMs** (\`vmm create\`). For Kubernetes clusters, use the \`k8s-kernel-*\` release instead.
+
+          Built from the ${KERNEL_SERIES} LTS series with:
           - Docker support (overlay, cgroups, namespaces)
           - iptables/nftables networking
           - Virtio block and network drivers
-          - No modules (all built-in)
+          - No modules (all built-in for simplicity)
+
+          **Pair with**: \`rootfs-24.04-*\` (Default Ubuntu Rootfs)
+
+          Quick start:
+          \`\`\`
+          sudo vmm image pull          # downloads this kernel + default rootfs
+          sudo vmm create myvm --ssh-key ~/.ssh/id_ed25519.pub
+          \`\`\`
 
           Built by GitHub Actions from \`scripts/build-kernel.sh\`."
 
@@ -153,20 +163,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="k8s-kernel-${{ steps.kernel_version.outputs.version }}"
-          TITLE="Kubernetes Kernel ${{ steps.kernel_version.outputs.version }}"
+          TITLE="Kubernetes VM Kernel ${{ steps.kernel_version.outputs.version }} (Linux ${KERNEL_SERIES} LTS, Cilium/BPF)"
           NOTES="Firecracker-compatible Linux kernel ${{ steps.kernel_version.outputs.version }} for Kubernetes clusters.
 
-          Built from the 6.6 LTS series with full Kubernetes and Cilium CNI support:
-          - BPF JIT and EBPF subsystem (required by Cilium)
+          **Use this kernel for Kubernetes clusters** (\`vmm cluster create\`). For standalone VMs, use the \`kernel-*\` release instead.
+
+          Built from the ${KERNEL_SERIES} LTS series with full Kubernetes and Cilium CNI support:
+          - BPF JIT and eBPF subsystem (required by Cilium)
           - VXLAN and Geneve tunnel devices (Cilium networking)
           - Cgroups v2 with CPU bandwidth control (Kubernetes resource limits)
           - Namespaces, overlay filesystem, bridge networking
           - iptables/nftables with all match modules
-          - Docker/containerd support (overlay, cgroups, namespaces)
+          - containerd support (overlay, cgroups, namespaces)
           - Virtio block and network drivers
           - Kernel modules enabled (required for BPF JIT)
 
-          Use with \`vmm cluster create\`:
+          **Pair with**: \`k8s-rootfs-*\` (Kubernetes Rootfs with kubeadm pre-installed)
+
+          Quick start:
           \`\`\`
           sudo vmm kernel import k8s-vmlinux.bin --name k8s-kernel
           sudo vmm cluster create mycluster --kernel k8s-kernel --ssh-key ~/.ssh/id_ed25519.pub

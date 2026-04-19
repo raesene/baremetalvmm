@@ -92,8 +92,10 @@ jobs:
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
           K8S_VERSION="${{ steps.k8s.outputs.version }}"
-          TITLE="Kubernetes $K8S_VERSION Rootfs"
-          NOTES="Firecracker-compatible Ubuntu 24.04 rootfs with Kubernetes $K8S_VERSION pre-installed.
+          TITLE="Kubernetes $K8S_VERSION Rootfs (Ubuntu 24.04, kubeadm pre-installed)"
+          NOTES="Firecracker-compatible Ubuntu 24.04 rootfs with Kubernetes $K8S_VERSION pre-installed for fast cluster creation.
+
+          **Use this rootfs for Kubernetes clusters** (\`vmm cluster create\`). For standalone VMs, use the \`rootfs-24.04-*\` release instead.
 
           Pre-configured with:
           - systemd init system
@@ -105,20 +107,19 @@ jobs:
           - systemd-networkd
           - Kubernetes sysctl and module configuration
 
-          Built from \`$BASE_IMAGE\` by GitHub Actions using \`scripts/build-k8s-rootfs.sh\`.
+          **Pair with**: \`k8s-kernel-*\` (Kubernetes VM Kernel, Linux 6.6 LTS with Cilium/BPF support)
 
-          Use with vmm:
+          Quick start:
           \`\`\`
-          # Download and import
+          # Auto-detected by vmm cluster create
+          sudo vmm cluster create mycluster --kernel k8s-kernel --ssh-key ~/.ssh/id_ed25519.pub
+
+          # Or download manually
           gunzip k8s-rootfs.ext4.gz
           sudo mv k8s-rootfs.ext4 /var/lib/vmm/images/rootfs/k8s-${K8S_VERSION}.ext4
+          \`\`\`
 
-          # Or use vmm image pull (auto-detected)
-          sudo vmm image pull
-
-          # Create cluster (skips containerd/kubeadm installation)
-          sudo vmm cluster create mycluster --image k8s-${K8S_VERSION} --kernel k8s-kernel --ssh-key ~/.ssh/id_ed25519.pub
-          \`\`\`"
+          Built from \`$BASE_IMAGE\` by GitHub Actions using \`scripts/build-k8s-rootfs.sh\`."
 
           gh release create "$TAG" \
             --title "$TITLE" \

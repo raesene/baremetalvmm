@@ -1036,11 +1036,54 @@ func InjectSSHKey(rootfsPath, sshPublicKey string) error {
 
 // KernelInfo contains information about a kernel
 type KernelInfo struct {
-	Name      string    // Kernel name (filename without path)
-	Path      string    // Full path to the kernel
-	Size      int64     // Size in bytes
-	ModTime   time.Time // Last modification time
-	IsDefault bool      // Whether this is the default kernel
+	Name        string    // Kernel name (filename without path)
+	Path        string    // Full path to the kernel
+	Size        int64     // Size in bytes
+	ModTime     time.Time // Last modification time
+	IsDefault   bool      // Whether this is the default kernel
+	Description string    // Human-readable description of kernel purpose
+}
+
+type RootfsInfo struct {
+	Name        string    // Display name (filename without .ext4)
+	FileName    string    // Actual filename
+	Path        string    // Full path to the rootfs
+	Size        int64     // Size in bytes
+	ModTime     time.Time // Last modification time
+	IsDefault   bool      // Whether this is the default rootfs
+	Description string    // Human-readable description of rootfs purpose
+}
+
+// describeKernel returns a human-readable description based on naming convention.
+// Naming prefixes: k8s- (Kubernetes/Cilium), debug- (debug options), minimal- (stripped-down).
+func describeKernel(name string, isDefault bool) string {
+	switch {
+	case isDefault:
+		return "General-purpose VM kernel (Linux 6.1 LTS)"
+	case strings.HasPrefix(name, "k8s-"):
+		return "Kubernetes cluster kernel (Linux 6.6 LTS, Cilium/BPF)"
+	case strings.HasPrefix(name, "debug-"):
+		return "Debug kernel (extra logging and debug options)"
+	case strings.HasPrefix(name, "minimal-"):
+		return "Minimal kernel (reduced feature set)"
+	default:
+		return "Custom kernel"
+	}
+}
+
+// describeRootfs returns a human-readable description based on naming convention.
+// Naming prefixes: k8s- (Kubernetes), minimal- (stripped-down), custom names fall through.
+func describeRootfs(name string, isDefault bool) string {
+	switch {
+	case isDefault:
+		return "Ubuntu 24.04 base image for general-purpose VMs"
+	case strings.HasPrefix(name, "k8s-"):
+		return "Kubernetes image (kubeadm/containerd pre-installed)"
+	case strings.HasPrefix(name, "minimal-"):
+		return "Minimal image (reduced package set)"
+	default:
+		return "Custom image"
+	}
 }
 
 // ImportKernel imports a custom kernel binary
@@ -1167,14 +1210,57 @@ func (m *Manager) ListKernelsWithInfo() ([]KernelInfo, error) {
 			continue
 		}
 
+		isDefault := entry.Name() == DefaultKernelName
 		kernels = append(kernels, KernelInfo{
-			Name:      entry.Name(),
-			Path:      filepath.Join(m.KernelDir, entry.Name()),
-			Size:      info.Size(),
-			ModTime:   info.ModTime(),
-			IsDefault: entry.Name() == DefaultKernelName,
+			Name:        entry.Name(),
+			Path:        filepath.Join(m.KernelDir, entry.Name()),
+			Size:        info.Size(),
+			ModTime:     info.ModTime(),
+			IsDefault:   isDefault,
+			Description: describeKernel(entry.Name(), isDefault),
 		})
 	}
 
 	return kernels, nil
+}
+
+// ListRootfsWithInfo returns detailed information about all available rootfs images
+func (m *Manager) ListRootfsWithInfo() ([]RootfsInfo, error) {
+	entries, err := os.ReadDir(m.RootfsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []RootfsInfo{}, nil
+		}
+		return nil, err
+	}
+
+	var images []RootfsInfo
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		displayName := entry.Name()
+		if strings.HasSuffix(displayName, ".ext4") {
+			displayName = displayName[:len(displayName)-5]
+		}
+
+		isDefault := entry.Name() == DefaultRootfsName
+		images = append(images, RootfsInfo{
+			Name:        displayName,
+			FileName:    entry.Name(),
+			Path:        filepath.Join(m.RootfsDir, entry.Name()),
+			Size:        info.Size(),
+			ModTime:     info.ModTime(),
+			IsDefault:   isDefault,
+			Description: describeRootfs(displayName, isDefault),
+		})
+	}
+
+	return images, nil
 }

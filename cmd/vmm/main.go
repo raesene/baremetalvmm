@@ -800,27 +800,32 @@ func imageCmd() *cobra.Command {
 			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
 			fmt.Println("Kernels:")
-			kernels, _ := imgMgr.ListKernels()
+			kernels, _ := imgMgr.ListKernelsWithInfo()
 			if len(kernels) == 0 {
 				fmt.Println("  (none)")
 			} else {
 				for _, k := range kernels {
-					fmt.Printf("  - %s\n", k)
+					sizeMB := float64(k.Size) / (1024 * 1024)
+					defaultMarker := ""
+					if k.IsDefault {
+						defaultMarker = " (default)"
+					}
+					fmt.Printf("  - %-20s %6.1f MB  %s%s\n", k.Name, sizeMB, k.Description, defaultMarker)
 				}
 			}
 
 			fmt.Println("\nRoot filesystems:")
-			rootfs, _ := imgMgr.ListRootfs()
+			rootfs, _ := imgMgr.ListRootfsWithInfo()
 			if len(rootfs) == 0 {
 				fmt.Println("  (none)")
 			} else {
 				for _, r := range rootfs {
-					// Remove .ext4 extension for display
-					name := r
-					if len(r) > 5 && r[len(r)-5:] == ".ext4" {
-						name = r[:len(r)-5]
+					sizeMB := float64(r.Size) / (1024 * 1024)
+					defaultMarker := ""
+					if r.IsDefault {
+						defaultMarker = " (default)"
 					}
-					fmt.Printf("  - %s\n", name)
+					fmt.Printf("  - %-20s %6.1f MB  %s%s\n", r.Name, sizeMB, r.Description, defaultMarker)
 				}
 			}
 
@@ -942,7 +947,7 @@ func kernelCmd() *cobra.Command {
 				if k.IsDefault {
 					defaultMarker = " (default)"
 				}
-				fmt.Printf("  - %s%s (%.2f MB)\n", k.Name, defaultMarker, sizeMB)
+				fmt.Printf("  - %-20s %6.1f MB  %s%s\n", k.Name, sizeMB, k.Description, defaultMarker)
 			}
 
 			return nil

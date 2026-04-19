@@ -124,7 +124,42 @@ and then to clean it up
 sudo vmm delete myvm
 ```
 
-## Custom Rootfs and kernel
+## Available Kernels and Root Filesystems
+
+VMM ships with two kernels and two root filesystems, each designed for a specific use case. The `vmm image list` command shows all available options with descriptions:
+
+```
+$ vmm image list
+Kernels:
+  - k8s-kernel             32.4 MB  Kubernetes cluster kernel (Linux 6.6 LTS, Cilium/BPF)
+  - vmlinux.bin            72.7 MB  General-purpose VM kernel (Linux 6.1 LTS) (default)
+
+Root filesystems:
+  - k8s-1.35.4           2048.0 MB  Kubernetes image (kubeadm/containerd pre-installed)
+  - rootfs                512.0 MB  Ubuntu 24.04 base image for general-purpose VMs (default)
+```
+
+### Which to use
+
+| Use case | Kernel | Rootfs | Command |
+|----------|--------|--------|---------|
+| Standalone VMs | `vmlinux.bin` (default) | `rootfs` (default) | `sudo vmm create myvm` |
+| Kubernetes clusters | `k8s-kernel` | `k8s-<version>` (auto-detected) | `sudo vmm cluster create mycluster` |
+
+### Naming convention
+
+Kernels and rootfs images follow a prefix-based naming convention so that `vmm image list` and the web UI can automatically show descriptions:
+
+| Prefix | Kernel meaning | Rootfs meaning |
+|--------|---------------|----------------|
+| *(default)* | General-purpose (Linux 6.1 LTS, all built-in) | Ubuntu 24.04 base (systemd, SSH, networking) |
+| `k8s-` | Kubernetes/Cilium (Linux 6.6 LTS, BPF JIT, VXLAN, modules) | Kubernetes (kubeadm/containerd pre-installed) |
+| `debug-` | Debug kernel (extra logging and debug options) | *(not yet used)* |
+| `minimal-` | Minimal kernel (reduced feature set) | Minimal image (reduced package set) |
+
+When adding new kernel or rootfs variants, use an appropriate prefix so that the description auto-populates. Custom user-imported images without a recognized prefix show as "Custom kernel" or "Custom image".
+
+## Custom Rootfs and Kernel
 
 By default, `vmm image pull` downloads a pre-built Linux 6.1 kernel and an Ubuntu 24.04 rootfs from our GitHub releases (both built automatically via CI). The default rootfs includes systemd, OpenSSH server, and basic networking tools. If you want to run more complex use-cases it makes sense to get a custom rootfs.
 
@@ -416,7 +451,7 @@ Flags:
   --cpus int           vCPUs per node (default 2)
   --memory int         Memory per node in MB (default 4096)
   --disk int           Disk per node in MB (default 10240)
-  --k8s-version string Kubernetes version (default "1.31.4")
+  --k8s-version string Kubernetes version (default "1.35.3")
   --ssh-key string     Path to SSH public key (required)
   --kernel string      Kernel name (k8s-kernel recommended)
   --image string       Rootfs image name
@@ -442,7 +477,7 @@ This stops and deletes all VMs in the cluster and removes the kubeconfig context
 | CPUs | 2 | Minimum 2 required for kubeadm |
 | Memory | 4096 MB | Minimum 2048 MB required |
 | Disk | 10240 MB (10 GB) | Needs space for container images |
-| Kubernetes | 1.31.4 | Any version available from pkgs.k8s.io |
+| Kubernetes | 1.35.3 | Any version available from pkgs.k8s.io |
 | CNI | Cilium | With kube-proxy replacement enabled |
 | Pod CIDR | 10.244.0.0/16 | Doesn't conflict with VM bridge network |
 | Service CIDR | 10.96.0.0/12 | Standard Kubernetes default |
@@ -787,8 +822,8 @@ VMM supports custom Linux kernels, allowing you to run newer kernel versions or 
 vmm kernel list
 # Output:
 # Available kernels:
-#   - kernel-6.1 (68.15 MB)
-#   - vmlinux.bin (default) (20.45 MB)
+#   - k8s-kernel             32.4 MB  Kubernetes cluster kernel (Linux 6.6 LTS, Cilium/BPF)
+#   - vmlinux.bin            72.7 MB  General-purpose VM kernel (Linux 6.1 LTS) (default)
 ```
 
 ### Importing a Pre-built Kernel

@@ -577,6 +577,46 @@ make build && ./vmm version
 - `vmm image pull` (Go) → `findLatestRootfsURL()` queries GitHub API, downloads gzipped rootfs, decompresses with `compress/gzip`, falls back to `FallbackRootfsURL` (S3)
 - Both use `api.github.com/repos/raesene/baremetalvmm/releases` to find rootfs assets
 
+### Image and Kernel Naming Convention
+
+Kernels and rootfs images use a prefix-based naming convention that drives automatic descriptions in `vmm image list`, `vmm kernel list`, and the web UI dropdowns.
+
+**Local filenames (on disk in `/var/lib/vmm/images/`):**
+
+| Local name | Type | Purpose |
+|------------|------|---------|
+| `vmlinux.bin` | Kernel (default) | General-purpose VM kernel (Linux 6.1 LTS) |
+| `k8s-kernel` | Kernel | Kubernetes cluster kernel (Linux 6.6 LTS, Cilium/BPF) |
+| `rootfs.ext4` | Rootfs (default) | Ubuntu 24.04 base image for general-purpose VMs |
+| `k8s-<version>.ext4` | Rootfs | Kubernetes image with kubeadm/containerd pre-installed |
+
+**Prefix-to-description mapping** (in `describeKernel()` / `describeRootfs()` in `internal/image/image.go`):
+
+| Prefix | Kernel description | Rootfs description |
+|--------|-------------------|-------------------|
+| *(default)* | General-purpose VM kernel (Linux 6.1 LTS) | Ubuntu 24.04 base image for general-purpose VMs |
+| `k8s-` | Kubernetes cluster kernel (Linux 6.6 LTS, Cilium/BPF) | Kubernetes image (kubeadm/containerd pre-installed) |
+| `debug-` | Debug kernel (extra logging and debug options) | *(not yet used)* |
+| `minimal-` | Minimal kernel (reduced feature set) | Minimal image (reduced package set) |
+| *(other)* | Custom kernel | Custom image |
+
+**Adding a new variant:**
+1. Choose a prefix (e.g., `hardened-`) and add a case to `describeKernel()` and/or `describeRootfs()` in `internal/image/image.go`
+2. Create a GitHub Actions workflow (or extend an existing one) using the tag pattern `<prefix>kernel-*` or `<prefix>rootfs-*`
+3. Update `scripts/install.sh` if the new variant should be downloaded during installation
+4. Add a `findLatest<Variant>URL()` function in `internal/image/image.go` if the Go code should auto-download it
+
+**GitHub release tags → local filenames:**
+- `kernel-6.1.x` tag → downloaded as `vmlinux.bin`
+- `k8s-kernel-6.6.x` tag → downloaded as `k8s-kernel`
+- `rootfs-24.04-YYYYMMDD` tag → downloaded as `rootfs.ext4`
+- `k8s-rootfs-<version>` tag → downloaded as `k8s-<version>.ext4`
+
+**Where descriptions appear:**
+- CLI: `vmm image list` and `vmm kernel list` show name, size, and description
+- Web UI: kernel and rootfs `<select>` dropdowns in VM and cluster create forms show `name — description`
+- The web handlers pass `KernelInfo` / `RootfsInfo` structs (not plain strings) to templates
+
 ### Dynamic Kernel Version Resolution (`scripts/build-kernel.sh`)
 **Feature**: Build script resolves the latest patch version dynamically from kernel.org.
 **Problem**: Kernel patch versions were hardcoded, causing builds to use stale versions.
@@ -645,7 +685,7 @@ gunzip /tmp/rootfs.ext4.gz
 - containerd with `SystemdCgroup = true`
 - `--ignore-preflight-errors=SystemVerification` because Firecracker VMs have no `/lib/modules/`
 
-**Defaults**: 0 workers, 2 CPUs, 4096 MB RAM, 10240 MB disk, k8s version 1.31.4
+**Defaults**: 0 workers, 2 CPUs, 4096 MB RAM, 10240 MB disk, k8s version 1.35.3
 
 **Usage**:
 ```bash
