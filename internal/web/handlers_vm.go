@@ -127,6 +127,30 @@ func (s *Server) handleVMCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var portForwards []vm.PortForward
+	hostPorts := r.Form["host_port"]
+	guestPorts := r.Form["guest_port"]
+	protocols := r.Form["protocol"]
+	for i := range hostPorts {
+		if hostPorts[i] == "" || guestPorts[i] == "" {
+			continue
+		}
+		hp := formIntFromString(hostPorts[i], 0)
+		gp := formIntFromString(guestPorts[i], 0)
+		if hp <= 0 || hp > 65535 || gp <= 0 || gp > 65535 {
+			continue
+		}
+		proto := "tcp"
+		if i < len(protocols) && protocols[i] == "udp" {
+			proto = "udp"
+		}
+		portForwards = append(portForwards, vm.PortForward{
+			HostPort:  hp,
+			GuestPort: gp,
+			Protocol:  proto,
+		})
+	}
+
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 	if imageName != "" && !imgMgr.ImageExists(imageName) {
 		s.renderPage(w, r, "vm_create.html", "vms", map[string]interface{}{
@@ -153,6 +177,7 @@ func (s *Server) handleVMCreate(w http.ResponseWriter, r *http.Request) {
 	newVM.TapDevice = network.GenerateTapName(newVM.ID)
 	newVM.DNSServers = dnsServers
 	newVM.SSHPublicKey = sshKey
+	newVM.PortForwards = portForwards
 	newVM.SocketPath = fmt.Sprintf("%s/%s.sock", paths.Sockets, name)
 
 	if err := newVM.Save(paths.VMs); err != nil {
@@ -225,6 +250,12 @@ func (s *Server) startVM(existingVM *vm.VM) error {
 		return fmt.Errorf("failed to allocate IP: %w", err)
 	}
 	existingVM.IPAddress = ip
+
+	for _, pf := range existingVM.PortForwards {
+		if err := netMgr.AddPortForward(pf.HostPort, pf.GuestPort, existingVM.IPAddress, pf.Protocol); err != nil {
+			return fmt.Errorf("failed to add port forward %d:%d: %w", pf.HostPort, pf.GuestPort, err)
+		}
+	}
 
 	existingVM.State = vm.StateStarting
 	existingVM.Save(paths.VMs)
@@ -429,14 +460,15 @@ func (s *Server) handleAPIVMDetail(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name       string   `json:"name"`
-		CPUs       int      `json:"cpus"`
-		MemoryMB   int      `json:"memory_mb"`
-		DiskSizeMB int      `json:"disk_size_mb"`
-		SSHKey     string   `json:"ssh_key"`
-		Kernel     string   `json:"kernel"`
-		Image      string   `json:"image"`
-		DNSServers []string `json:"dns_servers"`
+		Name         string           `json:"name"`
+		CPUs         int              `json:"cpus"`
+		MemoryMB     int              `json:"memory_mb"`
+		DiskSizeMB   int              `json:"disk_size_mb"`
+		SSHKey       string           `json:"ssh_key"`
+		Kernel       string           `json:"kernel"`
+		Image        string           `json:"image"`
+		DNSServers   []string         `json:"dns_servers"`
+		PortForwards []vm.PortForward `json:"port_forwards"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "Invalid request body", http.StatusBadRequest)
@@ -475,6 +507,7 @@ func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
 	newVM.TapDevice = network.GenerateTapName(newVM.ID)
 	newVM.DNSServers = req.DNSServers
 	newVM.SSHPublicKey = req.SSHKey
+	newVM.PortForwards = req.PortForwards
 	newVM.SocketPath = fmt.Sprintf("%s/%s.sock", paths.Sockets, req.Name)
 
 	if err := newVM.Save(paths.VMs); err != nil {
@@ -564,6 +597,10 @@ func formInt(r *http.Request, name string, defaultVal int) int {
 	if s == "" {
 		return defaultVal
 	}
+	return formIntFromString(s, defaultVal)
+}
+
+func formIntFromString(s string, defaultVal int) int {
 	var v int
 	fmt.Sscanf(s, "%d", &v)
 	if v <= 0 {

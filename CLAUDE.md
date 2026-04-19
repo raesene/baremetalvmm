@@ -775,6 +775,8 @@ source <(vmm completion bash)   # or zsh/fish
 - `web/static/` - HTMX 2.0.4, SSE extension, custom CSS with status badges
 - Default listen: `127.0.0.1:8080`, explicit `--listen 0.0.0.0:8080` for remote access
 - Security: HttpOnly SameSite=Strict cookies, CSRF on forms/HTMX, CSP headers, login rate limiting (5/min)
+- **CSP constraint**: `script-src 'self' https://cdn.jsdelivr.net` — no inline `<script>` tags or inline event handlers (`onclick`, etc.) are allowed. All custom JavaScript must go in `web/static/app.js` and use `addEventListener` / event delegation instead of inline handlers.
+- Web UI routes: `/vms/new` (create form), `/vms` (list), `/vms/{name}` (detail), `/clusters/new`, `/clusters`
 - All VM/cluster operations reuse the same `internal/` packages as the CLI
 
 **Dependencies added**: `github.com/go-chi/chi/v5`
