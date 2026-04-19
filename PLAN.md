@@ -50,12 +50,13 @@ After evaluating the options, **Firecracker** was chosen as the VMM engine becau
 | Web UI | Done | Chi router, HTMX, Tailwind; dashboard, VM/cluster CRUD, REST API, SSE |
 | Pre-built K8s Rootfs | Done | CI-built rootfs with kubeadm/containerd, auto-detected by cluster create |
 | Descriptive Image Labels | Done | `vmm image list`, `vmm kernel list`, and web UI show descriptions based on naming convention |
+| Rootfs Snapshots | Done | `vmm image snapshot` saves stopped VM rootfs as reusable base image, auto-shrunk |
 
 ### What's Not Yet Implemented
 
 - **Cloud-init support** - For more flexible VM initialization
 - **Jailer integration** - For production security hardening
-- **VM snapshots** - Save/restore VM state
+- **VM state snapshots** - Save/restore full VM state (CPU, memory, disk) for pause/resume
 - **Resource quotas** - CPU/memory/disk enforcement
 
 ## VMM Options Explored

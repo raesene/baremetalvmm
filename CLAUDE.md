@@ -133,6 +133,7 @@ vmm mount sync <name> <tag>
 vmm image list
 vmm image pull
 vmm image import <docker-image> --name <name> [--size MB]
+vmm image snapshot <vm-name> --name <name>
 vmm image delete <name>
 vmm kernel list
 vmm kernel import <path> --name <name> [-f]
@@ -352,6 +353,26 @@ vmm image list
 
 # Delete an imported image
 sudo vmm image delete ubuntu-base
+```
+
+### Rootfs Snapshots (`internal/image/image.go`, `cmd/vmm/main.go`)
+**Feature**: Snapshot a stopped VM's rootfs and save it as a reusable base image.
+**Implementation**:
+- `SnapshotVMRootfs()` in image manager copies VM rootfs to shared images directory
+- Runs `e2fsck -f -y` for filesystem consistency, then `resize2fs -M` to shrink to minimum size
+- Uses `dumpe2fs -h` to read block count/size, then `os.Truncate()` to shrink the file to match
+- CLI command `vmm image snapshot <vm-name> --name <image-name>` with tab completion for VM names
+- Validates VM is stopped (via `fcClient.UpdateVMState`), rejects running VMs
+- Rejects duplicate image names
+
+**Usage**:
+```bash
+# Install tools in a VM, then snapshot it
+sudo vmm stop myvm
+sudo vmm image snapshot myvm --name my-template
+
+# Create new VMs from the snapshot
+sudo vmm create newvm --image my-template --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
 ### Host Directory Mounting (`internal/mount/mount.go`)

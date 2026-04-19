@@ -266,9 +266,10 @@ sudo vmm mount sync myvm code
 
 | Command | Description |
 |---------|-------------|
-| `vmm image list` | List available images |
+| `vmm image list` | List available images with descriptions |
 | `vmm image pull` | Download default images |
 | `vmm image import <docker-image> --name <name>` | Import a Docker image as rootfs |
+| `vmm image snapshot <vm> --name <name>` | Snapshot a stopped VM's rootfs as a reusable base image |
 | `vmm image delete <name>` | Delete an imported image |
 
 ### Kernels
@@ -811,6 +812,55 @@ vmm image list
 # Delete an imported image
 sudo vmm image delete ubuntu-base
 ```
+
+## VM Rootfs Snapshots
+
+You can snapshot a VM's root filesystem and save it as a reusable base image. This is useful for installing tools and configuring a VM once, then creating multiple VMs from that template.
+
+### Creating a Snapshot
+
+The VM must be stopped before snapshotting. The snapshot is automatically shrunk to minimum size to save disk space.
+
+```bash
+# Set up a template VM
+sudo vmm create template --cpus 2 --memory 1024 --ssh-key ~/.ssh/id_ed25519.pub
+sudo vmm start template
+
+# SSH in and install your tools
+vmm ssh template
+# root@template:~# apt-get install -y python3 nodejs git
+# root@template:~# exit
+
+# Stop the VM and snapshot it
+sudo vmm stop template
+sudo vmm image snapshot template --name dev-tools
+```
+
+### Using a Snapshot
+
+```bash
+# Create new VMs from the snapshot
+sudo vmm create dev1 --image dev-tools --ssh-key ~/.ssh/id_ed25519.pub
+sudo vmm create dev2 --image dev-tools --ssh-key ~/.ssh/id_ed25519.pub
+
+# Each VM gets its own copy of the rootfs, resized to the configured disk size
+sudo vmm start dev1
+sudo vmm start dev2
+```
+
+### How It Works
+
+1. Copies the VM's rootfs (ext4 image) to the shared images directory
+2. Runs `e2fsck` to verify filesystem consistency
+3. Runs `resize2fs -M` to shrink the filesystem to minimum size
+4. Truncates the file to match (e.g., a 1024 MB rootfs might shrink to ~160 MB)
+5. When a new VM is created from the snapshot, the image is copied and resized back to the VM's `--disk` size
+
+### Notes
+
+- Only the rootfs is captured — mounts and kernel selection are not included
+- The snapshot is a point-in-time copy; changes to the original VM after snapshotting are not reflected
+- SSH keys and DNS config are re-injected at VM start time, so the new VM gets its own configuration
 
 ## Custom Kernels
 

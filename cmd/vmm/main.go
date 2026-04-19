@@ -913,7 +913,49 @@ Examples:
 		},
 	}
 
-	cmd.AddCommand(listCmd, pullCmd, importCmd, deleteCmd)
+	snapshotCmd := &cobra.Command{
+		Use:   "snapshot <vm-name> --name <image-name>",
+		Short: "Snapshot a stopped VM's rootfs as a reusable base image",
+		Long: `Snapshot a VM's root filesystem and save it as a new base image.
+
+The VM must be stopped. The snapshot is shrunk to minimum size to save
+disk space. New VMs created from this image will be resized to their
+configured disk size at start time.
+
+Examples:
+  vmm image snapshot myvm --name my-template
+  vmm create newvm --image my-template --ssh-key ~/.ssh/id_ed25519.pub`,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeVMNames,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			vmName := args[0]
+			imageName, _ := cmd.Flags().GetString("name")
+
+			if imageName == "" {
+				return fmt.Errorf("--name is required")
+			}
+
+			paths := cfg.GetPaths()
+
+			existingVM, err := vm.Load(paths.VMs, vmName)
+			if err != nil {
+				return fmt.Errorf("VM '%s' not found: %w", vmName, err)
+			}
+
+			fcClient := firecracker.NewClient()
+			fcClient.UpdateVMState(existingVM)
+			if existingVM.State == vm.StateRunning {
+				return fmt.Errorf("VM '%s' is running. Stop it first before taking a snapshot", vmName)
+			}
+
+			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
+			return imgMgr.SnapshotVMRootfs(vmName, paths.VMs, imageName)
+		},
+	}
+	snapshotCmd.Flags().String("name", "", "Name for the snapshot image (required)")
+	snapshotCmd.MarkFlagRequired("name")
+
+	cmd.AddCommand(listCmd, pullCmd, importCmd, deleteCmd, snapshotCmd)
 	return cmd
 }
 

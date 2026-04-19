@@ -667,6 +667,74 @@ func (m *Manager) DeleteVMRootfs(vmName string, vmDir string) error {
 	return nil
 }
 
+// SnapshotVMRootfs copies a VM's rootfs to the images directory as a reusable base image.
+// The copy is shrunk with resize2fs to minimize disk usage.
+func (m *Manager) SnapshotVMRootfs(vmName, vmDir, imageName string) error {
+	srcPath := filepath.Join(vmDir, vmName+".ext4")
+	if _, err := os.Stat(srcPath); os.IsNotExist(err) {
+		return fmt.Errorf("VM '%s' has no rootfs (has it been started?)", vmName)
+	}
+
+	dstPath := m.GetImagePath(imageName)
+	if _, err := os.Stat(dstPath); err == nil {
+		return fmt.Errorf("image '%s' already exists. Delete it first or choose a different name", imageName)
+	}
+
+	fmt.Printf("Snapshotting VM '%s' rootfs as image '%s'...\n", vmName, imageName)
+
+	if err := copyFile(srcPath, dstPath); err != nil {
+		os.Remove(dstPath)
+		return fmt.Errorf("failed to copy rootfs: %w", err)
+	}
+
+	// Run e2fsck before resize to ensure filesystem consistency
+	fsckCmd := exec.Command("e2fsck", "-f", "-y", dstPath)
+	if output, err := fsckCmd.CombinedOutput(); err != nil {
+		// e2fsck returns 1 if it fixed errors, which is fine
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() > 1 {
+			os.Remove(dstPath)
+			return fmt.Errorf("filesystem check failed: %w: %s", err, string(output))
+		}
+	}
+
+	// Shrink the filesystem to minimum size
+	fmt.Println("Shrinking image to minimum size...")
+	resizeCmd := exec.Command("resize2fs", "-M", dstPath)
+	if output, err := resizeCmd.CombinedOutput(); err != nil {
+		os.Remove(dstPath)
+		return fmt.Errorf("failed to shrink filesystem: %w: %s", err, string(output))
+	}
+
+	// Truncate the file to match the shrunk filesystem size
+	// resize2fs -M shrinks the filesystem but not the file
+	blockCountCmd := exec.Command("dumpe2fs", "-h", dstPath)
+	blockCountOutput, err := blockCountCmd.CombinedOutput()
+	if err == nil {
+		var blockCount, blockSize int64
+		for _, line := range strings.Split(string(blockCountOutput), "\n") {
+			if strings.HasPrefix(line, "Block count:") {
+				fmt.Sscanf(strings.TrimPrefix(line, "Block count:"), "%d", &blockCount)
+			}
+			if strings.HasPrefix(line, "Block size:") {
+				fmt.Sscanf(strings.TrimPrefix(line, "Block size:"), "%d", &blockSize)
+			}
+		}
+		if blockCount > 0 && blockSize > 0 {
+			newSize := blockCount * blockSize
+			if err := os.Truncate(dstPath, newSize); err == nil {
+				fmt.Printf("Truncated image file to %d MB\n", newSize/(1024*1024))
+			}
+		}
+	}
+
+	info, _ := os.Stat(dstPath)
+	sizeMB := float64(info.Size()) / (1024 * 1024)
+	fmt.Printf("Snapshot saved as '%s' (%.1f MB)\n", imageName, sizeMB)
+	fmt.Printf("Use with: vmm create <name> --image %s\n", imageName)
+
+	return nil
+}
+
 // ListKernels returns all available kernels
 func (m *Manager) ListKernels() ([]string, error) {
 	return listFiles(m.KernelDir)
