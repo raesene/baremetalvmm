@@ -356,6 +356,12 @@ func (s *Server) handleVMStop(w http.ResponseWriter, r *http.Request) {
 		netMgr.DeleteTap(existingVM.TapDevice)
 	}
 
+	for _, pf := range existingVM.PortForwards {
+		if existingVM.IPAddress != "" {
+			netMgr.RemovePortForward(pf.HostPort, pf.GuestPort, existingVM.IPAddress, pf.Protocol)
+		}
+	}
+
 	existingVM.State = vm.StateStopped
 	existingVM.PID = 0
 	existingVM.Save(paths.VMs)
@@ -403,6 +409,12 @@ func (s *Server) deleteVM(w http.ResponseWriter, r *http.Request) {
 	netMgr := network.NewManager(s.cfg.BridgeName, s.cfg.Subnet, s.cfg.Gateway, s.cfg.HostInterface)
 	if existingVM.TapDevice != "" && netMgr.TapExists(existingVM.TapDevice) {
 		netMgr.DeleteTap(existingVM.TapDevice)
+	}
+
+	for _, pf := range existingVM.PortForwards {
+		if existingVM.IPAddress != "" {
+			netMgr.RemovePortForward(pf.HostPort, pf.GuestPort, existingVM.IPAddress, pf.Protocol)
+		}
 	}
 
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
@@ -554,6 +566,12 @@ func (s *Server) handleAPIVMDelete(w http.ResponseWriter, r *http.Request) {
 	netMgr := network.NewManager(s.cfg.BridgeName, s.cfg.Subnet, s.cfg.Gateway, s.cfg.HostInterface)
 	if existingVM.TapDevice != "" && netMgr.TapExists(existingVM.TapDevice) {
 		netMgr.DeleteTap(existingVM.TapDevice)
+	}
+
+	for _, pf := range existingVM.PortForwards {
+		if existingVM.IPAddress != "" {
+			netMgr.RemovePortForward(pf.HostPort, pf.GuestPort, existingVM.IPAddress, pf.Protocol)
+		}
 	}
 
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)

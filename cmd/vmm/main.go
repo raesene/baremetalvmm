@@ -300,6 +300,14 @@ func deleteCmd() *cobra.Command {
 				}
 			}
 
+			for _, pf := range existingVM.PortForwards {
+				if existingVM.IPAddress != "" {
+					if err := netMgr.RemovePortForward(pf.HostPort, pf.GuestPort, existingVM.IPAddress, pf.Protocol); err != nil {
+						fmt.Printf("Warning: failed to remove port forward %d:%d: %v\n", pf.HostPort, pf.GuestPort, err)
+					}
+				}
+			}
+
 			// Delete VM rootfs
 			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 			if err := imgMgr.DeleteVMRootfs(name, paths.VMs); err != nil {
@@ -590,6 +598,14 @@ func stopCmd() *cobra.Command {
 			if existingVM.TapDevice != "" && netMgr.TapExists(existingVM.TapDevice) {
 				if err := netMgr.DeleteTap(existingVM.TapDevice); err != nil {
 					fmt.Printf("Warning: failed to delete TAP device: %v\n", err)
+				}
+			}
+
+			for _, pf := range existingVM.PortForwards {
+				if existingVM.IPAddress != "" {
+					if err := netMgr.RemovePortForward(pf.HostPort, pf.GuestPort, existingVM.IPAddress, pf.Protocol); err != nil {
+						fmt.Printf("Warning: failed to remove port forward %d:%d: %v\n", pf.HostPort, pf.GuestPort, err)
+					}
 				}
 			}
 
