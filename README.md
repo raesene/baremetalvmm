@@ -238,12 +238,20 @@ sudo vmm create myvm --cpus 2 --memory 2048 --disk 10000 \
 
 | Command | Description |
 |---------|-------------|
-| `vmm port-forward <name> <host>:<guest>` | Forward port from host to VM |
+| `vmm port-forward add <name> <host>:<guest>` | Forward port from host to VM |
+| `vmm port-forward list <name>` | List port forwards for a VM |
+| `vmm port-forward remove <name> <host>:<guest>` | Remove a port forward |
 
 Example:
 ```bash
-# Forward host port 8080 to VM port 80 Needs sudo for iptables rights
-sudo vmm port-forward myvm 8080:80
+# Forward host port 8080 to VM port 80 (needs sudo for iptables)
+sudo vmm port-forward add myvm 8080:80
+
+# List port forwards
+vmm port-forward list myvm
+
+# Remove a port forward
+sudo vmm port-forward remove myvm 8080:80
 ```
 
 ### Mounts

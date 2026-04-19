@@ -68,7 +68,9 @@ VMs get IPs from 172.16.0.0/16, allocated sequentially from 172.16.0.2. The host
 To find a VM's IP, use `vmm list` — the IP column shows each VM's address.
 
 Additional networking features exist but are not covered in detail here:
-- **Port forwarding**: `sudo vmm port-forward <name> <host-port>:<guest-port>`
+- **Port forwarding**: `sudo vmm port-forward add <name> <host-port>:<guest-port>`
+- **List port forwards**: `vmm port-forward list <name>`
+- **Remove port forward**: `sudo vmm port-forward remove <name> <host-port>:<guest-port>`
 - **Custom DNS**: `--dns <server>` flag on create (repeatable)
 - **Host directory mounts**: `--mount /host/path:tag[:ro|rw]` flag on create
 

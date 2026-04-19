@@ -132,7 +132,9 @@ vmm stop <name>
 vmm delete <name> [-f]
 vmm list [-a]
 vmm ssh <name> [-u user]
-vmm port-forward <name> <host>:<guest>
+vmm port-forward add <name> <host>:<guest>
+vmm port-forward list <name>
+vmm port-forward remove <name> <host>:<guest>
 vmm mount list <name>
 vmm mount sync <name> <tag>
 vmm image list
