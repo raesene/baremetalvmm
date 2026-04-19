@@ -1071,6 +1071,18 @@ go test ./...
 └── go.mod                    # Go modules
 ```
 
+## AI Agent Skill
+
+The `skills/vmm-usage/` directory contains a [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code) that teaches AI agents how to use vmm. It covers:
+
+- VM lifecycle (create, start, stop, delete)
+- SSH access and running commands in VMs
+- Available kernels and rootfs images
+- Creating reusable images via snapshots
+- Kubernetes cluster creation and management
+
+To use the skill, add it to your Claude Code configuration or reference it directly. The skill assumes vmm is already installed on the target host.
+
 ## Known Limitations
 
 1. **Linux only** - Firecracker only runs on Linux with KVM

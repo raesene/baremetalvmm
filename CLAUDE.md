@@ -59,6 +59,11 @@ baremetalvmm/
 │   ├── build-rootfs.sh       # Custom rootfs build script
 │   ├── build-k8s-rootfs.sh   # K8s rootfs build script (containerd + kubeadm pre-installed)
 │   └── vmm.service           # Systemd unit file
+├── skills/
+│   └── vmm-usage/            # Claude Code skill for AI agents using vmm
+│       ├── SKILL.md           # Main skill: VM lifecycle, images, snapshots, agent patterns
+│       └── references/
+│           └── kubernetes.md  # Kubernetes cluster details (loaded on demand)
 ├── .goreleaser.yaml          # GoReleaser configuration
 ├── go.mod, go.sum            # Dependencies
 ├── Makefile                  # Build with version info for local development
