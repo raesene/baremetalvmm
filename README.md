@@ -135,7 +135,7 @@ Kernels:
   - vmlinux.bin            72.7 MB  General-purpose VM kernel (Linux 6.1 LTS) (default)
 
 Root filesystems:
-  - k8s-1.35.4           2048.0 MB  Kubernetes image (kubeadm/containerd pre-installed)
+  - k8s-1.36.0           2048.0 MB  Kubernetes image (kubeadm/containerd pre-installed)
   - rootfs                512.0 MB  Ubuntu 24.04 base image for general-purpose VMs (default)
 ```
 
@@ -460,7 +460,7 @@ Flags:
   --cpus int           vCPUs per node (default 2)
   --memory int         Memory per node in MB (default 4096)
   --disk int           Disk per node in MB (default 10240)
-  --k8s-version string Kubernetes version (default "1.35.3")
+  --k8s-version string Kubernetes version (default "1.36.0")
   --ssh-key string     Path to SSH public key (required)
   --kernel string      Kernel name (k8s-kernel recommended)
   --image string       Rootfs image name
@@ -486,7 +486,7 @@ This stops and deletes all VMs in the cluster and removes the kubeconfig context
 | CPUs | 2 | Minimum 2 required for kubeadm |
 | Memory | 4096 MB | Minimum 2048 MB required |
 | Disk | 10240 MB (10 GB) | Needs space for container images |
-| Kubernetes | 1.35.3 | Any version available from pkgs.k8s.io |
+| Kubernetes | 1.36.0 | Any version available from pkgs.k8s.io |
 | CNI | Cilium | With kube-proxy replacement enabled |
 | Pod CIDR | 10.244.0.0/16 | Doesn't conflict with VM bridge network |
 | Service CIDR | 10.96.0.0/12 | Standard Kubernetes default |

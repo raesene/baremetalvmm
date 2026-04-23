@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       k8s_version:
-        description: 'Kubernetes version (e.g. 1.35.3). Leave empty for latest stable.'
+        description: 'Kubernetes version (e.g. 1.36.0). Leave empty for latest stable.'
         required: false
         default: ''
       base_image:

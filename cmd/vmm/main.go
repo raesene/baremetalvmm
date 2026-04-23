@@ -1816,7 +1816,7 @@ func clusterCreateCmd() *cobra.Command {
 	cmd.Flags().IntVar(&cpus, "cpus", 2, "CPUs per node")
 	cmd.Flags().IntVar(&memory, "memory", 4096, "Memory per node in MB")
 	cmd.Flags().IntVar(&disk, "disk", 10240, "Disk per node in MB")
-	cmd.Flags().StringVar(&k8sVersion, "k8s-version", "1.35.3", "Kubernetes version")
+	cmd.Flags().StringVar(&k8sVersion, "k8s-version", "1.36.0", "Kubernetes version")
 	cmd.Flags().StringVar(&sshKeyPath, "ssh-key", "", "Path to SSH public key file")
 	cmd.Flags().StringVar(&imageName, "image", "", "Name of rootfs image to use")
 	cmd.Flags().StringVar(&kernelName, "kernel", "", "Name of kernel to use")

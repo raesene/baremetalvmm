@@ -158,11 +158,25 @@ func installKubeadm(client *SSHClient, k8sVersion string) error {
 		"mkdir -p /etc/apt/keyrings",
 		fmt.Sprintf(`curl -fsSL "https://pkgs.k8s.io/core:/stable:/v%s/deb/Release.key" | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg 2>&1`, majorMinor),
 		fmt.Sprintf(`echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v%s/deb/ /" > /etc/apt/sources.list.d/kubernetes.list`, majorMinor),
+	}
+
+	minor := 0
+	if len(parts) >= 2 {
+		fmt.Sscanf(parts[1], "%d", &minor)
+	}
+	if minor >= 36 {
+		commands = append(commands,
+			`curl -fsSL "https://pkgs.k8s.io/core:/stable:/v1.35/deb/Release.key" | gpg --dearmor -o /etc/apt/keyrings/kubernetes-deps-keyring.gpg 2>&1`,
+			`echo "deb [signed-by=/etc/apt/keyrings/kubernetes-deps-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /" > /etc/apt/sources.list.d/kubernetes-deps.list`,
+		)
+	}
+
+	commands = append(commands,
 		"apt-get update -qq ",
 		fmt.Sprintf("DEBIAN_FRONTEND=noninteractive apt-get install -y -qq kubelet=%s-* kubeadm=%s-* kubectl=%s-* ", k8sVersion, k8sVersion, k8sVersion),
 		"apt-mark hold kubelet kubeadm kubectl ",
 		"systemctl enable kubelet",
-	}
+	)
 	for i, cmd := range commands {
 		if _, err := client.Run(cmd); err != nil {
 			return fmt.Errorf("kubeadm install step %d failed: %w\nCommand: %s", i+1, err, cmd)

@@ -34,7 +34,7 @@ Usage: $0 --k8s-version <version> --name <name> [--output <dir>] [--size <MB>] [
 Build a Firecracker-compatible rootfs image with Kubernetes components pre-installed.
 
 Options:
-  --k8s-version VER     Kubernetes version, e.g. 1.35.3 (required)
+  --k8s-version VER     Kubernetes version, e.g. 1.36.0 (required)
   --name NAME           Name for the output rootfs file (required)
   --output DIR          Output directory (default: /var/lib/vmm/images/rootfs)
   --size MB             Image size in MB (default: 2048)
@@ -43,8 +43,8 @@ Options:
   --help                Show this help message
 
 Examples:
-  $0 --k8s-version 1.35.3 --name k8s-rootfs.ext4 --size 2048
-  $0 --k8s-version 1.35.3 --name k8s-rootfs.ext4 --output /tmp
+  $0 --k8s-version 1.36.0 --name k8s-rootfs.ext4 --size 2048
+  $0 --k8s-version 1.36.0 --name k8s-rootfs.ext4 --output /tmp
 EOF
     exit 1
 }
@@ -200,6 +200,14 @@ configure_rootfs() {
         mkdir -p /etc/apt/keyrings
         curl -fsSL \"https://pkgs.k8s.io/core:/stable:/v${k8s_major_minor}/deb/Release.key\" | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg 2>&1
         echo \"deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v${k8s_major_minor}/deb/ /\" > /etc/apt/sources.list.d/kubernetes.list
+
+        # k8s 1.36+ removed cri-tools and kubernetes-cni from the repo;
+        # add v1.35 as a secondary source for those dependency packages
+        minor=\$(echo \"${k8s_major_minor}\" | cut -d. -f2)
+        if [ \"\$minor\" -ge 36 ]; then
+            curl -fsSL \"https://pkgs.k8s.io/core:/stable:/v1.35/deb/Release.key\" | gpg --dearmor -o /etc/apt/keyrings/kubernetes-deps-keyring.gpg 2>&1
+            echo \"deb [signed-by=/etc/apt/keyrings/kubernetes-deps-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /\" > /etc/apt/sources.list.d/kubernetes-deps.list
+        fi
 
         # Install kubeadm, kubelet, kubectl
         apt-get update -qq

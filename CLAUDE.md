@@ -713,7 +713,7 @@ gunzip /tmp/rootfs.ext4.gz
 - containerd with `SystemdCgroup = true`
 - `--ignore-preflight-errors=SystemVerification` because Firecracker VMs have no `/lib/modules/`
 
-**Defaults**: 0 workers, 2 CPUs, 4096 MB RAM, 10240 MB disk, k8s version 1.35.3
+**Defaults**: 0 workers, 2 CPUs, 4096 MB RAM, 10240 MB disk, k8s version 1.36.0
 
 **Usage**:
 ```bash
@@ -866,22 +866,24 @@ vmm ssh myvm -- 'curl -s http://example.com'  # Test HTTP
 - `provisioner.go` detects pre-installed kubeadm via `which kubeadm` and skips `installContainerd`/`installKubeadm`, running only the lightweight `preparePreinstalledNode` instead (modprobe, sysctl, mount, restart containerd)
 - A marker file `/etc/vmm-k8s-version` is written into the rootfs for future version verification
 
-**GitHub release tagging**: `k8s-rootfs-<version>` (e.g., `k8s-rootfs-1.35.3`)
+**GitHub release tagging**: `k8s-rootfs-<version>` (e.g., `k8s-rootfs-1.36.0`)
 
-**Default k8s version**: Updated from 1.31.4 to 1.35.3
+**Default k8s version**: Updated from 1.35.3 to 1.36.0
+
+**k8s 1.36+ packaging change**: The `cri-tools` and `kubernetes-cni` packages were removed from the `pkgs.k8s.io/core:/stable:/v1.36` repo but are still dependencies of `kubeadm` and `kubelet`. Both the build script and provisioner add the v1.35 repo as a secondary source when the k8s minor version is >= 36.
 
 **Usage**:
 ```bash
 # Build locally
-sudo bash scripts/build-k8s-rootfs.sh --k8s-version 1.35.3 --name k8s-rootfs.ext4 --size 2048 --output /tmp
+sudo bash scripts/build-k8s-rootfs.sh --k8s-version 1.36.0 --name k8s-rootfs.ext4 --size 2048 --output /tmp
 
 # Import manually
 gunzip /tmp/k8s-rootfs.ext4.gz
-sudo cp /tmp/k8s-rootfs.ext4 /var/lib/vmm/images/rootfs/k8s-1.35.3.ext4
+sudo cp /tmp/k8s-rootfs.ext4 /var/lib/vmm/images/rootfs/k8s-1.36.0.ext4
 
 # Cluster create auto-detects (or downloads) k8s rootfs
 sudo vmm cluster create test1 --ssh-key ~/.ssh/id_ed25519.pub --kernel k8s-kernel
 
 # Or specify explicitly
-sudo vmm cluster create test1 --image k8s-1.35.3 --kernel k8s-kernel --ssh-key ~/.ssh/id_ed25519.pub
+sudo vmm cluster create test1 --image k8s-1.36.0 --kernel k8s-kernel --ssh-key ~/.ssh/id_ed25519.pub
 ```

@@ -99,7 +99,7 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 	disk := formInt(r, "disk", 10240)
 	k8sVersion := strings.TrimSpace(r.FormValue("k8s_version"))
 	if k8sVersion == "" {
-		k8sVersion = "1.35.3"
+		k8sVersion = "1.36.0"
 	}
 	sshKey := strings.TrimSpace(r.FormValue("ssh_key"))
 	sshKeyPath := strings.TrimSpace(r.FormValue("ssh_key_path"))
@@ -381,7 +381,7 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		req.DiskSizeMB = 10240
 	}
 	if req.K8sVersion == "" {
-		req.K8sVersion = "1.35.3"
+		req.K8sVersion = "1.36.0"
 	}
 
 	paths := s.cfg.GetPaths()
