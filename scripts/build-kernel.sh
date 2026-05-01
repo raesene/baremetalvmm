@@ -298,6 +298,19 @@ create_kernel_config() {
     ./scripts/config --enable CONFIG_PID_NS
     ./scripts/config --enable CONFIG_NET_NS
 
+    # Crypto API user-space interface (AF_ALG sockets)
+    ./scripts/config --enable CONFIG_CRYPTO
+    ./scripts/config --enable CONFIG_CRYPTO_USER_API
+    ./scripts/config --enable CONFIG_CRYPTO_USER_API_AEAD
+    ./scripts/config --enable CONFIG_CRYPTO_USER_API_HASH
+    ./scripts/config --enable CONFIG_CRYPTO_USER_API_SKCIPHER
+    ./scripts/config --enable CONFIG_CRYPTO_AEAD
+    ./scripts/config --enable CONFIG_CRYPTO_GCM
+    ./scripts/config --enable CONFIG_CRYPTO_AES
+    ./scripts/config --enable CONFIG_CRYPTO_CTR
+    ./scripts/config --enable CONFIG_CRYPTO_GHASH
+    ./scripts/config --enable CONFIG_CRYPTO_SEQIV
+
     # Kernel config access from running kernel (for diagnostics)
     ./scripts/config --enable CONFIG_IKCONFIG
     ./scripts/config --enable CONFIG_IKCONFIG_PROC

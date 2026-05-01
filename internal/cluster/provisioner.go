@@ -93,16 +93,21 @@ func (s *SSHClient) Close() {
 func WaitForSSH(ip, keyPath string, timeout time.Duration) (*SSHClient, error) {
 	deadline := time.Now().Add(timeout)
 	client := NewSSHClient(ip, keyPath)
+	var lastErr error
 	for time.Now().Before(deadline) {
 		if err := client.Connect(); err == nil {
 			if _, err := client.Run("echo ready"); err == nil {
 				return client, nil
+			} else {
+				lastErr = fmt.Errorf("run failed: %w", err)
 			}
 			client.Close()
+		} else {
+			lastErr = fmt.Errorf("connect failed: %w", err)
 		}
 		time.Sleep(2 * time.Second)
 	}
-	return nil, fmt.Errorf("SSH to %s not available after %s", ip, timeout)
+	return nil, fmt.Errorf("SSH to %s not available after %s (last error: %v, keyPath: %s)", ip, timeout, lastErr, keyPath)
 }
 
 func installContainerd(client *SSHClient) error {
@@ -326,7 +331,7 @@ func ProvisionCluster(cl *Cluster, sshKeyPath string, nodes []NodeInfo) error {
 	clients := make(map[string]*SSHClient)
 	for _, node := range nodes {
 		fmt.Printf("  Waiting for %s (%s)...\n", node.Name, node.IP)
-		client, err := WaitForSSH(node.IP, sshKeyPath, 120*time.Second)
+		client, err := WaitForSSH(node.IP, sshKeyPath, 180*time.Second)
 		if err != nil {
 			return fmt.Errorf("SSH to %s failed: %w", node.Name, err)
 		}

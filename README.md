@@ -183,6 +183,94 @@ This command should give you a relatively modern 6.1 based kernel.
 sudo vmm kernel build --version 6.1 --name kernel-6.1
 ```
 
+## Security Testing with Vulnerable Kernels
+
+The `build-kernel.sh` script includes the AF_ALG crypto subsystem (`CONFIG_CRYPTO_USER_API_AEAD` and dependencies), which is required for testing kernel vulnerabilities like CVE-2026-31431. Since the kernel build uses upstream kernel.org sources without the fix backported, any kernel built with this script from an unpatched series is suitable for vulnerability testing.
+
+### Building a vulnerable kernel
+
+Build a kernel from a series that predates the fix for the vulnerability you're testing:
+
+```bash
+# Standalone VM testing (6.1 LTS)
+sudo vmm kernel build --version 6.1 --name vuln-kernel-6.1
+
+# Kubernetes cluster testing (6.6 LTS)
+sudo vmm kernel build --version 6.6 --name vuln-k8s-kernel
+```
+
+### Standalone VM testing
+
+Create a VM with the vulnerable kernel:
+
+```bash
+sudo vmm create vuln-test --cpus 2 --memory 2048 --kernel vuln-kernel-6.1 --ssh-key ~/.ssh/id_ed25519.pub
+sudo vmm start vuln-test
+```
+
+Verify the kernel is vulnerable by checking that the AF_ALG AEAD crypto interface is available:
+
+```bash
+sudo vmm ssh vuln-test -- "uname -r"
+sudo vmm ssh vuln-test -- "zcat /proc/config.gz | grep CRYPTO_USER_API_AEAD"
+# Should show: CONFIG_CRYPTO_USER_API_AEAD=y
+```
+
+For PoCs that need Python, install it inside the VM:
+
+```bash
+sudo vmm ssh vuln-test -- "apt-get update -qq && apt-get install -y python3"
+```
+
+You can then test the AF_ALG socket from Python:
+
+```python
+import socket
+s = socket.socket(socket.AF_ALG, socket.SOCK_SEQPACKET, 0)
+s.bind(("aead", "gcm(aes)"))
+print("AF_ALG AEAD: available")
+s.close()
+```
+
+### Kubernetes cluster testing
+
+Create a cluster using the vulnerable kernel:
+
+```bash
+sudo vmm cluster create vuln-cluster --workers 1 --cpus 2 --memory 4096 \
+    --kernel vuln-k8s-kernel --ssh-key ~/.ssh/id_ed25519.pub
+```
+
+Verify the kernel across all nodes:
+
+```bash
+sudo vmm ssh vuln-cluster-control-plane -- \
+    "KUBECONFIG=/etc/kubernetes/admin.conf kubectl get nodes -o wide"
+# KERNEL-VERSION column should show the unpatched version (e.g. 6.6.137)
+
+sudo vmm ssh vuln-cluster-control-plane -- \
+    "zcat /proc/config.gz | grep CRYPTO_USER_API_AEAD"
+# Should show: CONFIG_CRYPTO_USER_API_AEAD=y
+```
+
+### Verifying a kernel is vulnerable
+
+A kernel is suitable for CVE-2026-31431 testing if all of these are true:
+
+1. **Kernel version predates the fix** — the fix is mainline commit `a664bf3d603d`. Check your kernel version against the patched releases for your series.
+2. **`CONFIG_CRYPTO_USER_API_AEAD=y`** — check with `zcat /proc/config.gz | grep CRYPTO_USER_API_AEAD`.
+3. **`gcm(aes)` AEAD algorithm loads** — check with `grep gcm /proc/crypto` after first use, or test with the Python snippet above.
+
+### Cleanup
+
+```bash
+# Standalone
+sudo vmm stop vuln-test && sudo vmm delete vuln-test
+
+# Cluster
+sudo vmm cluster delete vuln-cluster -f
+```
+
 ## Commands
 
 ### VM Lifecycle
