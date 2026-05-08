@@ -71,7 +71,7 @@ Create flag defaults can be set in `~/.config/vmm/config.json` under `vm_default
 
 ### Adding new image/kernel variants
 - Prefix-based naming drives descriptions in `describeKernel()`/`describeRootfs()` in `internal/image/image.go`
-- Prefixes: `k8s-`, `debug-`, `minimal-`, or custom
+- Prefixes: `k8s-`, `security-`, `debug-`, `minimal-`, or custom
 
 ## Building
 
@@ -106,6 +106,7 @@ Requirements: root access, KVM (`/dev/kvm`), Firecracker in PATH.
 - `v*` — binary releases (GoReleaser)
 - `kernel-*` — default kernel (6.1 series)
 - `k8s-kernel-*` — Kubernetes kernel (6.6 series)
+- `security-kernel-*` — security testing kernel (6.8 series, Ubuntu 24.04-like modules)
 - `rootfs-*` — default rootfs (format: `rootfs-24.04-YYYYMMDD`)
 - `k8s-rootfs-*` — Kubernetes rootfs (format: `k8s-rootfs-<k8s-version>`)
 

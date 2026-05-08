@@ -16,6 +16,7 @@ set -e
 OUTPUT_DIR="/var/lib/vmm/images/kernels"
 VERSION=""
 NAME=""
+CONFIG_PROFILE="default"
 BUILD_DIR=""
 CLEANUP=true
 
@@ -27,20 +28,28 @@ NC='\033[0m' # No Color
 
 usage() {
     cat <<EOF
-Usage: $0 --version <version> --name <name> [--output <dir>]
+Usage: $0 --version <version> --name <name> [--config-profile <profile>] [--output <dir>]
 
 Build a Firecracker-compatible Linux kernel from source.
 
 Options:
-  --version VERSION   Kernel version to build (required)
-                      Supported: 5.10, 6.1, 6.6
-  --name NAME         Name for the output kernel file (required)
-  --output DIR        Output directory (default: /var/lib/vmm/images/kernels)
-  --no-cleanup        Keep build directory after completion
-  --help              Show this help message
+  --version VERSION          Kernel version to build (required)
+                             Supported: 5.10, 6.1, 6.6, 6.8
+  --name NAME                Name for the output kernel file (required)
+  --config-profile PROFILE   Configuration profile (default: default)
+                             Profiles: default, security
+  --output DIR               Output directory (default: /var/lib/vmm/images/kernels)
+  --no-cleanup               Keep build directory after completion
+  --help                     Show this help message
+
+Profiles:
+  default    Minimal Firecracker config with Docker/K8s networking support
+  security   Broad module coverage matching Ubuntu 24.04 for vulnerability
+             research and security testing (IPsec, SCTP, io_uring, etc.)
 
 Examples:
   $0 --version 6.1 --name kernel-6.1
+  $0 --version 6.8 --name security-vmlinux.bin --config-profile security
   $0 --version 5.10 --name kernel-lts --output /custom/path
 EOF
     exit 1
@@ -104,10 +113,10 @@ get_kernel_url() {
 
     # Validate series
     case "$series" in
-        5.10|6.1|6.6) ;;
+        5.10|6.1|6.6|6.8) ;;
         *)
             log_error "Unsupported kernel series: $series"
-            log_info "Supported series: 5.10, 6.1, 6.6"
+            log_info "Supported series: 5.10, 6.1, 6.6, 6.8"
             exit 1
             ;;
     esac
@@ -127,6 +136,7 @@ get_kernel_url() {
             5.10) latest="5.10.209" ;;
             6.1)  latest="6.1.119" ;;
             6.6)  latest="6.6.61" ;;
+            6.8)  latest="6.8.12" ;;
         esac
     fi
 
@@ -310,6 +320,10 @@ create_kernel_config() {
     ./scripts/config --enable CONFIG_CRYPTO_CTR
     ./scripts/config --enable CONFIG_CRYPTO_GHASH
     ./scripts/config --enable CONFIG_CRYPTO_SEQIV
+    ./scripts/config --enable CONFIG_CRYPTO_AUTHENC
+    ./scripts/config --enable CONFIG_CRYPTO_CBC
+    ./scripts/config --enable CONFIG_CRYPTO_HMAC
+    ./scripts/config --enable CONFIG_CRYPTO_SHA256
 
     # Kernel config access from running kernel (for diagnostics)
     ./scripts/config --enable CONFIG_IKCONFIG
@@ -330,6 +344,200 @@ create_kernel_config() {
         if ! grep -q "^${opt}=y" .config; then
             log_error "CRITICAL: ${opt} not enabled after olddefconfig! Check dependencies."
             grep "${opt}" .config || echo "${opt} not found in .config"
+        fi
+    done
+}
+
+create_security_kernel_config() {
+    local kernel_dir="$1"
+
+    log_info "Applying security testing profile (broad Ubuntu 24.04-like module coverage)..."
+
+    cd "$kernel_dir"
+
+    # Start with the default Firecracker config
+    create_kernel_config "$kernel_dir"
+
+    # --- IPsec / xfrm (dirtyfrag exploit) ---
+    ./scripts/config --enable CONFIG_XFRM
+    ./scripts/config --enable CONFIG_XFRM_USER
+    ./scripts/config --enable CONFIG_XFRM_ALGO
+    ./scripts/config --enable CONFIG_XFRM_STATISTICS
+    ./scripts/config --enable CONFIG_INET_ESP
+    ./scripts/config --enable CONFIG_INET_ESP_OFFLOAD
+    ./scripts/config --enable CONFIG_INET_AH
+    ./scripts/config --enable CONFIG_INET6_ESP
+    ./scripts/config --enable CONFIG_INET6_ESP_OFFLOAD
+    ./scripts/config --enable CONFIG_INET6_AH
+    ./scripts/config --enable CONFIG_NET_KEY
+
+    # --- AF_RXRPC (dirtyfrag exploit) ---
+    ./scripts/config --enable CONFIG_AF_RXRPC
+
+    # --- io_uring (frequent CVE target) ---
+    ./scripts/config --enable CONFIG_IO_URING
+
+    # --- SCTP (network protocol, frequent CVE target) ---
+    ./scripts/config --enable CONFIG_IP_SCTP
+
+    # --- TIPC (cluster protocol, CVE target) ---
+    ./scripts/config --enable CONFIG_TIPC
+
+    # --- DCCP (datagram congestion control, CVE target) ---
+    ./scripts/config --enable CONFIG_IP_DCCP
+
+    # --- L2TP (tunneling, CVE target) ---
+    ./scripts/config --enable CONFIG_L2TP
+    ./scripts/config --enable CONFIG_L2TP_V3
+
+    # --- MPLS (label switching) ---
+    ./scripts/config --enable CONFIG_MPLS
+    ./scripts/config --enable CONFIG_NET_MPLS_GSO
+    ./scripts/config --enable CONFIG_MPLS_ROUTING
+    ./scripts/config --enable CONFIG_MPLS_IPTUNNEL
+
+    # --- MCTP (management component transport) ---
+    ./scripts/config --enable CONFIG_MCTP
+
+    # --- Additional crypto subsystems ---
+    ./scripts/config --enable CONFIG_CRYPTO_USER
+    ./scripts/config --enable CONFIG_CRYPTO_PCRYPT
+    ./scripts/config --enable CONFIG_CRYPTO_CRYPTD
+    ./scripts/config --enable CONFIG_CRYPTO_ECHAINIV
+    ./scripts/config --enable CONFIG_CRYPTO_CMAC
+    ./scripts/config --enable CONFIG_CRYPTO_XCBC
+    ./scripts/config --enable CONFIG_CRYPTO_SHA512
+    ./scripts/config --enable CONFIG_CRYPTO_SHA3
+    ./scripts/config --enable CONFIG_CRYPTO_DES
+    ./scripts/config --enable CONFIG_CRYPTO_CHACHA20POLY1305
+    ./scripts/config --enable CONFIG_CRYPTO_NULL
+
+    # --- Filesystems (exploit targets, useful for testing) ---
+    ./scripts/config --enable CONFIG_FUSE_FS
+    ./scripts/config --enable CONFIG_BTRFS_FS
+    ./scripts/config --enable CONFIG_XFS_FS
+    ./scripts/config --enable CONFIG_TMPFS_XATTR
+    ./scripts/config --enable CONFIG_TMPFS_POSIX_ACL
+    ./scripts/config --enable CONFIG_HUGETLBFS
+    ./scripts/config --enable CONFIG_CONFIGFS_FS
+    ./scripts/config --enable CONFIG_EFIVAR_FS
+
+    # --- Network filesystems ---
+    ./scripts/config --enable CONFIG_NFS_FS
+    ./scripts/config --enable CONFIG_NFS_V4
+    ./scripts/config --enable CONFIG_NFSD
+    ./scripts/config --enable CONFIG_CIFS
+    ./scripts/config --enable CONFIG_9P_FS
+    ./scripts/config --enable CONFIG_NET_9P
+    ./scripts/config --enable CONFIG_NET_9P_VIRTIO
+
+    # --- kTLS (kernel TLS offload) ---
+    ./scripts/config --enable CONFIG_TLS
+
+    # --- Netlink and diagnostics ---
+    ./scripts/config --enable CONFIG_INET_DIAG
+    ./scripts/config --enable CONFIG_INET_TCP_DIAG
+    ./scripts/config --enable CONFIG_INET_UDP_DIAG
+    ./scripts/config --enable CONFIG_INET_MPTCP_DIAG
+    ./scripts/config --enable CONFIG_SOCK_DIAG
+
+    # --- MPTCP (multipath TCP) ---
+    ./scripts/config --enable CONFIG_MPTCP
+
+    # --- Additional netfilter / conntrack ---
+    ./scripts/config --enable CONFIG_NF_CONNTRACK_FTP
+    ./scripts/config --enable CONFIG_NF_CONNTRACK_TFTP
+    ./scripts/config --enable CONFIG_NF_CONNTRACK_SIP
+    ./scripts/config --enable CONFIG_NF_CT_NETLINK
+    ./scripts/config --enable CONFIG_NETFILTER_XT_TARGET_NFLOG
+    ./scripts/config --enable CONFIG_NETFILTER_XT_TARGET_TPROXY
+    ./scripts/config --enable CONFIG_NETFILTER_XT_TARGET_CT
+    ./scripts/config --enable CONFIG_NETFILTER_XT_MATCH_SOCKET
+
+    # --- Traffic control / queueing (used in net exploits) ---
+    ./scripts/config --enable CONFIG_NET_SCHED
+    ./scripts/config --enable CONFIG_NET_CLS
+    ./scripts/config --enable CONFIG_NET_CLS_U32
+    ./scripts/config --enable CONFIG_NET_CLS_ROUTE4
+    ./scripts/config --enable CONFIG_NET_CLS_FW
+    ./scripts/config --enable CONFIG_NET_CLS_CGROUP
+    ./scripts/config --enable CONFIG_NET_SCH_HTB
+    ./scripts/config --enable CONFIG_NET_SCH_INGRESS
+    ./scripts/config --enable CONFIG_NET_SCH_NETEM
+    ./scripts/config --enable CONFIG_NET_SCH_FQ_CODEL
+
+    # --- Multicast / IGMP ---
+    ./scripts/config --enable CONFIG_IP_MULTICAST
+    ./scripts/config --enable CONFIG_IP_MROUTE
+    ./scripts/config --enable CONFIG_IPV6_MROUTE
+
+    # --- Tunneling protocols ---
+    ./scripts/config --enable CONFIG_NET_IPIP
+    ./scripts/config --enable CONFIG_NET_IP_TUNNEL
+    ./scripts/config --enable CONFIG_IPV6_SIT
+    ./scripts/config --enable CONFIG_IPV6_TUNNEL
+    ./scripts/config --enable CONFIG_IPV6_GRE
+    ./scripts/config --enable CONFIG_GRE
+
+    # --- Wireless regulatory (cfg80211 base, needed for some net testing) ---
+    ./scripts/config --enable CONFIG_WIRELESS
+    ./scripts/config --enable CONFIG_CFG80211
+
+    # --- USB/IP (userspace USB, sometimes exploitable) ---
+    ./scripts/config --enable CONFIG_USBIP_CORE
+    ./scripts/config --enable CONFIG_USBIP_VHCI_HCD
+
+    # --- Security subsystems (AppArmor, SELinux for testing profiles) ---
+    ./scripts/config --enable CONFIG_SECURITY
+    ./scripts/config --enable CONFIG_SECURITYFS
+    ./scripts/config --enable CONFIG_SECURITY_APPARMOR
+    ./scripts/config --enable CONFIG_SECURITY_SELINUX
+    ./scripts/config --enable CONFIG_SECURITY_LANDLOCK
+    ./scripts/config --enable CONFIG_LSM
+
+    # --- Audit ---
+    ./scripts/config --enable CONFIG_AUDIT
+    ./scripts/config --enable CONFIG_AUDITSYSCALL
+
+    # --- Tracing / debugging (useful for exploit development) ---
+    ./scripts/config --enable CONFIG_FTRACE
+    ./scripts/config --enable CONFIG_KPROBES
+    ./scripts/config --enable CONFIG_KPROBE_EVENTS
+    ./scripts/config --enable CONFIG_UPROBE_EVENTS
+    ./scripts/config --enable CONFIG_TRACEPOINTS
+    ./scripts/config --enable CONFIG_BPF_EVENTS
+
+    # --- userfaultfd (used in many race condition exploits) ---
+    ./scripts/config --enable CONFIG_USERFAULTFD
+
+    # --- Misc subsystems commonly present on Ubuntu ---
+    ./scripts/config --enable CONFIG_WATCH_QUEUE
+    ./scripts/config --enable CONFIG_KEY_DH_OPERATIONS
+    ./scripts/config --enable CONFIG_KEYS
+    ./scripts/config --enable CONFIG_POSIX_MQUEUE
+    ./scripts/config --enable CONFIG_INOTIFY_USER
+    ./scripts/config --enable CONFIG_FANOTIFY
+    ./scripts/config --enable CONFIG_EPOLL
+    ./scripts/config --enable CONFIG_SIGNALFD
+    ./scripts/config --enable CONFIG_TIMERFD
+    ./scripts/config --enable CONFIG_EVENTFD
+    ./scripts/config --enable CONFIG_SHMEM
+
+    # --- Resolve all dependencies ---
+    make olddefconfig
+
+    log_info "Security profile applied — verifying key options..."
+
+    local security_opts=(
+        CONFIG_INET_ESP CONFIG_INET6_ESP CONFIG_AF_RXRPC
+        CONFIG_IO_URING CONFIG_IP_SCTP CONFIG_XFRM
+        CONFIG_FUSE_FS CONFIG_USERFAULTFD CONFIG_FTRACE
+    )
+    for opt in "${security_opts[@]}"; do
+        if grep -q "^${opt}=y" .config || grep -q "^${opt}=m" .config; then
+            log_info "  $opt: enabled"
+        else
+            log_warn "  $opt: NOT enabled (may have unmet dependencies)"
         fi
     done
 }
@@ -383,6 +591,10 @@ while [[ $# -gt 0 ]]; do
             NAME="$2"
             shift 2
             ;;
+        --config-profile)
+            CONFIG_PROFILE="$2"
+            shift 2
+            ;;
         --output)
             OUTPUT_DIR="$2"
             shift 2
@@ -412,6 +624,15 @@ if [ -z "$NAME" ]; then
     usage
 fi
 
+case "$CONFIG_PROFILE" in
+    default|security) ;;
+    *)
+        log_error "Unknown config profile: $CONFIG_PROFILE"
+        log_info "Supported profiles: default, security"
+        exit 1
+        ;;
+esac
+
 # Check if running as root (needed for some operations)
 if [ "$(id -u)" -ne 0 ]; then
     log_warn "Running as non-root user. You may need root for final installation."
@@ -424,6 +645,7 @@ trap cleanup EXIT
 log_info "Build directory: $BUILD_DIR"
 log_info "Target kernel version: $VERSION"
 log_info "Output name: $NAME"
+log_info "Config profile: $CONFIG_PROFILE"
 
 # Main build process
 check_dependencies
@@ -431,7 +653,14 @@ check_dependencies
 KERNEL_URL="$(get_kernel_url "$VERSION")"
 KERNEL_DIR="$(download_kernel "$KERNEL_URL")"
 
-create_kernel_config "$KERNEL_DIR"
+case "$CONFIG_PROFILE" in
+    security)
+        create_security_kernel_config "$KERNEL_DIR"
+        ;;
+    *)
+        create_kernel_config "$KERNEL_DIR"
+        ;;
+esac
 build_kernel "$KERNEL_DIR"
 install_kernel "$KERNEL_DIR"
 

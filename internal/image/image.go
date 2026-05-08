@@ -1130,6 +1130,8 @@ func describeKernel(name string, isDefault bool) string {
 		return "General-purpose VM kernel (Linux 6.1 LTS)"
 	case strings.HasPrefix(name, "k8s-"):
 		return "Kubernetes cluster kernel (Linux 6.6 LTS, Cilium/BPF)"
+	case strings.HasPrefix(name, "security-"):
+		return "Security testing kernel (Linux 6.8, Ubuntu 24.04-like modules)"
 	case strings.HasPrefix(name, "debug-"):
 		return "Debug kernel (extra logging and debug options)"
 	case strings.HasPrefix(name, "minimal-"):

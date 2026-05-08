@@ -105,6 +105,110 @@ jobs:
             --notes "$NOTES" \
             vmlinux.bin
 
+  build-security:
+    runs-on: ubuntu-latest
+    env:
+      KERNEL_SERIES: '6.8'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Query kernel.org for latest 6.8 patch version
+        id: kernel_version
+        run: |
+          LATEST=$(curl -fsSL https://www.kernel.org/releases.json | \
+            jq -r --arg series "$KERNEL_SERIES" \
+            '[.releases[] | select(.version | startswith($series + ".")) | .version] | sort_by(split(".") | map(tonumber)) | last')
+
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "Could not determine latest kernel version for series $KERNEL_SERIES"
+            exit 1
+          fi
+
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Found latest kernel version: $LATEST"
+
+      - name: Check if release already exists
+        id: check_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="security-kernel-${{ steps.kernel_version.outputs.version }}"
+          if gh release view "$TAG" &>/dev/null; then
+            echo "Release $TAG already exists, skipping build"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release $TAG does not exist, proceeding with build"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install build dependencies
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential flex bison bc libelf-dev libssl-dev wget curl jq
+
+      - name: Build security testing kernel
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          chmod +x scripts/build-kernel.sh
+          sudo bash scripts/build-kernel.sh \
+            --version "$KERNEL_SERIES" \
+            --name security-vmlinux.bin \
+            --config-profile security \
+            --output "${{ github.workspace }}"
+
+      - name: Create GitHub release
+        if: steps.check_release.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="security-kernel-${{ steps.kernel_version.outputs.version }}"
+          TITLE="Security Testing Kernel ${{ steps.kernel_version.outputs.version }} (Linux ${KERNEL_SERIES}, Ubuntu 24.04-like)"
+          NOTES="Firecracker-compatible Linux kernel ${{ steps.kernel_version.outputs.version }} for security testing and vulnerability research.
+
+          **Use this kernel for PoC exploit testing** where you need Ubuntu 24.04-like module availability. NOT for production use.
+
+          Built from the ${KERNEL_SERIES} series (matching Ubuntu 24.04) with broad subsystem coverage:
+          - All features from the default kernel (Docker, cgroups, namespaces, iptables)
+          - IPsec/xfrm: ESP4, ESP6, AH (dirtyfrag PoC)
+          - AF_RXRPC protocol (dirtyfrag PoC)
+          - AF_ALG crypto with AEAD (copy-fail / CVE-2026-31431)
+          - io_uring subsystem
+          - SCTP, DCCP, TIPC, L2TP, MPLS network protocols
+          - MPTCP (multipath TCP)
+          - GRE, IPIP, SIT, IPv6 tunneling
+          - Traffic control / queueing disciplines
+          - FUSE, Btrfs, XFS, NFS, CIFS, 9P filesystems
+          - kTLS (kernel TLS)
+          - userfaultfd (race condition exploits)
+          - AppArmor, SELinux, Landlock LSMs
+          - Audit subsystem
+          - ftrace, kprobes, uprobes (debugging/tracing)
+          - USB/IP, cfg80211
+
+          **Pair with**: \`rootfs-24.04-*\` (Default Ubuntu Rootfs) or \`k8s-rootfs-*\`
+
+          Quick start:
+          \`\`\`
+          # Download and import
+          wget <release-url>/security-vmlinux.bin
+          sudo vmm kernel import security-vmlinux.bin --name security-kernel
+
+          # Use for standalone VM
+          sudo vmm create testvm --kernel security-kernel --ssh-key ~/.ssh/id_ed25519.pub
+
+          # Use for Kubernetes cluster
+          sudo vmm cluster create testcluster --kernel security-kernel --ssh-key ~/.ssh/id_ed25519.pub
+          \`\`\`
+
+          Built by GitHub Actions from \`scripts/build-kernel.sh --config-profile security\`."
+
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            security-vmlinux.bin
+
   build-k8s:
     runs-on: ubuntu-latest
     env:

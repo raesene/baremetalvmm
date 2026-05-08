@@ -132,6 +132,7 @@ VMM ships with two kernels and two root filesystems, each designed for a specifi
 $ vmm image list
 Kernels:
   - k8s-kernel             32.4 MB  Kubernetes cluster kernel (Linux 6.6 LTS, Cilium/BPF)
+  - security-kernel        85.2 MB  Security testing kernel (Linux 6.8, Ubuntu 24.04-like modules)
   - vmlinux.bin            72.7 MB  General-purpose VM kernel (Linux 6.1 LTS) (default)
 
 Root filesystems:
@@ -145,6 +146,7 @@ Root filesystems:
 |----------|--------|--------|---------|
 | Standalone VMs | `vmlinux.bin` (default) | `rootfs` (default) | `sudo vmm create myvm` |
 | Kubernetes clusters | `k8s-kernel` | `k8s-<version>` (auto-detected) | `sudo vmm cluster create mycluster` |
+| Security/vuln testing | `security-kernel` | `rootfs` (default) or `k8s-<version>` | `sudo vmm create testvm --kernel security-kernel` |
 
 ### Naming convention
 
@@ -154,6 +156,7 @@ Kernels and rootfs images follow a prefix-based naming convention so that `vmm i
 |--------|---------------|----------------|
 | *(default)* | General-purpose (Linux 6.1 LTS, all built-in) | Ubuntu 24.04 base (systemd, SSH, networking) |
 | `k8s-` | Kubernetes/Cilium (Linux 6.6 LTS, BPF JIT, VXLAN, modules) | Kubernetes (kubeadm/containerd pre-installed) |
+| `security-` | Security testing (Linux 6.8, broad Ubuntu 24.04-like modules) | *(not yet used)* |
 | `debug-` | Debug kernel (extra logging and debug options) | *(not yet used)* |
 | `minimal-` | Minimal kernel (reduced feature set) | Minimal image (reduced package set) |
 
@@ -185,81 +188,79 @@ sudo vmm kernel build --version 6.1 --name kernel-6.1
 
 ## Security Testing with Vulnerable Kernels
 
-The `build-kernel.sh` script includes the AF_ALG crypto subsystem (`CONFIG_CRYPTO_USER_API_AEAD` and dependencies), which is required for testing kernel vulnerabilities like CVE-2026-31431. Since the kernel build uses upstream kernel.org sources without the fix backported, any kernel built with this script from an unpatched series is suitable for vulnerability testing.
+VMM includes a **security testing kernel** designed for vulnerability research and PoC exploit testing. This kernel is built from the 6.8 series (matching Ubuntu 24.04) with broad subsystem coverage, so most kernel exploits that work on Ubuntu will work in VMM VMs.
 
-### Building a vulnerable kernel
+### The security kernel
 
-Build a kernel from a series that predates the fix for the vulnerability you're testing:
+The security kernel (`--config-profile security` in the build script) enables many kernel subsystems beyond what the default and k8s kernels provide:
+
+| Subsystem | Config options | Used by |
+|-----------|---------------|---------|
+| IPsec/xfrm | `INET_ESP`, `INET6_ESP`, `XFRM` | dirtyfrag |
+| AF_RXRPC | `AF_RXRPC` | dirtyfrag |
+| AF_ALG crypto | `CRYPTO_USER_API_AEAD`, `CRYPTO_AUTHENC` | CVE-2026-31431 (copy-fail) |
+| io_uring | `IO_URING` | Various io_uring CVEs |
+| SCTP/DCCP/TIPC | `IP_SCTP`, `IP_DCCP`, `TIPC` | Network protocol CVEs |
+| userfaultfd | `USERFAULTFD` | Race condition exploits |
+| Tunneling | `GRE`, `IPIP`, `IPV6_SIT`, `L2TP` | Network stack exploits |
+| FUSE/Btrfs/XFS | `FUSE_FS`, `BTRFS_FS`, `XFS_FS` | Filesystem CVEs |
+| Traffic control | `NET_SCHED`, `NET_SCH_*`, `NET_CLS_*` | TC/qdisc exploits |
+| LSMs | `SECURITY_APPARMOR`, `SECURITY_SELINUX` | Security testing |
+| Tracing | `FTRACE`, `KPROBES`, `UPROBE_EVENTS` | Exploit development |
+
+The security kernel is available as a pre-built download from GitHub releases (tagged `security-kernel-*`), or you can build it locally.
+
+### Getting the security kernel
+
+**Option 1: Download from GitHub releases**
 
 ```bash
-# Standalone VM testing (6.1 LTS)
-sudo vmm kernel build --version 6.1 --name vuln-kernel-6.1
-
-# Kubernetes cluster testing (6.6 LTS)
-sudo vmm kernel build --version 6.6 --name vuln-k8s-kernel
+# Download the latest security kernel release
+wget https://github.com/raesene/baremetalvmm/releases/download/security-kernel-<version>/security-vmlinux.bin
+sudo vmm kernel import security-vmlinux.bin --name security-kernel
 ```
 
-### Standalone VM testing
-
-Create a VM with the vulnerable kernel:
+**Option 2: Build locally**
 
 ```bash
-sudo vmm create vuln-test --cpus 2 --memory 2048 --kernel vuln-kernel-6.1 --ssh-key ~/.ssh/id_ed25519.pub
+sudo vmm kernel build --version 6.8 --name security-kernel
+# Note: the CLI build command uses the default profile. To use the security profile,
+# run the script directly:
+sudo bash scripts/build-kernel.sh --version 6.8 --name security-kernel --config-profile security
+```
+
+### Using the security kernel
+
+```bash
+# Standalone VM
+sudo vmm create vuln-test --cpus 2 --memory 2048 --kernel security-kernel --ssh-key ~/.ssh/id_ed25519.pub
 sudo vmm start vuln-test
-```
 
-Verify the kernel is vulnerable by checking that the AF_ALG AEAD crypto interface is available:
-
-```bash
-sudo vmm ssh vuln-test -- "uname -r"
-sudo vmm ssh vuln-test -- "zcat /proc/config.gz | grep CRYPTO_USER_API_AEAD"
-# Should show: CONFIG_CRYPTO_USER_API_AEAD=y
-```
-
-For PoCs that need Python, install it inside the VM:
-
-```bash
-sudo vmm ssh vuln-test -- "apt-get update -qq && apt-get install -y python3"
-```
-
-You can then test the AF_ALG socket from Python:
-
-```python
-import socket
-s = socket.socket(socket.AF_ALG, socket.SOCK_SEQPACKET, 0)
-s.bind(("aead", "gcm(aes)"))
-print("AF_ALG AEAD: available")
-s.close()
-```
-
-### Kubernetes cluster testing
-
-Create a cluster using the vulnerable kernel:
-
-```bash
+# Kubernetes cluster (for container escape PoCs)
 sudo vmm cluster create vuln-cluster --workers 1 --cpus 2 --memory 4096 \
-    --kernel vuln-k8s-kernel --ssh-key ~/.ssh/id_ed25519.pub
+    --kernel security-kernel --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
-Verify the kernel across all nodes:
+### Verifying kernel capabilities
+
+Check that the required subsystems are available inside the VM:
 
 ```bash
-sudo vmm ssh vuln-cluster-control-plane -- \
-    "KUBECONFIG=/etc/kubernetes/admin.conf kubectl get nodes -o wide"
-# KERNEL-VERSION column should show the unpatched version (e.g. 6.6.137)
+# Check kernel version
+sudo vmm ssh vuln-test -- "uname -r"
 
-sudo vmm ssh vuln-cluster-control-plane -- \
-    "zcat /proc/config.gz | grep CRYPTO_USER_API_AEAD"
-# Should show: CONFIG_CRYPTO_USER_API_AEAD=y
+# Check specific config options
+sudo vmm ssh vuln-test -- "zcat /proc/config.gz | grep -E 'INET_ESP|AF_RXRPC|IO_URING|CRYPTO_USER_API_AEAD'"
+
+# Test AF_ALG (for copy-fail / CVE-2026-31431)
+sudo vmm ssh vuln-test -- "python3 -c \"import socket; s = socket.socket(socket.AF_ALG, socket.SOCK_SEQPACKET, 0); s.bind(('aead', 'gcm(aes)')); print('AF_ALG AEAD: available'); s.close()\""
 ```
 
-### Verifying a kernel is vulnerable
+### Default vs security kernel
 
-A kernel is suitable for CVE-2026-31431 testing if all of these are true:
+The **default kernel** (6.1 LTS) and **k8s kernel** (6.6 LTS) include only the subsystems needed for running VMs and Kubernetes. They have a smaller attack surface and are what you'd use for normal development work.
 
-1. **Kernel version predates the fix** — the fix is mainline commit `a664bf3d603d`. Check your kernel version against the patched releases for your series.
-2. **`CONFIG_CRYPTO_USER_API_AEAD=y`** — check with `zcat /proc/config.gz | grep CRYPTO_USER_API_AEAD`.
-3. **`gcm(aes)` AEAD algorithm loads** — check with `grep gcm /proc/crypto` after first use, or test with the Python snippet above.
+The **security kernel** (6.8) deliberately enables a broad set of subsystems to match what's available on a stock Ubuntu 24.04 installation, making it suitable for reproducing PoC exploits that target those subsystems.
 
 ### Cleanup
 
@@ -994,10 +995,16 @@ The kernel must be:
 VMM includes a build script that compiles Firecracker-compatible kernels from source:
 
 ```bash
-# Build a 6.1 LTS kernel
+# Build a 6.1 LTS kernel (default profile)
 sudo vmm kernel build --version 6.1 --name kernel-6.1
 
-# Supported versions: 5.10, 6.1, 6.6 (all LTS kernels)
+# Supported versions: 5.10, 6.1, 6.6, 6.8
+```
+
+For the security testing profile with broad subsystem coverage, use the build script directly:
+
+```bash
+sudo bash scripts/build-kernel.sh --version 6.8 --name security-kernel --config-profile security
 ```
 
 #### Build Requirements
