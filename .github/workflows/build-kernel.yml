@@ -108,12 +108,12 @@ jobs:
   build-security:
     runs-on: ubuntu-latest
     env:
-      KERNEL_SERIES: '6.8'
+      KERNEL_SERIES: '6.12'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Query kernel.org for latest 6.8 patch version
+      - name: Query kernel.org for latest 6.12 patch version
         id: kernel_version
         run: |
           LATEST=$(curl -fsSL https://www.kernel.org/releases.json | \
@@ -164,12 +164,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="security-kernel-${{ steps.kernel_version.outputs.version }}"
-          TITLE="Security Testing Kernel ${{ steps.kernel_version.outputs.version }} (Linux ${KERNEL_SERIES}, Ubuntu 24.04-like)"
+          TITLE="Security Testing Kernel ${{ steps.kernel_version.outputs.version }} (Linux ${KERNEL_SERIES} LTS, broad module coverage)"
           NOTES="Firecracker-compatible Linux kernel ${{ steps.kernel_version.outputs.version }} for security testing and vulnerability research.
 
           **Use this kernel for PoC exploit testing** where you need Ubuntu 24.04-like module availability. NOT for production use.
 
-          Built from the ${KERNEL_SERIES} series (matching Ubuntu 24.04) with broad subsystem coverage:
+          Built from the ${KERNEL_SERIES} LTS series with broad subsystem coverage for vulnerability research:
           - All features from the default kernel (Docker, cgroups, namespaces, iptables)
           - IPsec/xfrm: ESP4, ESP6, AH (dirtyfrag PoC)
           - AF_RXRPC protocol (dirtyfrag PoC)

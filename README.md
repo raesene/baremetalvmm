@@ -132,7 +132,7 @@ VMM ships with two kernels and two root filesystems, each designed for a specifi
 $ vmm image list
 Kernels:
   - k8s-kernel             32.4 MB  Kubernetes cluster kernel (Linux 6.6 LTS, Cilium/BPF)
-  - security-kernel        85.2 MB  Security testing kernel (Linux 6.8, Ubuntu 24.04-like modules)
+  - security-kernel        85.2 MB  Security testing kernel (Linux 6.12 LTS, broad module coverage)
   - vmlinux.bin            72.7 MB  General-purpose VM kernel (Linux 6.1 LTS) (default)
 
 Root filesystems:
@@ -156,7 +156,7 @@ Kernels and rootfs images follow a prefix-based naming convention so that `vmm i
 |--------|---------------|----------------|
 | *(default)* | General-purpose (Linux 6.1 LTS, all built-in) | Ubuntu 24.04 base (systemd, SSH, networking) |
 | `k8s-` | Kubernetes/Cilium (Linux 6.6 LTS, BPF JIT, VXLAN, modules) | Kubernetes (kubeadm/containerd pre-installed) |
-| `security-` | Security testing (Linux 6.8, broad Ubuntu 24.04-like modules) | *(not yet used)* |
+| `security-` | Security testing (Linux 6.12 LTS, broad module coverage) | *(not yet used)* |
 | `debug-` | Debug kernel (extra logging and debug options) | *(not yet used)* |
 | `minimal-` | Minimal kernel (reduced feature set) | Minimal image (reduced package set) |
 
@@ -188,7 +188,7 @@ sudo vmm kernel build --version 6.1 --name kernel-6.1
 
 ## Security Testing with Vulnerable Kernels
 
-VMM includes a **security testing kernel** designed for vulnerability research and PoC exploit testing. This kernel is built from the 6.8 series (matching Ubuntu 24.04) with broad subsystem coverage, so most kernel exploits that work on Ubuntu will work in VMM VMs.
+VMM includes a **security testing kernel** designed for vulnerability research and PoC exploit testing. This kernel is built from the 6.12 LTS series with broad subsystem coverage, so most kernel exploits that work on Ubuntu will work in VMM VMs.
 
 ### The security kernel
 
@@ -226,7 +226,7 @@ sudo vmm kernel import security-vmlinux.bin --name security-kernel
 sudo vmm kernel build --version 6.8 --name security-kernel
 # Note: the CLI build command uses the default profile. To use the security profile,
 # run the script directly:
-sudo bash scripts/build-kernel.sh --version 6.8 --name security-kernel --config-profile security
+sudo bash scripts/build-kernel.sh --version 6.12 --name security-kernel --config-profile security
 ```
 
 ### Using the security kernel
@@ -260,7 +260,7 @@ sudo vmm ssh vuln-test -- "python3 -c \"import socket; s = socket.socket(socket.
 
 The **default kernel** (6.1 LTS) and **k8s kernel** (6.6 LTS) include only the subsystems needed for running VMs and Kubernetes. They have a smaller attack surface and are what you'd use for normal development work.
 
-The **security kernel** (6.8) deliberately enables a broad set of subsystems to match what's available on a stock Ubuntu 24.04 installation, making it suitable for reproducing PoC exploits that target those subsystems.
+The **security kernel** (6.12 LTS) deliberately enables a broad set of subsystems to match what's available on a stock Ubuntu 24.04 installation, making it suitable for reproducing PoC exploits that target those subsystems.
 
 ### Cleanup
 
@@ -998,13 +998,13 @@ VMM includes a build script that compiles Firecracker-compatible kernels from so
 # Build a 6.1 LTS kernel (default profile)
 sudo vmm kernel build --version 6.1 --name kernel-6.1
 
-# Supported versions: 5.10, 6.1, 6.6, 6.8
+# Supported versions: 5.10, 6.1, 6.6, 6.12
 ```
 
 For the security testing profile with broad subsystem coverage, use the build script directly:
 
 ```bash
-sudo bash scripts/build-kernel.sh --version 6.8 --name security-kernel --config-profile security
+sudo bash scripts/build-kernel.sh --version 6.12 --name security-kernel --config-profile security
 ```
 
 #### Build Requirements
