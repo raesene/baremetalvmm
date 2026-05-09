@@ -306,6 +306,51 @@ else
     echo "Kubernetes kernel already exists at $K8S_KERNEL_PATH"
 fi
 
+# Download security testing kernel from GitHub releases if not present
+SEC_KERNEL_PATH="$DATA_DIR/images/kernels/security-kernel"
+if [ ! -f "$SEC_KERNEL_PATH" ]; then
+    echo "Downloading pre-built security testing kernel from GitHub releases..."
+    SEC_KERNEL_URL=""
+
+    # Reuse RELEASES_JSON from above if available, otherwise fetch it
+    if [ -z "$RELEASES_JSON" ]; then
+        API_URL="https://api.github.com/repos/${GITHUB_REPO}/releases"
+        if command -v curl &> /dev/null; then
+            RELEASES_JSON=$(curl -fsSL "$API_URL" 2>/dev/null)
+        elif command -v wget &> /dev/null; then
+            RELEASES_JSON=$(wget -qO- "$API_URL" 2>/dev/null)
+        fi
+    fi
+
+    if [ -n "$RELEASES_JSON" ]; then
+        if command -v jq &> /dev/null; then
+            SEC_KERNEL_URL=$(echo "$RELEASES_JSON" | jq -r '
+                [.[] | select(.tag_name | startswith("security-kernel-"))] |
+                first |
+                .assets[] | select(.name == "security-vmlinux.bin") |
+                .browser_download_url' 2>/dev/null)
+        else
+            SEC_KERNEL_URL=$(echo "$RELEASES_JSON" | \
+                grep -A 50 '"tag_name": "security-kernel-' | \
+                grep '"browser_download_url".*security-vmlinux.bin' | \
+                head -1 | \
+                sed -E 's/.*"browser_download_url": "([^"]+)".*/\1/')
+        fi
+    fi
+
+    if [ -n "$SEC_KERNEL_URL" ] && [ "$SEC_KERNEL_URL" != "null" ]; then
+        if download_file "$SEC_KERNEL_URL" "$SEC_KERNEL_PATH"; then
+            echo "Security testing kernel downloaded to $SEC_KERNEL_PATH"
+        else
+            echo "Warning: Failed to download security testing kernel. Build one with: sudo vmm kernel build --version 6.12 --name security-kernel"
+        fi
+    else
+        echo "No security testing kernel release found. Build one with: sudo vmm kernel build --version 6.12 --name security-kernel"
+    fi
+else
+    echo "Security testing kernel already exists at $SEC_KERNEL_PATH"
+fi
+
 # Download rootfs from GitHub releases if not present
 ROOTFS_PATH="$DATA_DIR/images/rootfs/rootfs.ext4"
 if [ ! -f "$ROOTFS_PATH" ]; then
