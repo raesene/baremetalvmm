@@ -8,19 +8,27 @@ INSTALL_DIR="/usr/local/bin"
 DATA_DIR="/var/lib/vmm"
 GITHUB_REPO="raesene/baremetalvmm"
 
-# Get the latest version from GitHub API, fallback to default
+# Get the latest binary release version from GitHub API, fallback to default.
+# Only considers v*-tagged releases (skips kernel-*, rootfs-*, etc.).
 get_latest_version() {
     local version=""
-    local api_url="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
+    local api_url="https://api.github.com/repos/${GITHUB_REPO}/releases"
+    local releases_json=""
 
-    # Try to fetch the latest release version
     if command -v curl &> /dev/null; then
-        version=$(curl -fsSL "$api_url" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"v?([^"]+)".*/\1/')
+        releases_json=$(curl -fsSL "$api_url" 2>/dev/null)
     elif command -v wget &> /dev/null; then
-        version=$(wget -qO- "$api_url" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"v?([^"]+)".*/\1/')
+        releases_json=$(wget -qO- "$api_url" 2>/dev/null)
     fi
 
-    # Fallback to default version if API call fails
+    if [ -n "$releases_json" ]; then
+        if command -v jq &> /dev/null; then
+            version=$(echo "$releases_json" | jq -r '[.[] | select(.tag_name | startswith("v"))] | first | .tag_name // empty' 2>/dev/null | sed 's/^v//')
+        else
+            version=$(echo "$releases_json" | grep '"tag_name": "v' | head -1 | sed -E 's/.*"v([^"]+)".*/\1/')
+        fi
+    fi
+
     if [ -z "$version" ]; then
         echo "0.1.0"
     else
