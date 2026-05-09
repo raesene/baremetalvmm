@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"nhooyr.io/websocket"
 
 	"github.com/raesene/baremetalvmm/internal/firecracker"
@@ -77,7 +79,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	signer, err := findSSHKey()
+	authMethods, err := findSSHAuth()
 	if err != nil {
 		http.Error(w, "No SSH key available: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -96,7 +98,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 
 	sshConfig := &ssh.ClientConfig{
 		User:            "root",
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		Auth:            authMethods,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         5 * time.Second,
 	}
@@ -219,9 +221,20 @@ func writeWSError(conn *websocket.Conn, ctx context.Context, msg string) {
 	conn.Write(ctx, websocket.MessageBinary, []byte("\r\n"+msg+"\r\n"))
 }
 
-func findSSHKey() (ssh.Signer, error) {
-	var homeDir string
+func findSSHAuth() ([]ssh.AuthMethod, error) {
+	var methods []ssh.AuthMethod
 
+	// Try ssh-agent first (handles passphrase-protected keys)
+	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
+		conn, err := net.Dial("unix", sock)
+		if err == nil {
+			agentClient := agent.NewClient(conn)
+			methods = append(methods, ssh.PublicKeysCallback(agentClient.Signers))
+		}
+	}
+
+	// Also try reading key files directly (unencrypted keys)
+	var homeDir string
 	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
 		if sudoUser == "root" {
 			homeDir = "/root"
@@ -229,37 +242,27 @@ func findSSHKey() (ssh.Signer, error) {
 			homeDir = filepath.Join("/home", sudoUser)
 		}
 	} else {
-		var err error
-		homeDir, err = os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("cannot determine home directory: %w", err)
+		homeDir, _ = os.UserHomeDir()
+	}
+
+	if homeDir != "" {
+		for _, keyFile := range []string{"id_ed25519", "id_rsa", "id_ecdsa"} {
+			data, err := os.ReadFile(filepath.Join(homeDir, ".ssh", keyFile))
+			if err != nil {
+				continue
+			}
+			signer, err := ssh.ParsePrivateKey(data)
+			if err != nil {
+				continue
+			}
+			methods = append(methods, ssh.PublicKeys(signer))
+			break
 		}
 	}
 
-	keyFiles := []string{
-		"id_ed25519",
-		"id_rsa",
-		"id_ecdsa",
+	if len(methods) == 0 {
+		return nil, fmt.Errorf("no SSH agent or unencrypted key found")
 	}
-
-	var lastErr error
-	for _, keyFile := range keyFiles {
-		keyPath := filepath.Join(homeDir, ".ssh", keyFile)
-		data, err := os.ReadFile(keyPath)
-		if err != nil {
-			continue
-		}
-		signer, err := ssh.ParsePrivateKey(data)
-		if err != nil {
-			lastErr = fmt.Errorf("parsing %s: %w", keyPath, err)
-			continue
-		}
-		return signer, nil
-	}
-
-	if lastErr != nil {
-		return nil, lastErr
-	}
-	return nil, fmt.Errorf("no SSH private key found in %s/.ssh/", homeDir)
+	return methods, nil
 }
 
