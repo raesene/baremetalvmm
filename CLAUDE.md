@@ -27,7 +27,7 @@ VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker
 - `internal/image/` — Kernel/rootfs download, Docker import, snapshots
 - `internal/mount/` — Host directory mount as ext4 block devices
 - `internal/cluster/` — Kubernetes cluster management (kubeadm + Cilium)
-- `internal/web/` — Web UI handlers, auth, SSE
+- `internal/web/` — Web UI handlers, auth, SSE, WebSocket terminal
 - `web/` — Embedded templates and static assets (`go:embed`)
 
 Data directory: `/var/lib/vmm` (vms, images, kernels, logs, sockets, mounts, clusters)
@@ -97,9 +97,10 @@ Requirements: root access, KVM (`/dev/kvm`), Firecracker in PATH.
 
 ## Web UI Constraints
 
-- **CSP**: `script-src 'self' https://cdn.jsdelivr.net` — no inline `<script>` tags or inline event handlers (`onclick`, etc.). All JS must go in `web/static/app.js` using `addEventListener`/event delegation.
+- **CSP**: `script-src 'self' https://cdn.jsdelivr.net` — no inline `<script>` tags or inline event handlers (`onclick`, etc.). All JS must go in `web/static/` files using `addEventListener`/event delegation. Use `data-` attributes to pass server data to JS.
 - Auth via `VMM_WEB_PASSWORD` env var, session cookies, or Bearer token for API.
 - Templates use `{{template "layout.html" .}}` with `{{define "content"}}` blocks.
+- **Web Terminal**: `handlers_terminal.go` provides WebSocket-to-SSH bridge for in-browser terminal access. Uses xterm.js from CDN, `nhooyr.io/websocket`, and `golang.org/x/crypto/ssh`. Standalone template (no layout) at `vm_terminal.html`.
 
 ## GitHub Release Tags
 

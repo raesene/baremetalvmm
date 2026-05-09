@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.VM.Name}} - Terminal</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css" rel="stylesheet">
+    <style>
+        body { margin: 0; overflow: hidden; background: #1a1a2e; }
+        #terminal-container { width: 100vw; height: calc(100vh - 48px); }
+        #terminal-container .xterm { height: 100%; padding: 4px; }
+        .terminal-bar { height: 48px; background: #111827; display: flex; align-items: center; padding: 0 16px; }
+        .terminal-bar a, .terminal-bar span { color: #d1d5db; font-size: 14px; text-decoration: none; }
+        .terminal-bar a:hover { color: #fff; }
+        .terminal-status { width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
+        .status-connecting { background: #fbbf24; }
+        .status-connected { background: #34d399; }
+        .status-disconnected { background: #f87171; }
+    </style>
+</head>
+<body>
+    <div class="terminal-bar">
+        <a href="/vms/{{.VM.Name}}" style="margin-right: 16px;">&larr; Back</a>
+        <span id="terminal-status" class="terminal-status status-connecting"></span>
+        <span id="terminal-status-text">Connecting to {{.VM.Name}} ({{.VM.IPAddress}})...</span>
+    </div>
+    <div id="terminal-container" data-vm-name="{{.VM.Name}}"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js"></script>
+    <script src="/static/terminal.js"></script>
+</body>
+</html>

@@ -611,10 +611,19 @@ Then open `http://<host>:8080` in a browser and log in with username `admin` and
 
 - **Dashboard** - Overview of all VMs and clusters with resource usage stats
 - **VM Management** - Create, start, stop, and delete VMs from the browser
+- **Web Terminal** - Browser-based SSH terminal for running VMs (xterm.js + WebSocket)
 - **Cluster Management** - Create and delete Kubernetes clusters
 - **Live Status** - VM status updates via Server-Sent Events (no page refresh needed)
 - **JSON API** - REST API at `/api/v1/` for scripting and automation
 - **Authentication** - Session-based login with rate-limited password attempts
+
+### Web Terminal
+
+Running VMs have a **Terminal** button on their detail page that opens a full-screen browser terminal. The terminal connects via WebSocket to an SSH session on the VM, giving you interactive shell access without needing a local SSH client.
+
+- Uses the host's SSH private key (auto-detected from `~/.ssh/`, same as `vmm ssh`)
+- Supports terminal resize, scrollback, and clickable links
+- Requires the VM to be in "running" state with an SSH key configured
 
 ### JSON API
 

@@ -86,7 +86,7 @@ func (s *Server) loadTemplates() error {
 	}
 
 	// Standalone templates (no layout)
-	for _, name := range []string{"login.html", "vm_row.html"} {
+	for _, name := range []string{"login.html", "vm_row.html", "vm_terminal.html"} {
 		t, err := template.New("").Funcs(funcMap).ParseFS(tmplFS, name)
 		if err != nil {
 			return fmt.Errorf("parsing %s: %w", name, err)
@@ -132,6 +132,9 @@ func (s *Server) setupRouter() {
 		// SSE events
 		r.Get("/events", s.handleSSE)
 
+		// WebSocket terminal
+		r.Get("/ws/vms/{name}/terminal", s.handleTerminalWS)
+
 		// API key page
 		r.Get("/api-key", s.handleAPIKeyPage)
 
@@ -142,6 +145,7 @@ func (s *Server) setupRouter() {
 		r.Get("/vms/{name}", s.handleVMDetail)
 		r.Post("/vms/{name}/start", s.handleVMStart)
 		r.Post("/vms/{name}/stop", s.handleVMStop)
+		r.Get("/vms/{name}/terminal", s.handleTerminalPage)
 		r.Delete("/vms/{name}", s.handleVMDelete)
 		r.Post("/vms/{name}/delete", s.handleVMDeletePost)
 
@@ -186,7 +190,7 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; connect-src 'self'")
 		next.ServeHTTP(w, r)
 	})
 }

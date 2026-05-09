@@ -10,6 +10,7 @@
     </div>
     <div class="flex items-center space-x-3">
         {{if eq (printf "%s" .VM.State) "running"}}
+        <a href="/vms/{{.VM.Name}}/terminal" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 font-medium text-sm inline-block">Terminal</a>
         <form method="POST" action="/vms/{{.VM.Name}}/stop">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <button type="submit" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600 font-medium text-sm">Stop</button>
