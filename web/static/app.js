@@ -34,6 +34,28 @@ document.body.addEventListener('htmx:configRequest', function(event) {
     });
 })();
 
+// Confirm dialogs for data-confirm buttons
+document.addEventListener('submit', function(e) {
+    var btn = e.submitter || e.target.querySelector('[data-confirm]');
+    if (btn && btn.getAttribute('data-confirm')) {
+        if (!confirm(btn.getAttribute('data-confirm'))) {
+            e.preventDefault();
+        }
+    }
+});
+
+// Show spinner on download buttons
+document.addEventListener('submit', function(e) {
+    if (!e.target.classList.contains('download-form')) return;
+    var btn = e.target.querySelector('.download-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Downloading...';
+        btn.classList.remove('bg-green-600', 'hover:bg-green-700');
+        btn.classList.add('bg-gray-400', 'cursor-wait');
+    }
+});
+
 // Copy API key to clipboard
 function copyKey() {
     var key = document.getElementById('api-key').textContent;

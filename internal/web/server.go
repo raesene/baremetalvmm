@@ -59,6 +59,9 @@ func (s *Server) loadTemplates() error {
 
 	funcMap := template.FuncMap{
 		"join": strings.Join,
+		"divFloat": func(a int64, b int64) float64 {
+			return float64(a) / float64(b)
+		},
 	}
 
 	s.templates = make(map[string]*template.Template)
@@ -70,6 +73,7 @@ func (s *Server) loadTemplates() error {
 		"vm_detail.html",
 		"clusters.html",
 		"cluster_create.html",
+		"images.html",
 		"api_key.html",
 	}
 
@@ -141,6 +145,13 @@ func (s *Server) setupRouter() {
 		r.Delete("/vms/{name}", s.handleVMDelete)
 		r.Post("/vms/{name}/delete", s.handleVMDeletePost)
 
+		// Image management HTML routes
+		r.Get("/images", s.handleImages)
+		r.Post("/images/kernels/delete", s.handleKernelDelete)
+		r.Post("/images/rootfs/delete", s.handleRootfsDelete)
+		r.Post("/images/kernels/download", s.handleKernelDownload)
+		r.Post("/images/rootfs/download", s.handleRootfsDownload)
+
 		// Cluster HTML routes
 		r.Get("/clusters", s.handleClusterList)
 		r.Get("/clusters/new", s.handleClusterCreateForm)
@@ -160,6 +171,10 @@ func (s *Server) setupRouter() {
 			r.Get("/clusters", s.handleAPIClusterList)
 			r.Post("/clusters", s.handleAPIClusterCreate)
 			r.Delete("/clusters/{name}", s.handleAPIClusterDelete)
+
+			r.Get("/images", s.handleAPIImageList)
+			r.Delete("/images/kernels", s.handleAPIKernelDelete)
+			r.Delete("/images/rootfs", s.handleAPIRootfsDelete)
 		})
 	})
 

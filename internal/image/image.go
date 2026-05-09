@@ -1122,6 +1122,119 @@ type RootfsInfo struct {
 	Description string    // Human-readable description of rootfs purpose
 }
 
+// AvailableRelease represents a downloadable asset from GitHub releases
+type AvailableRelease struct {
+	Tag         string // e.g. "kernel-6.1.172"
+	AssetName   string // e.g. "vmlinux.bin"
+	DownloadURL string
+	LocalName   string // name it will be saved as locally
+	Type        string // "kernel" or "rootfs"
+	Description string
+	Downloaded  bool // whether already present locally
+}
+
+// ListAvailableReleases queries GitHub for all downloadable kernel and rootfs releases
+func (m *Manager) ListAvailableReleases() ([]AvailableRelease, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get(GitHubAPI)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query GitHub: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub API returned %s", resp.Status)
+	}
+
+	var releases []ghRelease
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return nil, fmt.Errorf("failed to parse GitHub response: %w", err)
+	}
+
+	type releaseSpec struct {
+		prefix    string
+		asset     string
+		localName string
+		typ       string
+		descFn    func(string) string
+	}
+
+	specs := []releaseSpec{
+		{"kernel-", "vmlinux.bin", DefaultKernelName, "kernel",
+			func(tag string) string { return "General-purpose VM kernel (" + tag + ")" }},
+		{"k8s-kernel-", "k8s-vmlinux.bin", "k8s-kernel", "kernel",
+			func(tag string) string { return "Kubernetes cluster kernel (" + tag + ", Cilium/BPF)" }},
+		{"security-kernel-", "security-vmlinux.bin", "security-kernel", "kernel",
+			func(tag string) string { return "Security testing kernel (" + tag + ", broad module coverage)" }},
+		{"rootfs-", "rootfs.ext4.gz", "rootfs", "rootfs",
+			func(tag string) string { return "Ubuntu 24.04 base rootfs (" + tag + ")" }},
+		{"k8s-rootfs-", "k8s-rootfs.ext4.gz", "", "rootfs",
+			func(tag string) string { return "Kubernetes rootfs (" + tag + ", kubeadm/containerd)" }},
+	}
+
+	seen := make(map[string]bool)
+	var result []AvailableRelease
+
+	for _, rel := range releases {
+		for _, spec := range specs {
+			if !strings.HasPrefix(rel.TagName, spec.prefix) {
+				continue
+			}
+			if seen[spec.prefix] {
+				continue
+			}
+			for _, asset := range rel.Assets {
+				if asset.Name != spec.asset {
+					continue
+				}
+				localName := spec.localName
+				if localName == "" && spec.prefix == "k8s-rootfs-" {
+					version := strings.TrimPrefix(rel.TagName, "k8s-rootfs-")
+					localName = "k8s-" + version
+				}
+
+				downloaded := false
+				if spec.typ == "kernel" {
+					downloaded = m.KernelExists(localName)
+				} else {
+					downloaded = m.ImageExists(localName)
+				}
+
+				result = append(result, AvailableRelease{
+					Tag:         rel.TagName,
+					AssetName:   asset.Name,
+					DownloadURL: asset.BrowserDownloadURL,
+					LocalName:   localName,
+					Type:        spec.typ,
+					Description: spec.descFn(rel.TagName),
+					Downloaded:  downloaded,
+				})
+				seen[spec.prefix] = true
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// DownloadKernelFromRelease downloads a kernel from a GitHub release URL
+func (m *Manager) DownloadKernelFromRelease(url, localName string) error {
+	destPath := filepath.Join(m.KernelDir, localName)
+	if err := os.MkdirAll(m.KernelDir, 0755); err != nil {
+		return fmt.Errorf("failed to create kernel directory: %w", err)
+	}
+	return m.downloadFile(url, destPath)
+}
+
+// DownloadRootfsFromRelease downloads a rootfs from a GitHub release URL (gzipped)
+func (m *Manager) DownloadRootfsFromRelease(url, localName string) error {
+	destPath := filepath.Join(m.RootfsDir, localName+".ext4")
+	if err := os.MkdirAll(m.RootfsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create rootfs directory: %w", err)
+	}
+	return m.downloadAndDecompressGzip(url, destPath)
+}
+
 // describeKernel returns a human-readable description based on naming convention.
 // Naming prefixes: k8s- (Kubernetes/Cilium), debug- (debug options), minimal- (stripped-down).
 func describeKernel(name string, isDefault bool) string {
