@@ -740,15 +740,17 @@ IP addresses are allocated from 172.16.0.2 upward when a VM is started (not when
 └── state/            # Runtime state
 ```
 
-## Auto-Start on Boot
+## Systemd Services
 
-To enable VMs to automatically start after a host reboot, first install the systemd service:
+### Auto-Start VMs on Boot
+
+To enable VMs to automatically start after a host reboot, install the systemd services:
 
 ```bash
-# Install the systemd service (if not already installed)
+# Install systemd services (vmm + vmm-web if binary is present)
 sudo ./scripts/install-service.sh
 
-# Enable the service
+# Enable VM auto-start
 sudo systemctl enable vmm
 
 # Check status
@@ -756,6 +758,27 @@ sudo systemctl status vmm
 ```
 
 VMs with `auto_start: true` (the default) will be started automatically.
+
+### Running vmm-web as a Service
+
+The install script also sets up a systemd service for the web UI. The password is stored in `/etc/vmm-web/environment` (created automatically with mode 600):
+
+```bash
+# Set the web UI password
+sudo nano /etc/vmm-web/environment
+# Change: VMM_WEB_PASSWORD=changeme
+
+# Enable and start the web UI
+sudo systemctl enable vmm-web
+sudo systemctl start vmm-web
+
+# Check status
+sudo systemctl status vmm-web
+```
+
+The service listens on `0.0.0.0:8080` by default. To change the listen address, edit the `ExecStart` line in `/etc/systemd/system/vmm-web.service` and run `sudo systemctl daemon-reload`.
+
+The vmm-web service is ordered after `vmm.service`, so VMs will be started before the web UI comes up.
 
 ## SSH Key Injection
 
@@ -1179,7 +1202,8 @@ go test ./...
 │   ├── install-service.sh    # Systemd service installation (optional)
 │   ├── build-kernel.sh       # Custom kernel build script
 │   ├── build-rootfs.sh       # Custom rootfs build script
-│   └── vmm.service           # Systemd service unit file
+│   ├── vmm.service           # Systemd service for VM auto-start
+│   └── vmm-web.service       # Systemd service for web UI
 └── go.mod                    # Go modules
 ```
 

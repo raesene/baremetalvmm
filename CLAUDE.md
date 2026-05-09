@@ -29,6 +29,8 @@ VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker
 - `internal/cluster/` — Kubernetes cluster management (kubeadm + Cilium)
 - `internal/web/` — Web UI handlers, auth, SSE, WebSocket terminal
 - `web/` — Embedded templates and static assets (`go:embed`)
+- `scripts/vmm.service` — Systemd unit for VM auto-start on boot
+- `scripts/vmm-web.service` — Systemd unit for web UI (reads password from `/etc/vmm-web/environment`)
 
 Data directory: `/var/lib/vmm` (vms, images, kernels, logs, sockets, mounts, clusters)
 

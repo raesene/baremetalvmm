@@ -1,0 +1,14 @@
+[Unit]
+Description=VMM Web UI
+After=network.target vmm.service
+Wants=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/vmm-web/environment
+ExecStart=/usr/local/bin/vmm-web --listen 0.0.0.0:8080
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
