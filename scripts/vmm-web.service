@@ -6,7 +6,7 @@ Wants=network.target
 [Service]
 Type=simple
 EnvironmentFile=/etc/vmm-web/environment
-ExecStart=/usr/local/bin/vmm-web --listen 0.0.0.0:8080
+ExecStart=/usr/local/bin/vmm-web --listen 127.0.0.1:8080
 Restart=on-failure
 RestartSec=5
 
