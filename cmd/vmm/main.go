@@ -16,6 +16,7 @@ import (
 	"github.com/raesene/baremetalvmm/internal/image"
 	"github.com/raesene/baremetalvmm/internal/mount"
 	"github.com/raesene/baremetalvmm/internal/network"
+	"github.com/raesene/baremetalvmm/internal/sshkey"
 	"github.com/raesene/baremetalvmm/internal/vm"
 	"github.com/spf13/cobra"
 )
@@ -431,12 +432,17 @@ func startCmd() *cobra.Command {
 			// Set kernel path based on custom kernel or default
 			existingVM.KernelPath = imgMgr.GetKernelPath(existingVM.Kernel)
 
-			// Inject SSH key if configured
-			if existingVM.SSHPublicKey != "" {
-				fmt.Println("Injecting SSH public key...")
-				if err := image.InjectSSHKey(existingVM.RootfsPath, existingVM.SSHPublicKey); err != nil {
-					return fmt.Errorf("failed to inject SSH key: %w", err)
-				}
+			// Inject SSH keys (vmm managed key + user key if configured)
+			fmt.Println("Injecting SSH public key...")
+			if err := sshkey.EnsureKeyPair(paths.SSH); err != nil {
+				return fmt.Errorf("failed to ensure vmm SSH key: %w", err)
+			}
+			authorizedKeys, err := sshkey.BuildAuthorizedKeys(paths.SSH, existingVM.SSHPublicKey)
+			if err != nil {
+				return fmt.Errorf("failed to build authorized keys: %w", err)
+			}
+			if err := image.InjectSSHKey(existingVM.RootfsPath, authorizedKeys); err != nil {
+				return fmt.Errorf("failed to inject SSH key: %w", err)
 			}
 
 			// Inject DNS configuration
@@ -658,29 +664,10 @@ func sshCmd() *cobra.Command {
 				"-o", "UserKnownHostsFile=/dev/null",
 			}
 
-			// If running under sudo, use the original user's SSH keys
-			if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
-				// Get the original user's home directory
-				userHome := fmt.Sprintf("/home/%s", sudoUser)
-				if sudoUser == "root" {
-					userHome = "/root"
-				}
-
-				// Look for common SSH key files
-				keyFiles := []string{
-					"id_ed25519",
-					"id_rsa",
-					"id_ecdsa",
-					"id_dsa",
-				}
-
-				for _, keyFile := range keyFiles {
-					keyPath := fmt.Sprintf("%s/.ssh/%s", userHome, keyFile)
-					if _, err := os.Stat(keyPath); err == nil {
-						sshArgs = append(sshArgs, "-i", keyPath)
-						break
-					}
-				}
+			// Use vmm managed key as primary identity
+			vmmKeyPath := sshkey.PrivateKeyPath(paths.SSH)
+			if _, err := os.Stat(vmmKeyPath); err == nil {
+				sshArgs = append(sshArgs, "-i", vmmKeyPath)
 			}
 
 			sshArgs = append(sshArgs, fmt.Sprintf("%s@%s", user, existingVM.IPAddress))
@@ -1462,9 +1449,15 @@ func autostartCmd() *cobra.Command {
 				// Set kernel path based on custom kernel or default
 				v.KernelPath = imgMgr.GetKernelPath(v.Kernel)
 
-				// Inject SSH key if configured
-				if v.SSHPublicKey != "" {
-					if err := image.InjectSSHKey(v.RootfsPath, v.SSHPublicKey); err != nil {
+				// Inject SSH keys (vmm managed key + user key)
+				if err := sshkey.EnsureKeyPair(paths.SSH); err != nil {
+					fmt.Printf("  Warning: failed to ensure vmm SSH key: %v\n", err)
+				}
+				authorizedKeys, err := sshkey.BuildAuthorizedKeys(paths.SSH, v.SSHPublicKey)
+				if err != nil {
+					fmt.Printf("  Warning: failed to build authorized keys: %v\n", err)
+				} else {
+					if err := image.InjectSSHKey(v.RootfsPath, authorizedKeys); err != nil {
 						fmt.Printf("  Warning: failed to inject SSH key: %v\n", err)
 					}
 				}
@@ -1850,10 +1843,15 @@ func startClusterVM(vmName string) (string, error) {
 	existingVM.RootfsPath = vmRootfs
 	existingVM.KernelPath = imgMgr.GetKernelPath(existingVM.Kernel)
 
-	if existingVM.SSHPublicKey != "" {
-		if err := image.InjectSSHKey(existingVM.RootfsPath, existingVM.SSHPublicKey); err != nil {
-			return "", fmt.Errorf("failed to inject SSH key: %w", err)
-		}
+	if err := sshkey.EnsureKeyPair(paths.SSH); err != nil {
+		return "", fmt.Errorf("failed to ensure vmm SSH key: %w", err)
+	}
+	authorizedKeys, err := sshkey.BuildAuthorizedKeys(paths.SSH, existingVM.SSHPublicKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to build authorized keys: %w", err)
+	}
+	if err := image.InjectSSHKey(existingVM.RootfsPath, authorizedKeys); err != nil {
+		return "", fmt.Errorf("failed to inject SSH key: %w", err)
 	}
 
 	if err := image.InjectDNSConfig(existingVM.RootfsPath, existingVM.DNSServers); err != nil {

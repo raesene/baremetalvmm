@@ -58,6 +58,7 @@ type Paths struct {
 	State    string
 	Mounts   string
 	Clusters string
+	SSH      string
 }
 
 // detectDefaultInterface finds the network interface used for the default route
@@ -110,6 +111,7 @@ func (c *Config) GetPaths() *Paths {
 		State:   filepath.Join(c.DataDir, "state"),
 		Mounts:   filepath.Join(c.DataDir, "mounts"),
 		Clusters: filepath.Join(c.DataDir, "clusters"),
+		SSH:      filepath.Join(c.DataDir, "ssh"),
 	}
 }
 
@@ -126,6 +128,7 @@ func (c *Config) EnsureDirectories() error {
 		paths.State,
 		paths.Mounts,
 		paths.Clusters,
+		paths.SSH,
 	}
 
 	for _, dir := range dirs {

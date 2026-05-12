@@ -18,6 +18,7 @@ import (
 	"nhooyr.io/websocket"
 
 	"github.com/raesene/baremetalvmm/internal/firecracker"
+	"github.com/raesene/baremetalvmm/internal/sshkey"
 	"github.com/raesene/baremetalvmm/internal/vm"
 )
 
@@ -79,7 +80,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authMethods, err := findSSHAuth()
+	authMethods, err := findSSHAuth(paths.SSH)
 	if err != nil {
 		http.Error(w, "No SSH key available: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -221,10 +222,18 @@ func writeWSError(conn *websocket.Conn, ctx context.Context, msg string) {
 	conn.Write(ctx, websocket.MessageBinary, []byte("\r\n"+msg+"\r\n"))
 }
 
-func findSSHAuth() ([]ssh.AuthMethod, error) {
+func findSSHAuth(sshDir string) ([]ssh.AuthMethod, error) {
 	var methods []ssh.AuthMethod
 
-	// Try ssh-agent first (handles passphrase-protected keys)
+	// Try vmm managed key first (always available for VMs)
+	keyPath := sshkey.PrivateKeyPath(sshDir)
+	if data, err := os.ReadFile(keyPath); err == nil {
+		if signer, err := ssh.ParsePrivateKey(data); err == nil {
+			methods = append(methods, ssh.PublicKeys(signer))
+		}
+	}
+
+	// Try ssh-agent (handles passphrase-protected keys)
 	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
 		conn, err := net.Dial("unix", sock)
 		if err == nil {
@@ -233,7 +242,7 @@ func findSSHAuth() ([]ssh.AuthMethod, error) {
 		}
 	}
 
-	// Also try reading key files directly (unencrypted keys)
+	// Also try reading user key files directly (unencrypted keys)
 	var homeDir string
 	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
 		if sudoUser == "root" {
@@ -261,7 +270,7 @@ func findSSHAuth() ([]ssh.AuthMethod, error) {
 	}
 
 	if len(methods) == 0 {
-		return nil, fmt.Errorf("no SSH agent or unencrypted key found")
+		return nil, fmt.Errorf("no SSH key found")
 	}
 	return methods, nil
 }

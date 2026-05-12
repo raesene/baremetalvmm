@@ -15,6 +15,7 @@ import (
 	"github.com/raesene/baremetalvmm/internal/firecracker"
 	"github.com/raesene/baremetalvmm/internal/image"
 	"github.com/raesene/baremetalvmm/internal/network"
+	"github.com/raesene/baremetalvmm/internal/sshkey"
 	"github.com/raesene/baremetalvmm/internal/vm"
 )
 
@@ -224,10 +225,15 @@ func (s *Server) startVM(existingVM *vm.VM) error {
 	existingVM.RootfsPath = vmRootfs
 	existingVM.KernelPath = imgMgr.GetKernelPath(existingVM.Kernel)
 
-	if existingVM.SSHPublicKey != "" {
-		if err := image.InjectSSHKey(existingVM.RootfsPath, existingVM.SSHPublicKey); err != nil {
-			return fmt.Errorf("failed to inject SSH key: %w", err)
-		}
+	if err := sshkey.EnsureKeyPair(paths.SSH); err != nil {
+		return fmt.Errorf("failed to ensure vmm SSH key: %w", err)
+	}
+	authorizedKeys, err := sshkey.BuildAuthorizedKeys(paths.SSH, existingVM.SSHPublicKey)
+	if err != nil {
+		return fmt.Errorf("failed to build authorized keys: %w", err)
+	}
+	if err := image.InjectSSHKey(existingVM.RootfsPath, authorizedKeys); err != nil {
+		return fmt.Errorf("failed to inject SSH key: %w", err)
 	}
 
 	if err := image.InjectDNSConfig(existingVM.RootfsPath, existingVM.DNSServers); err != nil {
