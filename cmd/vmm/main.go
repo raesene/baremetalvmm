@@ -664,10 +664,26 @@ func sshCmd() *cobra.Command {
 				"-o", "UserKnownHostsFile=/dev/null",
 			}
 
-			// Use vmm managed key as primary identity
+			// Use vmm managed key as primary identity if readable
 			vmmKeyPath := sshkey.PrivateKeyPath(paths.SSH)
-			if _, err := os.Stat(vmmKeyPath); err == nil {
+			if f, err := os.Open(vmmKeyPath); err == nil {
+				f.Close()
 				sshArgs = append(sshArgs, "-i", vmmKeyPath)
+			} else {
+				// Fall back to user's SSH keys when managed key isn't readable
+				var userHome string
+				if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" && sudoUser != "root" {
+					userHome = fmt.Sprintf("/home/%s", sudoUser)
+				} else {
+					userHome, _ = os.UserHomeDir()
+				}
+				for _, keyFile := range []string{"id_ed25519", "id_rsa", "id_ecdsa"} {
+					keyPath := fmt.Sprintf("%s/.ssh/%s", userHome, keyFile)
+					if _, statErr := os.Stat(keyPath); statErr == nil {
+						sshArgs = append(sshArgs, "-i", keyPath)
+						break
+					}
+				}
 			}
 
 			sshArgs = append(sshArgs, fmt.Sprintf("%s@%s", user, existingVM.IPAddress))
