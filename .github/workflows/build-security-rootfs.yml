@@ -1,0 +1,103 @@
+name: Build Security Rootfs
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_image:
+        description: 'Docker base image (e.g. ubuntu:24.04)'
+        required: false
+        default: 'ubuntu:24.04'
+  push:
+    paths:
+      - 'scripts/build-security-rootfs.sh'
+      - 'scripts/security-rootfs-files/**'
+      - '.github/workflows/build-security-rootfs.yml'
+    branches:
+      - main
+  schedule:
+    # Weekly on Monday at 09:00 UTC (after kernel, rootfs, and k8s-rootfs builds)
+    - cron: '0 9 * * 1'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      BASE_IMAGE: ${{ github.event.inputs.base_image || 'ubuntu:24.04' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          TAG="security-rootfs-24.04-$(date +%Y%m%d)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $TAG"
+
+      - name: Check if release already exists
+        id: check_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if gh release view "$TAG" &>/dev/null; then
+            echo "Release $TAG already exists, skipping build"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release $TAG does not exist, proceeding with build"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build security rootfs
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          chmod +x scripts/build-security-rootfs.sh
+          sudo bash scripts/build-security-rootfs.sh \
+            --base-image "$BASE_IMAGE" \
+            --name security-rootfs.ext4 \
+            --size 4096 \
+            --output "${{ github.workspace }}"
+
+      - name: Create GitHub release
+        if: steps.check_release.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          TITLE="Security Rootfs (Ubuntu 24.04, $(date +%Y-%m-%d)) — Container & K8s Security Tools"
+          NOTES="Firecracker-compatible Ubuntu 24.04 rootfs with security and container assessment tools pre-installed.
+
+          **Use this rootfs for security testing VMs** (\`vmm create --image security-rootfs\`).
+
+          Pre-configured with:
+          - systemd, OpenSSH server, Docker Engine (started on boot), containerd
+          - **Network tools**: nmap, tcpdump, socat, dnsutils, traceroute, whois, net-tools
+          - **Container tools**: Docker CLI, nerdctl, crictl, kubectl
+          - **K8s security**: amicontained, kdigger, kubeletctl, rbac-tool, kubectx/kubens, k9s
+          - **Utilities**: jwt-cli, openssl, python3, ruby, vim, nano, git, curl, wget
+          - **Extras**: starship prompt, K8s security manifests in /manifests/, DNS enum script in /scripts/
+          - Serial console on ttyS0, systemd-networkd
+
+          **Pair with**: \`security-kernel-*\` (Security Testing Kernel) or \`kernel-*\` (Default Kernel)
+
+          Quick start:
+          \`\`\`
+          # Download and decompress
+          gunzip security-rootfs.ext4.gz
+          sudo mv security-rootfs.ext4 /var/lib/vmm/images/rootfs/security-rootfs.ext4
+
+          # Create a security testing VM
+          sudo vmm create secvm --image security-rootfs --ssh-key ~/.ssh/id_ed25519.pub
+          sudo vmm start secvm
+          sudo vmm ssh secvm
+          \`\`\`
+
+          Built from \`$BASE_IMAGE\` by GitHub Actions using \`scripts/build-security-rootfs.sh\`."
+
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            security-rootfs.ext4.gz
