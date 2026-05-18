@@ -39,6 +39,7 @@ CRICTL_VERSION="1.30.1"
 JWT_CLI_VERSION="6.2.0"
 K9S_VERSION="0.32.7"
 KUBELETCTL_VERSION="1.13"
+KIND_VERSION="0.31.0"
 
 # Default values
 OUTPUT_DIR="/var/lib/vmm/images/rootfs"
@@ -364,6 +365,13 @@ install_binary_tools() {
         -o "$bin_dir/kubeletctl"
     chmod +x "$bin_dir/kubeletctl"
 
+    # kind
+    log_info "  Installing kind ${KIND_VERSION}..."
+    curl --retry 3 --retry-delay 5 -fSL \
+        "https://kind.sigs.k8s.io/dl/v${KIND_VERSION}/kind-linux-amd64" \
+        -o "$bin_dir/kind"
+    chmod +x "$bin_dir/kind"
+
     log_info "Binary tools installed successfully"
 }
 
@@ -588,7 +596,7 @@ log_info "    kubectl ${KUBECTL_VERSION}, Docker Engine (apt), nerdctl ${NERDCTL
 log_info "    nmap, tcpdump, socat, dnsutils, traceroute, whois"
 log_info "    amicontained ${AMICONTAINED_VERSION}, kdigger ${KDIGGER_VERSION}, kubeletctl ${KUBELETCTL_VERSION}"
 log_info "    rbac-tool ${RBAC_TOOL_VERSION}, k9s ${K9S_VERSION}, jwt-cli ${JWT_CLI_VERSION}"
-log_info "    starship prompt, kubectx/kubens"
+log_info "    kind ${KIND_VERSION}, starship prompt, kubectx/kubens"
 echo ""
 echo "To use this rootfs with vmm:"
 echo "  gunzip -c $OUTPUT_DIR/${NAME}.gz > /var/lib/vmm/images/rootfs/security-rootfs.ext4"
