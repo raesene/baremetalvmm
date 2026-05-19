@@ -29,6 +29,9 @@
                 <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{{.Name}}</td>
                 <td class="px-6 py-4 whitespace-nowrap">
                     <span class="badge badge-{{.State}}">{{.State}}</span>
+                    {{if .StatusMessage}}
+                    <p class="text-xs text-red-600 mt-1 max-w-xs truncate" title="{{.StatusMessage}}">{{.StatusMessage}}</p>
+                    {{end}}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{len .WorkerVMs}}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{.K8sVersion}}</td>

@@ -204,7 +204,7 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 		existingVM, err := vm.Load(paths.VMs, vmName)
 		if err != nil {
 			log.Printf("cluster %s: failed to load VM %s: %v", clusterName, vmName, err)
-			cl.State = cluster.StateError
+			cl.SetError(fmt.Sprintf("failed to load VM %s: %v", vmName, err))
 			cl.Save(paths.Clusters)
 			return
 		}
@@ -218,7 +218,7 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 
 		if err := s.startVM(existingVM); err != nil {
 			log.Printf("cluster %s: failed to start VM %s: %v", clusterName, vmName, err)
-			cl.State = cluster.StateError
+			cl.SetError(fmt.Sprintf("failed to start VM %s: %v", vmName, err))
 			cl.Save(paths.Clusters)
 			return
 		}
@@ -230,7 +230,7 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 	log.Printf("cluster %s: provisioning Kubernetes...", clusterName)
 	if err := cluster.ProvisionCluster(cl, sshKeyPath, nodeInfos); err != nil {
 		log.Printf("cluster %s: provisioning failed: %v", clusterName, err)
-		cl.State = cluster.StateError
+		cl.SetError(fmt.Sprintf("provisioning failed: %v", err))
 		cl.Save(paths.Clusters)
 		return
 	}
@@ -240,7 +240,7 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 	cpClient, err := cluster.WaitForSSH(cl.ControlPlaneIP, sshKeyPath, 30*time.Second)
 	if err != nil {
 		log.Printf("cluster %s: failed to connect for kubeconfig: %v", clusterName, err)
-		cl.State = cluster.StateError
+		cl.SetError(fmt.Sprintf("failed to connect for kubeconfig: %v", err))
 		cl.Save(paths.Clusters)
 		return
 	}
@@ -249,19 +249,20 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 	kubeconfigYAML, err := cluster.ExtractKubeconfig(cpClient)
 	if err != nil {
 		log.Printf("cluster %s: failed to extract kubeconfig: %v", clusterName, err)
-		cl.State = cluster.StateError
+		cl.SetError(fmt.Sprintf("failed to extract kubeconfig: %v", err))
 		cl.Save(paths.Clusters)
 		return
 	}
 
 	if err := cluster.MergeKubeconfig(clusterName, kubeconfigYAML); err != nil {
 		log.Printf("cluster %s: failed to merge kubeconfig: %v", clusterName, err)
-		cl.State = cluster.StateError
+		cl.SetError(fmt.Sprintf("failed to merge kubeconfig: %v", err))
 		cl.Save(paths.Clusters)
 		return
 	}
 
 	cl.State = cluster.StateRunning
+	cl.StatusMessage = ""
 	cl.Save(paths.Clusters)
 	log.Printf("cluster %s: provisioning complete, cluster is running", clusterName)
 }

@@ -20,6 +20,7 @@ const (
 type Cluster struct {
 	Name           string   `json:"name"`
 	State          State    `json:"state"`
+	StatusMessage  string   `json:"status_message,omitempty"`
 	K8sVersion     string   `json:"k8s_version"`
 	ControlPlaneVM string   `json:"control_plane_vm"`
 	WorkerVMs      []string `json:"worker_vms"`
@@ -60,6 +61,11 @@ func (c *Cluster) AllVMs() []string {
 	vms := []string{c.ControlPlaneVM}
 	vms = append(vms, c.WorkerVMs...)
 	return vms
+}
+
+func (c *Cluster) SetError(msg string) {
+	c.State = StateError
+	c.StatusMessage = msg
 }
 
 func (c *Cluster) Save(clusterDir string) error {

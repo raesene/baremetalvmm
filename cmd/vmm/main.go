@@ -1768,7 +1768,7 @@ func clusterCreateCmd() *cobra.Command {
 			for _, vmName := range allVMs {
 				ip, err := startClusterVM(vmName)
 				if err != nil {
-					cl.State = cluster.StateError
+					cl.SetError(fmt.Sprintf("failed to start VM %s: %v", vmName, err))
 					cl.Save(paths.Clusters)
 					return fmt.Errorf("failed to start VM '%s': %w", vmName, err)
 				}
@@ -1779,7 +1779,7 @@ func clusterCreateCmd() *cobra.Command {
 			// Provision Kubernetes
 			fmt.Println("\nProvisioning Kubernetes cluster...")
 			if err := cluster.ProvisionCluster(cl, sshPrivateKeyPath, nodeInfos); err != nil {
-				cl.State = cluster.StateError
+				cl.SetError(fmt.Sprintf("provisioning failed: %v", err))
 				cl.Save(paths.Clusters)
 				return fmt.Errorf("cluster provisioning failed: %w\nVMs are left running for debugging. Use 'vmm cluster delete %s -f' to clean up", err, name)
 			}
@@ -1788,7 +1788,7 @@ func clusterCreateCmd() *cobra.Command {
 			fmt.Println("Configuring kubeconfig...")
 			cpClient, err := cluster.WaitForSSH(cl.ControlPlaneIP, sshPrivateKeyPath, 30*time.Second)
 			if err != nil {
-				cl.State = cluster.StateError
+				cl.SetError(fmt.Sprintf("failed to connect for kubeconfig: %v", err))
 				cl.Save(paths.Clusters)
 				return fmt.Errorf("failed to connect to control plane for kubeconfig: %w", err)
 			}
@@ -1796,13 +1796,13 @@ func clusterCreateCmd() *cobra.Command {
 
 			kubeconfigYAML, err := cluster.ExtractKubeconfig(cpClient)
 			if err != nil {
-				cl.State = cluster.StateError
+				cl.SetError(fmt.Sprintf("failed to extract kubeconfig: %v", err))
 				cl.Save(paths.Clusters)
 				return fmt.Errorf("failed to extract kubeconfig: %w", err)
 			}
 
 			if err := cluster.MergeKubeconfig(name, kubeconfigYAML); err != nil {
-				cl.State = cluster.StateError
+				cl.SetError(fmt.Sprintf("failed to merge kubeconfig: %v", err))
 				cl.Save(paths.Clusters)
 				return fmt.Errorf("failed to merge kubeconfig: %w", err)
 			}
