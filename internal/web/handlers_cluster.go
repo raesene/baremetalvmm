@@ -17,6 +17,7 @@ import (
 	"github.com/raesene/baremetalvmm/internal/firecracker"
 	"github.com/raesene/baremetalvmm/internal/image"
 	"github.com/raesene/baremetalvmm/internal/network"
+	"github.com/raesene/baremetalvmm/internal/sshkey"
 	"github.com/raesene/baremetalvmm/internal/vm"
 )
 
@@ -106,20 +107,15 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 	kernelName := r.FormValue("kernel")
 	imageName := r.FormValue("image")
 
-	if sshKey == "" {
-		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
-			"Flash":     "SSH key is required for cluster creation",
-			"FlashType": "error",
-		})
-		return
-	}
-
 	if sshKeyPath == "" {
-		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
-			"Flash":     "SSH private key path is required for cluster provisioning",
-			"FlashType": "error",
-		})
-		return
+		if err := sshkey.EnsureKeyPair(paths.SSH); err != nil {
+			s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
+				"Flash":     "Failed to ensure vmm SSH key: " + err.Error(),
+				"FlashType": "error",
+			})
+			return
+		}
+		sshKeyPath = sshkey.PrivateKeyPath(paths.SSH)
 	}
 
 	if cpus < 2 {
