@@ -43,6 +43,13 @@ func (s *Server) handleClusterCreateForm(w http.ResponseWriter, r *http.Request)
 
 	kernels, _ := imgMgr.ListKernelsWithInfo()
 	images, _ := imgMgr.ListRootfsWithInfo()
+
+	var k8sImages []image.RootfsInfo
+	for _, img := range images {
+		if strings.HasPrefix(img.Name, "k8s-") {
+			k8sImages = append(k8sImages, img)
+		}
+	}
 	defaults := s.cfg.GetVMDefaults()
 
 	sshKey := ""
@@ -56,8 +63,8 @@ func (s *Server) handleClusterCreateForm(w http.ResponseWriter, r *http.Request)
 	}
 
 	s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
-		"Kernels": kernels,
-		"Images":  images,
+		"Kernels":   kernels,
+		"K8sImages": k8sImages,
 		"Defaults": map[string]interface{}{
 			"SSHKey":     sshKey,
 			"SSHKeyPath": sshKeyPath,
@@ -98,14 +105,19 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 	cpus := formInt(r, "cpus", 2)
 	memory := formInt(r, "memory", 4096)
 	disk := formInt(r, "disk", 10240)
-	k8sVersion := strings.TrimSpace(r.FormValue("k8s_version"))
-	if k8sVersion == "" {
-		k8sVersion = "1.36.0"
-	}
 	sshKey := strings.TrimSpace(r.FormValue("ssh_key"))
 	sshKeyPath := strings.TrimSpace(r.FormValue("ssh_key_path"))
 	kernelName := r.FormValue("kernel")
 	imageName := r.FormValue("image")
+
+	k8sVersion := strings.TrimPrefix(imageName, "k8s-")
+	if imageName == "" || k8sVersion == "" {
+		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
+			"Flash":     "A Kubernetes rootfs image must be selected",
+			"FlashType": "error",
+		})
+		return
+	}
 
 	if sshKeyPath == "" {
 		if err := sshkey.EnsureKeyPair(paths.SSH); err != nil {
@@ -139,13 +151,6 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 	// Default to k8s-kernel if available
 	if kernelName == "" && imgMgr.KernelExists("k8s-kernel") {
 		cl.Kernel = "k8s-kernel"
-	}
-
-	// Auto-detect k8s rootfs
-	if imageName == "" {
-		if found := imgMgr.FindK8sRootfs(k8sVersion); found != "" {
-			cl.Image = found
-		}
 	}
 
 	if err := cl.Save(paths.Clusters); err != nil {
