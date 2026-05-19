@@ -57,8 +57,8 @@ sudo vmm image pull
 ### Basic Usage
 
 ```bash
-# Create a VM
-sudo vmm create myvm --cpus 2 --memory 1024 --ssh-key ~/.ssh/id_ed25519.pub
+# Create a VM (uses vmm-managed SSH key by default, or pass --ssh-key for your own)
+sudo vmm create myvm --cpus 2 --memory 1024
 
 # Start it
 sudo vmm start myvm

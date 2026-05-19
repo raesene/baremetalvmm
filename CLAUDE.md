@@ -26,13 +26,14 @@ VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker
 - `internal/network/` — TAP, bridge, iptables, NAT (MASQUERADE with `! -o vmm-br0`)
 - `internal/image/` — Kernel/rootfs download, Docker import, snapshots
 - `internal/mount/` — Host directory mount as ext4 block devices
+- `internal/sshkey/` — VMM-managed Ed25519 SSH key pair (auto-generated in `/var/lib/vmm/ssh/`)
 - `internal/cluster/` — Kubernetes cluster management (kubeadm + Cilium)
 - `internal/web/` — Web UI handlers, auth, SSE, WebSocket terminal
 - `web/` — Embedded templates and static assets (`go:embed`)
 - `scripts/vmm.service` — Systemd unit for VM auto-start on boot
 - `scripts/vmm-web.service` — Systemd unit for web UI (reads password from `/etc/vmm-web/environment`)
 
-Data directory: `/var/lib/vmm` (vms, images, kernels, logs, sockets, mounts, clusters)
+Data directory: `/var/lib/vmm` (vms, images, kernels, logs, sockets, mounts, clusters, ssh)
 
 ## CLI Commands
 
@@ -86,7 +87,7 @@ go build -o vmm ./cmd/vmm/   # Quick build without version info
 
 ```bash
 sudo ./vmm image pull
-sudo ./vmm create test1 --cpus 1 --memory 512 --ssh-key ~/.ssh/id_ed25519.pub
+sudo ./vmm create test1 --cpus 1 --memory 512
 sudo ./vmm start test1
 ./vmm list
 ping 172.16.0.2
@@ -141,3 +142,7 @@ vmm ssh myvm -- 'getent hosts google.com'  # DNS from VM
 ## Sudo Behavior
 
 Both `vmm ssh` and config loading detect `SUDO_USER` to use the original user's home directory (SSH keys, config file) rather than `/root/`. Cluster provisioning supports ssh-agent via `sudo -E` to preserve `SSH_AUTH_SOCK`.
+
+## SSH Key Management
+
+VMM automatically generates and manages an Ed25519 key pair (`/var/lib/vmm/ssh/vmm_ed25519`). This managed key is always injected into VMs via `sshkey.BuildAuthorizedKeys()`, so `--ssh-key` is optional for both VM and cluster creation. User-provided keys are added alongside the managed key. The managed key is also used for cluster provisioning (kubeadm over SSH) when no user key is specified.
