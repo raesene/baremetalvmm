@@ -424,7 +424,7 @@ func ProvisionCluster(cl *Cluster, sshKeyPath string, nodes []NodeInfo) error {
 	// For single-node clusters, untaint the control plane so workloads can be scheduled
 	if len(workerNodes) == 0 {
 		fmt.Println("Single-node cluster: removing control-plane taint...")
-		if _, err := cpClient.Run("kubectl taint nodes --all node-role.kubernetes.io/control-plane-"); err != nil {
+		if _, err := cpClient.Run("export KUBECONFIG=/etc/kubernetes/admin.conf && kubectl taint nodes --all node-role.kubernetes.io/control-plane-"); err != nil {
 			return fmt.Errorf("failed to untaint control plane: %w", err)
 		}
 		fmt.Println("Control-plane taint removed.")

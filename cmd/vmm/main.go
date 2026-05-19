@@ -1661,18 +1661,25 @@ func clusterCreateCmd() *cobra.Command {
 			if !cmd.Flags().Changed("ssh-key") && defaults.SSHKeyPath != "" {
 				sshKeyPath = defaults.SSHKeyPath
 			}
-			if sshKeyPath == "" {
-				return fmt.Errorf("SSH key is required for cluster creation (use --ssh-key or set in config)")
-			}
-			sshKeyPath = expandHomePath(sshKeyPath)
 
-			// Resolve private key path from public key path
-			sshPrivateKeyPath := sshKeyPath
-			if len(sshKeyPath) > 4 && sshKeyPath[len(sshKeyPath)-4:] == ".pub" {
-				sshPrivateKeyPath = sshKeyPath[:len(sshKeyPath)-4]
-			}
-			if _, err := os.Stat(sshPrivateKeyPath); err != nil {
-				return fmt.Errorf("SSH private key not found at %s: %w", sshPrivateKeyPath, err)
+			var sshPrivateKeyPath string
+			var useVMMKey bool
+			if sshKeyPath == "" {
+				if err := sshkey.EnsureKeyPair(paths.SSH); err != nil {
+					return fmt.Errorf("failed to ensure vmm SSH key: %w", err)
+				}
+				sshPrivateKeyPath = sshkey.PrivateKeyPath(paths.SSH)
+				useVMMKey = true
+				fmt.Println("Using vmm-managed SSH key for cluster provisioning")
+			} else {
+				sshKeyPath = expandHomePath(sshKeyPath)
+				sshPrivateKeyPath = sshKeyPath
+				if len(sshKeyPath) > 4 && sshKeyPath[len(sshKeyPath)-4:] == ".pub" {
+					sshPrivateKeyPath = sshKeyPath[:len(sshKeyPath)-4]
+				}
+				if _, err := os.Stat(sshPrivateKeyPath); err != nil {
+					return fmt.Errorf("SSH private key not found at %s: %w", sshPrivateKeyPath, err)
+				}
 			}
 
 			// Validate resources
@@ -1688,16 +1695,19 @@ func clusterCreateCmd() *cobra.Command {
 			cl.CPUs = cpus
 			cl.MemoryMB = memory
 			cl.DiskSizeMB = disk
-			cl.SSHKeyPath = sshKeyPath
+			cl.SSHKeyPath = sshPrivateKeyPath
 			cl.Image = imageName
 			cl.Kernel = kernelName
 
-			// Read SSH public key
-			keyData, err := os.ReadFile(sshKeyPath)
-			if err != nil {
-				return fmt.Errorf("failed to read SSH public key from %s: %w", sshKeyPath, err)
+			// Read SSH public key (if user provided one)
+			var sshPubKey string
+			if !useVMMKey {
+				keyData, err := os.ReadFile(sshKeyPath)
+				if err != nil {
+					return fmt.Errorf("failed to read SSH public key from %s: %w", sshKeyPath, err)
+				}
+				sshPubKey = string(keyData)
 			}
-			sshPubKey := string(keyData)
 
 			// Validate image/kernel exist if specified
 			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
