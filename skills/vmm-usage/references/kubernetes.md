@@ -16,21 +16,24 @@
 
 ## Kernel and Rootfs Requirements
 
-Clusters need the `k8s-kernel` (Linux 6.6 LTS) for Cilium BPF support. If `k8s-kernel` is available locally, it is auto-selected. Otherwise, the default kernel is used — but Cilium may fail without 6.6+ BPF features.
+Clusters need the `k8s-kernel` (Linux 6.6 LTS) for Cilium BPF support. If `k8s-kernel` is available locally, it is auto-selected automatically — you don't need to pass `--kernel k8s-kernel` explicitly. If `k8s-kernel` is not available, the default kernel is used — but Cilium may fail without 6.6+ BPF features.
 
 Pre-built K8s rootfs images (`k8s-<version>.ext4`) include containerd and kubeadm pre-installed, cutting provisioning time significantly. If not available locally, vmm attempts to download from GitHub releases. If that fails, packages are installed at runtime over the network (~30-60s extra per node).
 
 ## Commands
 
 ```bash
-# Create a single-node cluster
-sudo vmm cluster create dev --ssh-key ~/.ssh/id_ed25519.pub
+# Create a single-node cluster (uses VMM-managed SSH key by default)
+sudo vmm cluster create dev
 
 # Create a 3-node cluster (1 control plane + 2 workers)
-sudo vmm cluster create prod --workers 2 --cpus 4 --memory 8192 --ssh-key ~/.ssh/id_ed25519.pub
+sudo vmm cluster create prod --workers 2 --cpus 4 --memory 8192
 
-# Explicitly specify kernel and image
-sudo vmm cluster create prod --kernel k8s-kernel --image k8s-1.36.0 --workers 2 --ssh-key ~/.ssh/id_ed25519.pub
+# Explicitly specify kernel, image, and K8s version
+sudo vmm cluster create prod --kernel k8s-kernel --image k8s-1.36.0 --workers 2 --k8s-version 1.36.0
+
+# Use a custom SSH key for cluster provisioning
+sudo vmm cluster create dev --ssh-key ~/.ssh/id_ed25519.pub
 
 # List clusters
 vmm cluster list
@@ -41,6 +44,8 @@ vmm cluster kubeconfig mycluster
 # Delete cluster and all its VMs
 sudo vmm cluster delete mycluster -f
 ```
+
+`--ssh-key` is optional. When omitted, the VMM-managed Ed25519 key (`/var/lib/vmm/ssh/vmm_ed25519`) is used for cluster provisioning (kubeadm over SSH). If you provide a key, it is added alongside the managed key.
 
 ## VM Naming Convention
 
