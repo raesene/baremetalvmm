@@ -290,6 +290,26 @@ func deleteCmd() *cobra.Command {
 				ctx := context.Background()
 				if err := fcClient.StopVM(ctx, existingVM.SocketPath); err != nil {
 					fmt.Printf("Warning: failed to stop VM gracefully: %v\n", err)
+					// Try to kill by PID as fallback
+					if existingVM.PID > 0 {
+						if proc, err := os.FindProcess(existingVM.PID); err == nil {
+							proc.Signal(syscall.SIGKILL)
+						}
+					}
+				}
+
+				// Wait for process to exit
+				time.Sleep(500 * time.Millisecond)
+
+				// Verify process is gone, force kill if still running
+				if existingVM.PID > 0 {
+					if proc, err := os.FindProcess(existingVM.PID); err == nil {
+						if err := proc.Signal(syscall.Signal(0)); err == nil {
+							fmt.Printf("Warning: process %d still running, sending SIGKILL...\n", existingVM.PID)
+							proc.Signal(syscall.SIGKILL)
+							time.Sleep(500 * time.Millisecond)
+						}
+					}
 				}
 			}
 
