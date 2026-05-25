@@ -9,12 +9,24 @@ import (
 	"strings"
 
 	"github.com/raesene/baremetalvmm/internal/config"
+	"github.com/raesene/baremetalvmm/internal/image"
 )
 
+func (s *Server) configPageData() map[string]interface{} {
+	paths := s.cfg.GetPaths()
+	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
+	kernels, _ := imgMgr.ListKernelsWithInfo()
+	images, _ := imgMgr.ListRootfsWithInfo()
+
+	return map[string]interface{}{
+		"Config":  s.cfg,
+		"Kernels": kernels,
+		"Images":  images,
+	}
+}
+
 func (s *Server) handleConfigPage(w http.ResponseWriter, r *http.Request) {
-	s.renderPage(w, r, "config.html", "config", map[string]interface{}{
-		"Config": s.cfg,
-	})
+	s.renderPage(w, r, "config.html", "config", s.configPageData())
 }
 
 func (s *Server) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
@@ -114,9 +126,8 @@ func (s *Server) handleServiceRestart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) renderConfigFlash(w http.ResponseWriter, r *http.Request, msg, flashType string) {
-	s.renderPage(w, r, "config.html", "config", map[string]interface{}{
-		"Config":    s.cfg,
-		"Flash":     msg,
-		"FlashType": flashType,
-	})
+	data := s.configPageData()
+	data["Flash"] = msg
+	data["FlashType"] = flashType
+	s.renderPage(w, r, "config.html", "config", data)
 }
