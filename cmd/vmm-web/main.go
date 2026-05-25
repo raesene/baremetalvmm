@@ -33,13 +33,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	cfg, err := config.Load(config.ConfigPath())
+	cfgPath := config.ConfigPath()
+	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		log.Printf("Warning: failed to load config: %v", err)
 		cfg = config.DefaultConfig()
 	}
 
-	server, err := web.NewServer(cfg, password, *listenAddr)
+	server, err := web.NewServer(cfg, cfgPath, password, *listenAddr)
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)
 	}

@@ -19,6 +19,7 @@ import (
 
 type Server struct {
 	cfg          *config.Config
+	configPath   string
 	password     string
 	listenAddr   string
 	sessions     *sessionStore
@@ -29,12 +30,13 @@ type Server struct {
 	apiKey       string
 }
 
-func NewServer(cfg *config.Config, password, listenAddr string) (*Server, error) {
+func NewServer(cfg *config.Config, configPath, password, listenAddr string) (*Server, error) {
 	b := make([]byte, 32)
 	rand.Read(b)
 
 	s := &Server{
 		cfg:          cfg,
+		configPath:   configPath,
 		password:     password,
 		listenAddr:   listenAddr,
 		sessions:     newSessionStore(),
@@ -75,6 +77,7 @@ func (s *Server) loadTemplates() error {
 		"cluster_create.html",
 		"images.html",
 		"api_key.html",
+		"config.html",
 	}
 
 	for _, page := range pages {
@@ -155,6 +158,11 @@ func (s *Server) setupRouter() {
 		r.Post("/images/rootfs/delete", s.handleRootfsDelete)
 		r.Post("/images/kernels/download", s.handleKernelDownload)
 		r.Post("/images/rootfs/download", s.handleRootfsDownload)
+
+		// Config HTML routes
+		r.Get("/config", s.handleConfigPage)
+		r.Post("/config", s.handleConfigUpdate)
+		r.Post("/config/restart", s.handleServiceRestart)
 
 		// Cluster HTML routes
 		r.Get("/clusters", s.handleClusterList)
