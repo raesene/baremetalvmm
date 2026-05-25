@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/raesene/baremetalvmm/internal/image"
+	"github.com/raesene/baremetalvmm/internal/validate"
 )
 
 func (s *Server) handleImages(w http.ResponseWriter, r *http.Request) {
@@ -51,6 +52,10 @@ func (s *Server) handleKernelDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing kernel name", http.StatusBadRequest)
 		return
 	}
+	if err := validate.KernelName(name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	paths := s.cfg.GetPaths()
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
@@ -67,6 +72,10 @@ func (s *Server) handleRootfsDelete(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
 	if name == "" {
 		http.Error(w, "missing rootfs name", http.StatusBadRequest)
+		return
+	}
+	if err := validate.ImageName(name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -89,6 +98,10 @@ func (s *Server) handleKernelDownload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing download parameters", http.StatusBadRequest)
 		return
 	}
+	if err := validate.KernelName(localName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	paths := s.cfg.GetPaths()
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
@@ -107,6 +120,10 @@ func (s *Server) handleRootfsDownload(w http.ResponseWriter, r *http.Request) {
 	tag := r.FormValue("tag")
 	if url == "" || localName == "" {
 		http.Error(w, "missing download parameters", http.StatusBadRequest)
+		return
+	}
+	if err := validate.ImageName(localName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -172,6 +189,10 @@ func (s *Server) handleAPIKernelDelete(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "missing kernel name", http.StatusBadRequest)
 		return
 	}
+	if err := validate.KernelName(name); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	paths := s.cfg.GetPaths()
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
@@ -188,6 +209,10 @@ func (s *Server) handleAPIRootfsDelete(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 	if name == "" {
 		jsonError(w, "missing rootfs name", http.StatusBadRequest)
+		return
+	}
+	if err := validate.ImageName(name); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 

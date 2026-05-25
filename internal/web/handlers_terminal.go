@@ -19,6 +19,7 @@ import (
 
 	"github.com/raesene/baremetalvmm/internal/firecracker"
 	"github.com/raesene/baremetalvmm/internal/sshkey"
+	"github.com/raesene/baremetalvmm/internal/validate"
 	"github.com/raesene/baremetalvmm/internal/vm"
 )
 
@@ -30,6 +31,10 @@ type terminalResize struct {
 
 func (s *Server) handleTerminalPage(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if err := validate.VMName(name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	paths := s.cfg.GetPaths()
 
 	v, err := vm.Load(paths.VMs, name)
@@ -59,6 +64,10 @@ func (s *Server) handleTerminalPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if err := validate.VMName(name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	paths := s.cfg.GetPaths()
 
 	v, err := vm.Load(paths.VMs, name)

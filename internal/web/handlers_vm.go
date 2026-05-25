@@ -16,6 +16,7 @@ import (
 	"github.com/raesene/baremetalvmm/internal/image"
 	"github.com/raesene/baremetalvmm/internal/network"
 	"github.com/raesene/baremetalvmm/internal/sshkey"
+	"github.com/raesene/baremetalvmm/internal/validate"
 	"github.com/raesene/baremetalvmm/internal/vm"
 )
 
@@ -88,6 +89,13 @@ func (s *Server) handleVMCreate(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		s.renderPage(w, r, "vm_create.html", "vms", map[string]interface{}{
 			"Flash":     "VM name is required",
+			"FlashType": "error",
+		})
+		return
+	}
+	if err := validate.VMName(name); err != nil {
+		s.renderPage(w, r, "vm_create.html", "vms", map[string]interface{}{
+			"Flash":     err.Error(),
 			"FlashType": "error",
 		})
 		return
@@ -194,6 +202,10 @@ func (s *Server) handleVMCreate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleVMDetail(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if err := validate.VMName(name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	paths := s.cfg.GetPaths()
 
 	v, err := vm.Load(paths.VMs, name)
@@ -297,6 +309,10 @@ func (s *Server) startVM(existingVM *vm.VM) error {
 
 func (s *Server) handleVMStart(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if err := validate.VMName(name); err != nil {
+		httpError(w, r, err.Error(), http.StatusBadRequest)
+		return
+	}
 	paths := s.cfg.GetPaths()
 
 	existingVM, err := vm.Load(paths.VMs, name)
@@ -327,6 +343,10 @@ func (s *Server) handleVMStart(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleVMStop(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if err := validate.VMName(name); err != nil {
+		httpError(w, r, err.Error(), http.StatusBadRequest)
+		return
+	}
 	paths := s.cfg.GetPaths()
 
 	existingVM, err := vm.Load(paths.VMs, name)
@@ -390,6 +410,10 @@ func (s *Server) handleVMDeletePost(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteVM(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if err := validate.VMName(name); err != nil {
+		httpError(w, r, err.Error(), http.StatusBadRequest)
+		return
+	}
 	paths := s.cfg.GetPaths()
 
 	existingVM, err := vm.Load(paths.VMs, name)
@@ -462,6 +486,10 @@ func (s *Server) handleAPIVMList(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAPIVMDetail(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if err := validate.VMName(name); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	paths := s.cfg.GetPaths()
 
 	v, err := vm.Load(paths.VMs, name)
@@ -495,6 +523,10 @@ func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
 
 	if req.Name == "" {
 		jsonError(w, "Name is required", http.StatusBadRequest)
+		return
+	}
+	if err := validate.VMName(req.Name); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if req.CPUs == 0 {
@@ -547,6 +579,10 @@ func (s *Server) handleAPIVMStop(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAPIVMDelete(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if err := validate.VMName(name); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	paths := s.cfg.GetPaths()
 
 	existingVM, err := vm.Load(paths.VMs, name)

@@ -17,6 +17,7 @@ import (
 	"github.com/raesene/baremetalvmm/internal/mount"
 	"github.com/raesene/baremetalvmm/internal/network"
 	"github.com/raesene/baremetalvmm/internal/sshkey"
+	"github.com/raesene/baremetalvmm/internal/validate"
 	"github.com/raesene/baremetalvmm/internal/vm"
 	"github.com/spf13/cobra"
 )
@@ -84,6 +85,9 @@ func createCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validate.VMName(name); err != nil {
+				return err
+			}
 
 			// Ensure directories exist
 			if err := cfg.EnsureDirectories(); err != nil {
@@ -268,6 +272,9 @@ func deleteCmd() *cobra.Command {
 		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validate.VMName(name); err != nil {
+				return err
+			}
 			paths := cfg.GetPaths()
 
 			// Load VM to check state
@@ -419,6 +426,9 @@ func startCmd() *cobra.Command {
 		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validate.VMName(name); err != nil {
+				return err
+			}
 			paths := cfg.GetPaths()
 
 			existingVM, err := vm.Load(paths.VMs, name)
@@ -586,6 +596,9 @@ func stopCmd() *cobra.Command {
 		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validate.VMName(name); err != nil {
+				return err
+			}
 			paths := cfg.GetPaths()
 
 			existingVM, err := vm.Load(paths.VMs, name)
@@ -659,6 +672,9 @@ func sshCmd() *cobra.Command {
 		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validate.VMName(name); err != nil {
+				return err
+			}
 			paths := cfg.GetPaths()
 
 			existingVM, err := vm.Load(paths.VMs, name)
@@ -914,6 +930,9 @@ Examples:
 			if name == "" {
 				return fmt.Errorf("--name is required")
 			}
+			if err := validate.ImageName(name); err != nil {
+				return err
+			}
 
 			if err := cfg.EnsureDirectories(); err != nil {
 				return fmt.Errorf("failed to create directories: %w", err)
@@ -940,6 +959,9 @@ Examples:
 		ValidArgsFunction: completeImageNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validate.ImageName(name); err != nil {
+				return err
+			}
 			paths := cfg.GetPaths()
 			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
@@ -968,10 +990,16 @@ Examples:
 		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			vmName := args[0]
+			if err := validate.VMName(vmName); err != nil {
+				return err
+			}
 			imageName, _ := cmd.Flags().GetString("name")
 
 			if imageName == "" {
 				return fmt.Errorf("--name is required")
+			}
+			if err := validate.ImageName(imageName); err != nil {
+				return err
 			}
 
 			paths := cfg.GetPaths()
@@ -1055,6 +1083,9 @@ Examples:
 			if name == "" {
 				return fmt.Errorf("--name is required")
 			}
+			if err := validate.KernelName(name); err != nil {
+				return err
+			}
 
 			if err := cfg.EnsureDirectories(); err != nil {
 				return fmt.Errorf("failed to create directories: %w", err)
@@ -1081,6 +1112,9 @@ Examples:
 		ValidArgsFunction: completeKernelNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validate.KernelName(name); err != nil {
+				return err
+			}
 			paths := cfg.GetPaths()
 			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
@@ -1127,6 +1161,9 @@ Examples:
 			}
 			if buildName == "" {
 				return fmt.Errorf("--name is required")
+			}
+			if err := validate.KernelName(buildName); err != nil {
+				return err
 			}
 
 			// Find the build script
@@ -1180,6 +1217,9 @@ func portForwardCmd() *cobra.Command {
 		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validate.VMName(name); err != nil {
+				return err
+			}
 			portSpec := args[1]
 			paths := cfg.GetPaths()
 
@@ -1221,6 +1261,9 @@ func portForwardCmd() *cobra.Command {
 		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validate.VMName(name); err != nil {
+				return err
+			}
 			paths := cfg.GetPaths()
 
 			existingVM, err := vm.Load(paths.VMs, name)
@@ -1249,6 +1292,9 @@ func portForwardCmd() *cobra.Command {
 		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validate.VMName(name); err != nil {
+				return err
+			}
 			portSpec := args[1]
 			paths := cfg.GetPaths()
 
@@ -1313,7 +1359,13 @@ Example:
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			vmName := args[0]
+			if err := validate.VMName(vmName); err != nil {
+				return err
+			}
 			tag := args[1]
+			if err := validate.MountTag(tag); err != nil {
+				return err
+			}
 			paths := cfg.GetPaths()
 
 			// Load VM
@@ -1364,6 +1416,9 @@ Example:
 		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			vmName := args[0]
+			if err := validate.VMName(vmName); err != nil {
+				return err
+			}
 			paths := cfg.GetPaths()
 
 			// Load VM
@@ -1665,6 +1720,9 @@ func clusterCreateCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validate.ClusterName(name); err != nil {
+				return err
+			}
 
 			if err := cfg.EnsureDirectories(); err != nil {
 				return fmt.Errorf("failed to create directories: %w", err)
@@ -1964,6 +2022,9 @@ func clusterDeleteCmd() *cobra.Command {
 		ValidArgsFunction: completeClusterNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validate.ClusterName(name); err != nil {
+				return err
+			}
 			paths := cfg.GetPaths()
 
 			cl, err := cluster.Load(paths.Clusters, name)
@@ -2091,6 +2152,9 @@ func clusterKubeconfigCmd() *cobra.Command {
 		ValidArgsFunction: completeClusterNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validate.ClusterName(name); err != nil {
+				return err
+			}
 			paths := cfg.GetPaths()
 
 			cl, err := cluster.Load(paths.Clusters, name)

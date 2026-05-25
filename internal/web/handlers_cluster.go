@@ -18,6 +18,7 @@ import (
 	"github.com/raesene/baremetalvmm/internal/image"
 	"github.com/raesene/baremetalvmm/internal/network"
 	"github.com/raesene/baremetalvmm/internal/sshkey"
+	"github.com/raesene/baremetalvmm/internal/validate"
 	"github.com/raesene/baremetalvmm/internal/vm"
 )
 
@@ -79,6 +80,13 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
 			"Flash":     "Cluster name is required",
+			"FlashType": "error",
+		})
+		return
+	}
+	if err := validate.ClusterName(name); err != nil {
+		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
+			"Flash":     err.Error(),
 			"FlashType": "error",
 		})
 		return
@@ -282,6 +290,10 @@ func (s *Server) handleClusterDeletePost(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) deleteCluster(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if err := validate.ClusterName(name); err != nil {
+		httpError(w, r, err.Error(), http.StatusBadRequest)
+		return
+	}
 	paths := s.cfg.GetPaths()
 
 	cl, err := cluster.Load(paths.Clusters, name)
@@ -365,6 +377,10 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, "Name is required", http.StatusBadRequest)
 		return
 	}
+	if err := validate.ClusterName(req.Name); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if req.SSHKey == "" {
 		jsonError(w, "SSH key is required", http.StatusBadRequest)
 		return
@@ -445,6 +461,10 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handleAPIClusterDelete(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if err := validate.ClusterName(name); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	paths := s.cfg.GetPaths()
 
 	cl, err := cluster.Load(paths.Clusters, name)
