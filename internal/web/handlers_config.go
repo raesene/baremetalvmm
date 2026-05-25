@@ -23,17 +23,9 @@ func (s *Server) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.cfg.DataDir = strings.TrimSpace(r.FormValue("data_dir"))
-	s.cfg.BridgeName = strings.TrimSpace(r.FormValue("bridge_name"))
-	s.cfg.Subnet = strings.TrimSpace(r.FormValue("subnet"))
-	s.cfg.Gateway = strings.TrimSpace(r.FormValue("gateway"))
-	s.cfg.HostInterface = strings.TrimSpace(r.FormValue("host_interface"))
-	s.cfg.KernelPath = strings.TrimSpace(r.FormValue("kernel_path"))
-	s.cfg.RootfsPath = strings.TrimSpace(r.FormValue("rootfs_path"))
-
 	defaults := &config.VMDefaults{}
 
-	if v := strings.TrimSpace(r.FormValue("default_cpus")); v != "" {
+	if v := strings.TrimSpace(r.FormValue("default_cpus")); v != "" && v != "0" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 {
 			s.renderConfigFlash(w, r, "Invalid default vCPUs value", "error")
@@ -42,7 +34,7 @@ func (s *Server) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 		defaults.CPUs = n
 	}
 
-	if v := strings.TrimSpace(r.FormValue("default_memory")); v != "" {
+	if v := strings.TrimSpace(r.FormValue("default_memory")); v != "" && v != "0" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 128 {
 			s.renderConfigFlash(w, r, "Invalid default memory value (minimum 128 MB)", "error")
@@ -51,7 +43,7 @@ func (s *Server) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 		defaults.MemoryMB = n
 	}
 
-	if v := strings.TrimSpace(r.FormValue("default_disk")); v != "" {
+	if v := strings.TrimSpace(r.FormValue("default_disk")); v != "" && v != "0" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 256 {
 			s.renderConfigFlash(w, r, "Invalid default disk value (minimum 256 MB)", "error")
@@ -65,12 +57,20 @@ func (s *Server) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 	defaults.SSHKeyPath = strings.TrimSpace(r.FormValue("default_ssh_key"))
 
 	if dns := strings.TrimSpace(r.FormValue("default_dns")); dns != "" {
-		for _, s := range strings.Split(dns, ",") {
-			if trimmed := strings.TrimSpace(s); trimmed != "" {
+		for _, d := range strings.Split(dns, ",") {
+			if trimmed := strings.TrimSpace(d); trimmed != "" {
 				defaults.DNSServers = append(defaults.DNSServers, trimmed)
 			}
 		}
 	}
+
+	s.cfg.DataDir = strings.TrimSpace(r.FormValue("data_dir"))
+	s.cfg.BridgeName = strings.TrimSpace(r.FormValue("bridge_name"))
+	s.cfg.Subnet = strings.TrimSpace(r.FormValue("subnet"))
+	s.cfg.Gateway = strings.TrimSpace(r.FormValue("gateway"))
+	s.cfg.HostInterface = strings.TrimSpace(r.FormValue("host_interface"))
+	s.cfg.KernelPath = strings.TrimSpace(r.FormValue("kernel_path"))
+	s.cfg.RootfsPath = strings.TrimSpace(r.FormValue("rootfs_path"))
 
 	hasDefaults := defaults.CPUs != 0 || defaults.MemoryMB != 0 || defaults.DiskSizeMB != 0 ||
 		defaults.Image != "" || defaults.Kernel != "" || defaults.SSHKeyPath != "" || len(defaults.DNSServers) > 0
