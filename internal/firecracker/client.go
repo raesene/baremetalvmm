@@ -46,18 +46,18 @@ type MountDrive struct {
 
 // VMConfig holds the configuration needed to start a Firecracker VM
 type VMConfig struct {
-	SocketPath   string
-	KernelPath   string
-	RootfsPath   string
-	CPUs         int
-	MemoryMB     int
-	TapDevice    string
-	MacAddress   string
-	KernelArgs   string
-	LogPath      string
-	IPAddress    string
-	Gateway      string
-	MountDrives  []MountDrive
+	SocketPath  string
+	KernelPath  string
+	RootfsPath  string
+	CPUs        int
+	MemoryMB    int
+	TapDevice   string
+	MacAddress  string
+	KernelArgs  string
+	LogPath     string
+	IPAddress   string
+	Gateway     string
+	MountDrives []MountDrive
 }
 
 // StartVM starts a Firecracker microVM with the given configuration

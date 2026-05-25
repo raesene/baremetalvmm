@@ -18,23 +18,23 @@ const (
 )
 
 type Cluster struct {
-	Name           string   `json:"name"`
-	State          State    `json:"state"`
-	StatusMessage  string   `json:"status_message,omitempty"`
-	K8sVersion     string   `json:"k8s_version"`
-	ControlPlaneVM string   `json:"control_plane_vm"`
-	WorkerVMs      []string `json:"worker_vms"`
-	ControlPlaneIP string   `json:"control_plane_ip"`
-	PodSubnet      string   `json:"pod_subnet"`
-	ServiceSubnet  string   `json:"service_subnet"`
-	JoinToken      string   `json:"join_token,omitempty"`
-	JoinCAHash     string   `json:"join_ca_hash,omitempty"`
-	CPUs           int      `json:"cpus"`
-	MemoryMB       int      `json:"memory_mb"`
-	DiskSizeMB     int      `json:"disk_size_mb"`
-	SSHKeyPath     string   `json:"ssh_key_path"`
-	Image          string   `json:"image,omitempty"`
-	Kernel         string   `json:"kernel,omitempty"`
+	Name           string    `json:"name"`
+	State          State     `json:"state"`
+	StatusMessage  string    `json:"status_message,omitempty"`
+	K8sVersion     string    `json:"k8s_version"`
+	ControlPlaneVM string    `json:"control_plane_vm"`
+	WorkerVMs      []string  `json:"worker_vms"`
+	ControlPlaneIP string    `json:"control_plane_ip"`
+	PodSubnet      string    `json:"pod_subnet"`
+	ServiceSubnet  string    `json:"service_subnet"`
+	JoinToken      string    `json:"join_token,omitempty"`
+	JoinCAHash     string    `json:"join_ca_hash,omitempty"`
+	CPUs           int       `json:"cpus"`
+	MemoryMB       int       `json:"memory_mb"`
+	DiskSizeMB     int       `json:"disk_size_mb"`
+	SSHKeyPath     string    `json:"ssh_key_path"`
+	Image          string    `json:"image,omitempty"`
+	Kernel         string    `json:"kernel,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 }
 

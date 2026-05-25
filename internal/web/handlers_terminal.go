@@ -274,4 +274,3 @@ func findSSHAuth(sshDir string) ([]ssh.AuthMethod, error) {
 	}
 	return methods, nil
 }
-

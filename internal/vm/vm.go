@@ -24,26 +24,26 @@ const (
 
 // VM represents a microVM instance
 type VM struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	State        State     `json:"state"`
-	CPUs         int       `json:"cpus"`
-	MemoryMB     int       `json:"memory_mb"`
-	DiskSizeMB   int       `json:"disk_size_mb"`
-	Image        string    `json:"image,omitempty"`
-	Kernel       string    `json:"kernel,omitempty"` // Custom kernel name (empty = default)
-	KernelPath   string    `json:"kernel_path"`
-	RootfsPath   string    `json:"rootfs_path"`
-	IPAddress    string    `json:"ip_address"`
-	TapDevice    string    `json:"tap_device"`
-	MacAddress   string    `json:"mac_address"`
-	SSHPort      int       `json:"ssh_port"`
-	SSHPublicKey string    `json:"ssh_public_key,omitempty"`
-	DNSServers   []string  `json:"dns_servers,omitempty"`
-	SocketPath   string    `json:"socket_path"`
-	PID          int       `json:"pid"`
-	AutoStart    bool      `json:"auto_start"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID           string        `json:"id"`
+	Name         string        `json:"name"`
+	State        State         `json:"state"`
+	CPUs         int           `json:"cpus"`
+	MemoryMB     int           `json:"memory_mb"`
+	DiskSizeMB   int           `json:"disk_size_mb"`
+	Image        string        `json:"image,omitempty"`
+	Kernel       string        `json:"kernel,omitempty"` // Custom kernel name (empty = default)
+	KernelPath   string        `json:"kernel_path"`
+	RootfsPath   string        `json:"rootfs_path"`
+	IPAddress    string        `json:"ip_address"`
+	TapDevice    string        `json:"tap_device"`
+	MacAddress   string        `json:"mac_address"`
+	SSHPort      int           `json:"ssh_port"`
+	SSHPublicKey string        `json:"ssh_public_key,omitempty"`
+	DNSServers   []string      `json:"dns_servers,omitempty"`
+	SocketPath   string        `json:"socket_path"`
+	PID          int           `json:"pid"`
+	AutoStart    bool          `json:"auto_start"`
+	CreatedAt    time.Time     `json:"created_at"`
 	StartedAt    time.Time     `json:"started_at,omitempty"`
 	PortForwards []PortForward `json:"port_forwards,omitempty"`
 	Mounts       []Mount       `json:"mounts,omitempty"`

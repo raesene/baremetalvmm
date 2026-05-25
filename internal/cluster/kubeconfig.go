@@ -12,7 +12,7 @@ type kubeconfigFile struct {
 	APIVersion     string                   `yaml:"apiVersion"`
 	Kind           string                   `yaml:"kind"`
 	Clusters       []kubeconfigNamedCluster `yaml:"clusters"`
-	Contexts       []kubeconfigNamedContext  `yaml:"contexts"`
+	Contexts       []kubeconfigNamedContext `yaml:"contexts"`
 	Users          []kubeconfigNamedUser    `yaml:"users"`
 	CurrentContext string                   `yaml:"current-context"`
 }

@@ -101,14 +101,14 @@ func DefaultConfig() *Config {
 // GetPaths returns all standard paths based on the data directory
 func (c *Config) GetPaths() *Paths {
 	return &Paths{
-		Config:  filepath.Join(c.DataDir, "config"),
-		VMs:     filepath.Join(c.DataDir, "vms"),
-		Images:  filepath.Join(c.DataDir, "images"),
-		Kernels: filepath.Join(c.DataDir, "images", "kernels"),
-		Rootfs:  filepath.Join(c.DataDir, "images", "rootfs"),
-		Sockets: filepath.Join(c.DataDir, "sockets"),
-		Logs:    filepath.Join(c.DataDir, "logs"),
-		State:   filepath.Join(c.DataDir, "state"),
+		Config:   filepath.Join(c.DataDir, "config"),
+		VMs:      filepath.Join(c.DataDir, "vms"),
+		Images:   filepath.Join(c.DataDir, "images"),
+		Kernels:  filepath.Join(c.DataDir, "images", "kernels"),
+		Rootfs:   filepath.Join(c.DataDir, "images", "rootfs"),
+		Sockets:  filepath.Join(c.DataDir, "sockets"),
+		Logs:     filepath.Join(c.DataDir, "logs"),
+		State:    filepath.Join(c.DataDir, "state"),
 		Mounts:   filepath.Join(c.DataDir, "mounts"),
 		Clusters: filepath.Join(c.DataDir, "clusters"),
 		SSH:      filepath.Join(c.DataDir, "ssh"),
