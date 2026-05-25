@@ -74,7 +74,7 @@ func (c *Cluster) Save(clusterDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal cluster config: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 func Load(clusterDir, name string) (*Cluster, error) {

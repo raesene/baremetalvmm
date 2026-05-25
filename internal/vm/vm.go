@@ -93,7 +93,7 @@ func (v *VM) Save(vmDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal VM config: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 // Load reads a VM configuration from disk

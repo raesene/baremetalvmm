@@ -132,7 +132,7 @@ func (c *Config) EnsureDirectories() error {
 	}
 
 	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0700); err != nil {
 			return err
 		}
 	}
