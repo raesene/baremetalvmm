@@ -36,7 +36,9 @@ type Server struct {
 
 func NewServer(cfg *config.Config, configPath, password, listenAddr string) (*Server, error) {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return nil, fmt.Errorf("failed to generate API key: %w", err)
+	}
 
 	s := &Server{
 		cfg:          cfg,

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -20,7 +21,9 @@ func newSessionStore() *sessionStore {
 
 func (s *sessionStore) create() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand failed: " + err.Error())
+	}
 	token := hex.EncodeToString(b)
 
 	s.mu.Lock()
@@ -80,7 +83,10 @@ func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	ip := r.RemoteAddr
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if ip == "" {
+		ip = r.RemoteAddr
+	}
 	if !s.loginLimiter.allow(ip) {
 		s.renderTemplate(w, "login.html", map[string]interface{}{
 			"Error": "Too many login attempts. Please wait a minute.",
