@@ -16,6 +16,25 @@ VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker
 - **Storage**: JSON-based VM/cluster configs, ext4 rootfs images
 - **CI/CD**: GitHub Actions (GoReleaser for binary releases, kernel/rootfs build workflows)
 
+## Input Validation
+
+- `internal/validate/` — Centralized name validation for VM, cluster, image, kernel, and mount tag names
+- Pattern: `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` — rejects path traversal, empty, `.`, `..`, control chars
+- Applied at all CLI and web/API entry points before names reach filesystem operations
+
+## Code Review Status
+
+A code review was performed (see `codex_code_review/review.md`) with an implementation plan at `codex_code_review/implementation_plan.md`. Completed fixes:
+- gofmt applied to all Go sources
+- CSP inline onclick violation fixed (api_key.html → app.js event listener)
+- Identifier validation added at all 43 entry points (path traversal prevention)
+
+Remaining items (in priority order):
+- **P1**: Tighten file permissions (0700/0600), WebSocket origin check, HTTP server timeouts
+- **P2**: CSRF fixes, rate limiter keying, reject weak passwords, CSPRNG error handling, server-side URL resolution for image downloads, cluster input validation, resource/DNS validation, atomic state writes, initial test suite
+- **P3**: Download integrity verification, lifecycle cleanup/rollback, PID verification, port-forward idempotency, subnet hardcoding fix, install/uninstall script fixes, documentation alignment
+- **P4**: Shared service layer refactor, Firecracker jailer integration
+
 ## Key Architecture
 
 - `cmd/vmm/main.go` — CLI entry point, all command definitions
