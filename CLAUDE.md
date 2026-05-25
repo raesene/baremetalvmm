@@ -24,15 +24,22 @@ VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker
 
 ## Code Review Status
 
-A code review was performed (see `codex_code_review/review.md`) with an implementation plan at `codex_code_review/implementation_plan.md`. Completed fixes:
+A code review was performed (see `codex_code_review/review.md`) with an implementation plan at `codex_code_review/implementation_plan.md`.
+
+Completed fixes (all P1 done):
 - gofmt applied to all Go sources
 - CSP inline onclick violation fixed (api_key.html → app.js event listener)
-- Identifier validation added at all 43 entry points (path traversal prevention)
+- Identifier validation added at all 43 CLI and web/API entry points (path traversal prevention)
+- File permissions tightened: directories 0700, state files 0600
+- HTTP server timeouts (ReadHeaderTimeout, ReadTimeout, IdleTimeout) and graceful SIGINT/SIGTERM shutdown
+- Rate limiter fixed to key on IP without port (net.SplitHostPort)
+- CSPRNG errors checked and fail-closed for session tokens and API keys
+- WebSocket origin verification enabled (removed InsecureSkipVerify)
+- Unit test suite added across 5 packages (validate, network, vm, web, image)
 
-Remaining items (in priority order):
-- **P1**: Tighten file permissions (0700/0600), WebSocket origin check, HTTP server timeouts
-- **P2**: CSRF fixes, rate limiter keying, reject weak passwords, CSPRNG error handling, server-side URL resolution for image downloads, cluster input validation, resource/DNS validation, atomic state writes, initial test suite
-- **P3**: Download integrity verification, lifecycle cleanup/rollback, PID verification, port-forward idempotency, subnet hardcoding fix, install/uninstall script fixes, documentation alignment
+Remaining items (next session starts with P2):
+- **P2**: CSRF logic fixes (separate token, validate bearer before skipping), reject weak/default passwords, server-side URL resolution for image downloads, cluster provisioning input validation, resource/DNS bounds checking, atomic state writes with file locking
+- **P3**: Download integrity verification, lifecycle cleanup/rollback, PID verification before kill, port-forward idempotency, subnet hardcoding fix, install/uninstall script fixes, documentation alignment
 - **P4**: Shared service layer refactor, Firecracker jailer integration
 
 ## Key Architecture
