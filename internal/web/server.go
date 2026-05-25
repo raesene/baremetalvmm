@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -8,7 +9,10 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -212,8 +216,35 @@ func (s *Server) handleAPIKeyPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) Run() error {
 	go s.sseBroker.Start(s.cfg)
-	log.Printf("VMM Web UI listening on %s", s.listenAddr)
-	return http.ListenAndServe(s.listenAddr, s.router)
+
+	srv := &http.Server{
+		Addr:              s.listenAddr,
+		Handler:           s.router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		// WriteTimeout is not set globally because SSE and WebSocket
+		// connections are long-lived and would be killed by it.
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		log.Printf("VMM Web UI listening on %s", s.listenAddr)
+		errCh <- srv.ListenAndServe()
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		log.Println("Shutting down...")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return srv.Shutdown(shutdownCtx)
+	}
 }
 
 func (s *Server) renderTemplate(w http.ResponseWriter, name string, data map[string]interface{}) {
