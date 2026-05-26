@@ -1223,6 +1223,21 @@ func (m *Manager) ListAvailableReleases() ([]AvailableRelease, error) {
 	return result, nil
 }
 
+// FindReleaseURL looks up a release download URL by tag and asset type (kernel or rootfs).
+// It queries GitHub for available releases and returns the URL for the matching entry.
+func (m *Manager) FindReleaseURL(tag, assetType string) (string, error) {
+	releases, err := m.ListAvailableReleases()
+	if err != nil {
+		return "", fmt.Errorf("failed to list releases: %w", err)
+	}
+	for _, rel := range releases {
+		if rel.Tag == tag && rel.Type == assetType {
+			return rel.DownloadURL, nil
+		}
+	}
+	return "", fmt.Errorf("release %q (type %s) not found", tag, assetType)
+}
+
 // DownloadKernelFromRelease downloads a kernel from a GitHub release URL
 func (m *Manager) DownloadKernelFromRelease(url, localName string) error {
 	destPath := filepath.Join(m.KernelDir, localName)

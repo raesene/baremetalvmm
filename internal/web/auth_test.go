@@ -85,6 +85,80 @@ func TestSessionStore_UniqueTokens(t *testing.T) {
 	}
 }
 
+func TestSessionStore_CSRFToken(t *testing.T) {
+	ss := newSessionStore()
+
+	sessionToken := ss.create()
+	csrfToken := ss.csrfToken(sessionToken)
+	if csrfToken == "" {
+		t.Fatal("CSRF token should not be empty")
+	}
+	if csrfToken == sessionToken {
+		t.Error("CSRF token must differ from session token")
+	}
+}
+
+func TestSessionStore_CSRFTokenForInvalidSession(t *testing.T) {
+	ss := newSessionStore()
+
+	if csrf := ss.csrfToken("nonexistent"); csrf != "" {
+		t.Error("CSRF token for nonexistent session should be empty")
+	}
+}
+
+func TestSessionStore_ValidCSRF(t *testing.T) {
+	ss := newSessionStore()
+
+	sessionToken := ss.create()
+	csrfToken := ss.csrfToken(sessionToken)
+
+	if !ss.validCSRF(sessionToken, csrfToken) {
+		t.Error("valid session+CSRF pair should pass")
+	}
+}
+
+func TestSessionStore_ValidCSRF_WrongCSRF(t *testing.T) {
+	ss := newSessionStore()
+
+	sessionToken := ss.create()
+
+	if ss.validCSRF(sessionToken, "wrong-csrf-token") {
+		t.Error("wrong CSRF token should fail")
+	}
+}
+
+func TestSessionStore_ValidCSRF_WrongSession(t *testing.T) {
+	ss := newSessionStore()
+
+	ss.create()
+
+	if ss.validCSRF("wrong-session", "any-csrf") {
+		t.Error("wrong session token should fail")
+	}
+}
+
+func TestSessionStore_ValidCSRF_SessionTokenAsCSRF(t *testing.T) {
+	ss := newSessionStore()
+
+	sessionToken := ss.create()
+
+	if ss.validCSRF(sessionToken, sessionToken) {
+		t.Error("session token used as CSRF token should fail")
+	}
+}
+
+func TestSessionStore_ValidCSRF_DeletedSession(t *testing.T) {
+	ss := newSessionStore()
+
+	sessionToken := ss.create()
+	csrfToken := ss.csrfToken(sessionToken)
+	ss.delete(sessionToken)
+
+	if ss.validCSRF(sessionToken, csrfToken) {
+		t.Error("deleted session should fail CSRF validation")
+	}
+}
+
 func TestIsAPIRequest(t *testing.T) {
 	tests := []struct {
 		path string

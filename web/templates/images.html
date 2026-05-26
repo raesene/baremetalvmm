@@ -133,7 +133,6 @@
                         {{else}}
                         <form method="POST" action="/images/kernels/download" class="download-form" style="display:inline">
                             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <input type="hidden" name="url" value="{{.DownloadURL}}">
                             <input type="hidden" name="local_name" value="{{.LocalName}}">
                             <input type="hidden" name="tag" value="{{.Tag}}">
                             <button type="submit" class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 font-medium download-btn">
@@ -174,7 +173,6 @@
                         {{else}}
                         <form method="POST" action="/images/rootfs/download" class="download-form" style="display:inline">
                             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <input type="hidden" name="url" value="{{.DownloadURL}}">
                             <input type="hidden" name="local_name" value="{{.LocalName}}">
                             <input type="hidden" name="tag" value="{{.Tag}}">
                             <button type="submit" class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 font-medium download-btn">

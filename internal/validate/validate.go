@@ -2,6 +2,7 @@ package validate
 
 import (
 	"fmt"
+	"net"
 	"regexp"
 )
 
@@ -38,4 +39,41 @@ func KernelName(name string) error {
 
 func MountTag(tag string) error {
 	return Name("mount tag", tag)
+}
+
+func CPUs(n int) error {
+	if n < 1 || n > 32 {
+		return fmt.Errorf("CPUs must be between 1 and 32 (got %d)", n)
+	}
+	return nil
+}
+
+func MemoryMB(n int) error {
+	if n < 128 || n > 65536 {
+		return fmt.Errorf("memory must be between 128 and 65536 MB (got %d)", n)
+	}
+	return nil
+}
+
+func DiskSizeMB(n int) error {
+	if n < 256 || n > 1048576 {
+		return fmt.Errorf("disk size must be between 256 and 1048576 MB (got %d)", n)
+	}
+	return nil
+}
+
+func DNSServer(addr string) error {
+	if net.ParseIP(addr) == nil {
+		return fmt.Errorf("invalid DNS server address: %q", addr)
+	}
+	return nil
+}
+
+var k8sVersionRe = regexp.MustCompile(`^[0-9]+\.[0-9]{1,2}\.[0-9]{1,3}$`)
+
+func K8sVersion(version string) error {
+	if !k8sVersionRe.MatchString(version) {
+		return fmt.Errorf("invalid Kubernetes version %q: must be in format MAJOR.MINOR.PATCH (e.g., 1.36.0)", version)
+	}
+	return nil
 }

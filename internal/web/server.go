@@ -266,7 +266,7 @@ func (s *Server) renderPage(w http.ResponseWriter, r *http.Request, name string,
 	data["Active"] = active
 
 	if cookie, err := r.Cookie("vmm_session"); err == nil {
-		data["CSRFToken"] = cookie.Value
+		data["CSRFToken"] = s.sessions.csrfToken(cookie.Value)
 	}
 
 	t, ok := s.templates[name]

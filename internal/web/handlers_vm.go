@@ -126,6 +126,25 @@ func (s *Server) handleVMCreate(w http.ResponseWriter, r *http.Request) {
 	imageName := r.FormValue("image")
 	dnsStr := strings.TrimSpace(r.FormValue("dns"))
 
+	if err := validate.CPUs(cpus); err != nil {
+		s.renderPage(w, r, "vm_create.html", "vms", map[string]interface{}{
+			"Flash": err.Error(), "FlashType": "error",
+		})
+		return
+	}
+	if err := validate.MemoryMB(memory); err != nil {
+		s.renderPage(w, r, "vm_create.html", "vms", map[string]interface{}{
+			"Flash": err.Error(), "FlashType": "error",
+		})
+		return
+	}
+	if err := validate.DiskSizeMB(disk); err != nil {
+		s.renderPage(w, r, "vm_create.html", "vms", map[string]interface{}{
+			"Flash": err.Error(), "FlashType": "error",
+		})
+		return
+	}
+
 	var dnsServers []string
 	if dnsStr != "" {
 		for _, d := range strings.Split(dnsStr, ",") {
@@ -133,6 +152,14 @@ func (s *Server) handleVMCreate(w http.ResponseWriter, r *http.Request) {
 			if d != "" {
 				dnsServers = append(dnsServers, d)
 			}
+		}
+	}
+	for _, dns := range dnsServers {
+		if err := validate.DNSServer(dns); err != nil {
+			s.renderPage(w, r, "vm_create.html", "vms", map[string]interface{}{
+				"Flash": err.Error(), "FlashType": "error",
+			})
+			return
 		}
 	}
 
@@ -537,6 +564,25 @@ func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.DiskSizeMB == 0 {
 		req.DiskSizeMB = 1024
+	}
+
+	if err := validate.CPUs(req.CPUs); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validate.MemoryMB(req.MemoryMB); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validate.DiskSizeMB(req.DiskSizeMB); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	for _, dns := range req.DNSServers {
+		if err := validate.DNSServer(dns); err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
 	paths := s.cfg.GetPaths()

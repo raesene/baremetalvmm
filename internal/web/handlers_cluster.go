@@ -118,11 +118,36 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 	kernelName := r.FormValue("kernel")
 	imageName := r.FormValue("image")
 
+	if err := validate.CPUs(cpus); err != nil {
+		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
+			"Flash": err.Error(), "FlashType": "error",
+		})
+		return
+	}
+	if err := validate.MemoryMB(memory); err != nil {
+		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
+			"Flash": err.Error(), "FlashType": "error",
+		})
+		return
+	}
+	if err := validate.DiskSizeMB(disk); err != nil {
+		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
+			"Flash": err.Error(), "FlashType": "error",
+		})
+		return
+	}
+
 	k8sVersion := strings.TrimPrefix(imageName, "k8s-")
 	if imageName == "" || k8sVersion == "" {
 		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
 			"Flash":     "A Kubernetes rootfs image must be selected",
 			"FlashType": "error",
+		})
+		return
+	}
+	if err := validate.K8sVersion(k8sVersion); err != nil {
+		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
+			"Flash": err.Error(), "FlashType": "error",
 		})
 		return
 	}
@@ -400,6 +425,31 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 	}
 	if req.K8sVersion == "" {
 		req.K8sVersion = "1.36.0"
+	}
+	if err := validate.K8sVersion(req.K8sVersion); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := validate.CPUs(req.CPUs); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validate.MemoryMB(req.MemoryMB); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validate.DiskSizeMB(req.DiskSizeMB); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.CPUs < 2 {
+		jsonError(w, "Kubernetes requires at least 2 CPUs", http.StatusBadRequest)
+		return
+	}
+	if req.MemoryMB < 2048 {
+		jsonError(w, "Kubernetes requires at least 2048 MB memory", http.StatusBadRequest)
+		return
 	}
 
 	paths := s.cfg.GetPaths()

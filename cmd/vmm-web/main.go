@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/raesene/baremetalvmm/internal/config"
 	"github.com/raesene/baremetalvmm/internal/web"
@@ -30,6 +31,18 @@ func main() {
 	if password == "" {
 		fmt.Fprintln(os.Stderr, "Error: VMM_WEB_PASSWORD environment variable is required")
 		fmt.Fprintln(os.Stderr, "Usage: VMM_WEB_PASSWORD=<password> vmm-web [--listen <addr>]")
+		os.Exit(1)
+	}
+
+	weakPasswords := []string{"changeme", "password", "admin", "vmm", "12345678", "qwerty123"}
+	for _, weak := range weakPasswords {
+		if strings.EqualFold(password, weak) {
+			fmt.Fprintf(os.Stderr, "Error: VMM_WEB_PASSWORD is set to a known default (%q) — please choose a stronger password\n", password)
+			os.Exit(1)
+		}
+	}
+	if len(password) < 8 {
+		fmt.Fprintln(os.Stderr, "Error: VMM_WEB_PASSWORD must be at least 8 characters long")
 		os.Exit(1)
 	}
 

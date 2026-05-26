@@ -10,13 +10,18 @@ import (
 	"time"
 )
 
+type sessionData struct {
+	Expiry    time.Time
+	CSRFToken string
+}
+
 type sessionStore struct {
 	mu       sync.RWMutex
-	sessions map[string]time.Time
+	sessions map[string]sessionData
 }
 
 func newSessionStore() *sessionStore {
-	return &sessionStore{sessions: make(map[string]time.Time)}
+	return &sessionStore{sessions: make(map[string]sessionData)}
 }
 
 func (s *sessionStore) create() string {
@@ -26,24 +31,57 @@ func (s *sessionStore) create() string {
 	}
 	token := hex.EncodeToString(b)
 
+	cb := make([]byte, 32)
+	if _, err := rand.Read(cb); err != nil {
+		panic("crypto/rand failed: " + err.Error())
+	}
+	csrfToken := hex.EncodeToString(cb)
+
 	s.mu.Lock()
-	s.sessions[token] = time.Now().Add(24 * time.Hour)
+	s.sessions[token] = sessionData{
+		Expiry:    time.Now().Add(24 * time.Hour),
+		CSRFToken: csrfToken,
+	}
 	s.mu.Unlock()
 	return token
 }
 
 func (s *sessionStore) valid(token string) bool {
 	s.mu.RLock()
-	expiry, ok := s.sessions[token]
+	data, ok := s.sessions[token]
 	s.mu.RUnlock()
 	if !ok {
 		return false
 	}
-	if time.Now().After(expiry) {
+	if time.Now().After(data.Expiry) {
 		s.delete(token)
 		return false
 	}
 	return true
+}
+
+func (s *sessionStore) csrfToken(sessionToken string) string {
+	s.mu.RLock()
+	data, ok := s.sessions[sessionToken]
+	s.mu.RUnlock()
+	if !ok {
+		return ""
+	}
+	return data.CSRFToken
+}
+
+func (s *sessionStore) validCSRF(sessionToken, csrfToken string) bool {
+	s.mu.RLock()
+	data, ok := s.sessions[sessionToken]
+	s.mu.RUnlock()
+	if !ok {
+		return false
+	}
+	if time.Now().After(data.Expiry) {
+		s.delete(sessionToken)
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(csrfToken), []byte(data.CSRFToken)) == 1
 }
 
 func (s *sessionStore) delete(token string) {
@@ -163,30 +201,29 @@ func (s *Server) csrfMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Skip CSRF for API requests using Bearer auth
+		// Skip CSRF for API requests using valid Bearer auth
 		if auth := r.Header.Get("Authorization"); len(auth) > 7 && auth[:7] == "Bearer " {
-			next.ServeHTTP(w, r)
-			return
+			token := auth[7:]
+			if s.sessions.valid(token) || subtle.ConstantTimeCompare([]byte(token), []byte(s.apiKey)) == 1 {
+				next.ServeHTTP(w, r)
+				return
+			}
 		}
 
 		// Check CSRF token from form or header
-		token := r.FormValue("csrf_token")
-		if token == "" {
-			token = r.Header.Get("X-CSRF-Token")
+		csrfToken := r.FormValue("csrf_token")
+		if csrfToken == "" {
+			csrfToken = r.Header.Get("X-CSRF-Token")
 		}
 
 		cookie, err := r.Cookie("vmm_session")
-		if err != nil || !s.sessions.valid(token) {
-			_ = cookie
-			// For HTMX requests, the session token is used as CSRF
-			if token == "" || !s.sessions.valid(token) {
-				if isAPIRequest(r) || isHTMXRequest(r) {
-					http.Error(w, `{"error":"invalid csrf token"}`, http.StatusForbidden)
-				} else {
-					http.Redirect(w, r, "/login", http.StatusSeeOther)
-				}
-				return
+		if err != nil || !s.sessions.validCSRF(cookie.Value, csrfToken) {
+			if isAPIRequest(r) || isHTMXRequest(r) {
+				http.Error(w, `{"error":"invalid csrf token"}`, http.StatusForbidden)
+			} else {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
 			}
+			return
 		}
 
 		next.ServeHTTP(w, r)

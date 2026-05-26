@@ -151,6 +151,22 @@ func createCmd() *cobra.Command {
 				dnsServers = defaults.DNSServers
 			}
 
+			// Validate resource bounds
+			if err := validate.CPUs(cpus); err != nil {
+				return err
+			}
+			if err := validate.MemoryMB(memory); err != nil {
+				return err
+			}
+			if err := validate.DiskSizeMB(disk); err != nil {
+				return err
+			}
+			for _, dns := range dnsServers {
+				if err := validate.DNSServer(dns); err != nil {
+					return err
+				}
+			}
+
 			// Create image manager for validation
 			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
@@ -1760,7 +1776,19 @@ func clusterCreateCmd() *cobra.Command {
 				}
 			}
 
-			// Validate resources
+			// Validate resource bounds
+			if err := validate.CPUs(cpus); err != nil {
+				return err
+			}
+			if err := validate.MemoryMB(memory); err != nil {
+				return err
+			}
+			if err := validate.DiskSizeMB(disk); err != nil {
+				return err
+			}
+			if err := validate.K8sVersion(k8sVersion); err != nil {
+				return err
+			}
 			if cpus < 2 {
 				return fmt.Errorf("Kubernetes requires at least 2 CPUs (got %d)", cpus)
 			}

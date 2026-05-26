@@ -26,7 +26,7 @@ VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker
 
 A code review was performed (see `codex_code_review/review.md`) with an implementation plan at `codex_code_review/implementation_plan.md`.
 
-Completed fixes (all P1 done):
+Completed fixes (P1 and P2 done):
 - gofmt applied to all Go sources
 - CSP inline onclick violation fixed (api_key.html → app.js event listener)
 - Identifier validation added at all 43 CLI and web/API entry points (path traversal prevention)
@@ -36,9 +36,15 @@ Completed fixes (all P1 done):
 - CSPRNG errors checked and fail-closed for session tokens and API keys
 - WebSocket origin verification enabled (removed InsecureSkipVerify)
 - Unit test suite added across 5 packages (validate, network, vm, web, image)
+- CSRF token separated from session token, Bearer auth validated before CSRF skip
+- Weak/default password rejection at vmm-web startup (min 8 chars, blocklist)
+- Resource bounds validation: CPUs (1-32), memory (128-65536 MB), disk (256-1048576 MB)
+- DNS server validation via net.ParseIP at CLI and web entry points
+- Kubernetes version semver validation at CLI and web entry points
+- Server-side URL resolution for image/kernel downloads (no client-supplied URLs)
+- Atomic state writes for VM and cluster configs (temp file + fsync + rename)
 
-Remaining items (next session starts with P2):
-- **P2**: CSRF logic fixes (separate token, validate bearer before skipping), reject weak/default passwords, server-side URL resolution for image downloads, cluster provisioning input validation, resource/DNS bounds checking, atomic state writes with file locking
+Remaining items (next session starts with P3):
 - **P3**: Download integrity verification, lifecycle cleanup/rollback, PID verification before kill, port-forward idempotency, subnet hardcoding fix, install/uninstall script fixes, documentation alignment
 - **P4**: Shared service layer refactor, Firecracker jailer integration
 

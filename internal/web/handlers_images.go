@@ -91,10 +91,9 @@ func (s *Server) handleRootfsDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleKernelDownload(w http.ResponseWriter, r *http.Request) {
-	url := r.FormValue("url")
-	localName := r.FormValue("local_name")
 	tag := r.FormValue("tag")
-	if url == "" || localName == "" {
+	localName := r.FormValue("local_name")
+	if tag == "" || localName == "" {
 		http.Error(w, "missing download parameters", http.StatusBadRequest)
 		return
 	}
@@ -106,6 +105,12 @@ func (s *Server) handleKernelDownload(w http.ResponseWriter, r *http.Request) {
 	paths := s.cfg.GetPaths()
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
+	url, err := imgMgr.FindReleaseURL(tag, "kernel")
+	if err != nil {
+		s.renderImagesFlash(w, r, "Failed to resolve download URL: "+err.Error(), "error")
+		return
+	}
+
 	if err := imgMgr.DownloadKernelFromRelease(url, localName); err != nil {
 		s.renderImagesFlash(w, r, "Failed to download kernel: "+err.Error(), "error")
 		return
@@ -115,10 +120,9 @@ func (s *Server) handleKernelDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRootfsDownload(w http.ResponseWriter, r *http.Request) {
-	url := r.FormValue("url")
-	localName := r.FormValue("local_name")
 	tag := r.FormValue("tag")
-	if url == "" || localName == "" {
+	localName := r.FormValue("local_name")
+	if tag == "" || localName == "" {
 		http.Error(w, "missing download parameters", http.StatusBadRequest)
 		return
 	}
@@ -129,6 +133,12 @@ func (s *Server) handleRootfsDownload(w http.ResponseWriter, r *http.Request) {
 
 	paths := s.cfg.GetPaths()
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
+
+	url, err := imgMgr.FindReleaseURL(tag, "rootfs")
+	if err != nil {
+		s.renderImagesFlash(w, r, "Failed to resolve download URL: "+err.Error(), "error")
+		return
+	}
 
 	if err := imgMgr.DownloadRootfsFromRelease(url, localName); err != nil {
 		s.renderImagesFlash(w, r, "Failed to download rootfs: "+err.Error(), "error")
