@@ -21,6 +21,12 @@ import (
 	webfs "github.com/raesene/baremetalvmm/web"
 )
 
+type VersionInfo struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Date    string `json:"date"`
+}
+
 type Server struct {
 	cfg          *config.Config
 	configPath   string
@@ -32,9 +38,10 @@ type Server struct {
 	router       chi.Router
 	sseBroker    *SSEBroker
 	apiKey       string
+	version      VersionInfo
 }
 
-func NewServer(cfg *config.Config, configPath, password, listenAddr string) (*Server, error) {
+func NewServer(cfg *config.Config, configPath, password, listenAddr string, ver VersionInfo) (*Server, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return nil, fmt.Errorf("failed to generate API key: %w", err)
@@ -49,6 +56,7 @@ func NewServer(cfg *config.Config, configPath, password, listenAddr string) (*Se
 		loginLimiter: newRateLimiter(),
 		sseBroker:    NewSSEBroker(),
 		apiKey:       hex.EncodeToString(b),
+		version:      ver,
 	}
 
 	if err := s.loadTemplates(); err != nil {

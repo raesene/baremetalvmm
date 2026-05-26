@@ -53,7 +53,12 @@ func main() {
 		cfg = config.DefaultConfig()
 	}
 
-	server, err := web.NewServer(cfg, cfgPath, password, *listenAddr)
+	ver := web.VersionInfo{
+		Version: version,
+		Commit:  commit,
+		Date:    date,
+	}
+	server, err := web.NewServer(cfg, cfgPath, password, *listenAddr, ver)
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)
 	}

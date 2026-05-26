@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,18 @@ import (
 	"github.com/raesene/baremetalvmm/internal/image"
 )
 
+func (s *Server) getVMMVersion() VersionInfo {
+	out, err := exec.Command("vmm", "version", "--json").Output()
+	if err != nil {
+		return VersionInfo{Version: "unknown"}
+	}
+	var info VersionInfo
+	if err := json.Unmarshal(out, &info); err != nil {
+		return VersionInfo{Version: "unknown"}
+	}
+	return info
+}
+
 func (s *Server) configPageData() map[string]interface{} {
 	paths := s.cfg.GetPaths()
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
@@ -19,9 +32,11 @@ func (s *Server) configPageData() map[string]interface{} {
 	images, _ := imgMgr.ListRootfsWithInfo()
 
 	return map[string]interface{}{
-		"Config":  s.cfg,
-		"Kernels": kernels,
-		"Images":  images,
+		"Config":     s.cfg,
+		"Kernels":    kernels,
+		"Images":     images,
+		"VMMVersion": s.getVMMVersion(),
+		"WebVersion": s.version,
 	}
 }
 
