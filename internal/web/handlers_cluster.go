@@ -51,6 +51,7 @@ func (s *Server) handleClusterCreateForm(w http.ResponseWriter, r *http.Request)
 			k8sImages = append(k8sImages, img)
 		}
 	}
+	hasSecurityImage := imgMgr.FindSecurityRootfs() != ""
 	defaults := s.cfg.GetVMDefaults()
 
 	sshKey := ""
@@ -64,8 +65,9 @@ func (s *Server) handleClusterCreateForm(w http.ResponseWriter, r *http.Request)
 	}
 
 	s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
-		"Kernels":   kernels,
-		"K8sImages": k8sImages,
+		"Kernels":          kernels,
+		"K8sImages":        k8sImages,
+		"HasSecurityImage": hasSecurityImage,
 		"Defaults": map[string]interface{}{
 			"SSHKey":     sshKey,
 			"SSHKeyPath": sshKeyPath,
@@ -117,6 +119,7 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 	sshKeyPath := strings.TrimSpace(r.FormValue("ssh_key_path"))
 	kernelName := r.FormValue("kernel")
 	imageName := r.FormValue("image")
+	adminWorkstation := r.FormValue("admin_workstation") == "on"
 
 	if err := validate.CPUs(cpus); err != nil {
 		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
@@ -186,6 +189,18 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 		cl.Kernel = "k8s-kernel"
 	}
 
+	if adminWorkstation {
+		secImage := imgMgr.FindSecurityRootfs()
+		if secImage == "" {
+			s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
+				"Flash":     "Admin workstation requires a security-* rootfs image (none found)",
+				"FlashType": "error",
+			})
+			return
+		}
+		cl.AdminVM = fmt.Sprintf("%s-admin", name)
+	}
+
 	if err := cl.Save(paths.Clusters); err != nil {
 		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
 			"Flash":     "Failed to save cluster config: " + err.Error(),
@@ -198,11 +213,20 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 	allVMs := cl.AllVMs()
 	for _, vmName := range allVMs {
 		newVM := vm.NewVM(vmName)
-		newVM.CPUs = cl.CPUs
-		newVM.MemoryMB = cl.MemoryMB
-		newVM.DiskSizeMB = cl.DiskSizeMB
-		newVM.Image = cl.Image
-		newVM.Kernel = cl.Kernel
+		if vmName == cl.AdminVM {
+			secImage := imgMgr.FindSecurityRootfs()
+			newVM.CPUs = 2
+			newVM.MemoryMB = 4096
+			newVM.DiskSizeMB = 20480
+			newVM.Image = secImage
+			newVM.Kernel = ""
+		} else {
+			newVM.CPUs = cl.CPUs
+			newVM.MemoryMB = cl.MemoryMB
+			newVM.DiskSizeMB = cl.DiskSizeMB
+			newVM.Image = cl.Image
+			newVM.Kernel = cl.Kernel
+		}
 		newVM.MacAddress = newVM.GenerateMacAddress()
 		newVM.TapDevice = network.GenerateTapName(newVM.ID)
 		newVM.SSHPublicKey = sshKey
@@ -238,6 +262,7 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 	// Start all VMs sequentially
 	log.Printf("cluster %s: starting VMs...", clusterName)
 	var nodeInfos []cluster.NodeInfo
+	var adminIP string
 	for _, vmName := range cl.AllVMs() {
 		existingVM, err := vm.Load(paths.VMs, vmName)
 		if err != nil {
@@ -250,7 +275,11 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 		fcClient := firecracker.NewClient()
 		fcClient.UpdateVMState(existingVM)
 		if existingVM.State == vm.StateRunning {
-			nodeInfos = append(nodeInfos, cluster.NodeInfo{Name: vmName, IP: existingVM.IPAddress})
+			if vmName == cl.AdminVM {
+				adminIP = existingVM.IPAddress
+			} else {
+				nodeInfos = append(nodeInfos, cluster.NodeInfo{Name: vmName, IP: existingVM.IPAddress})
+			}
 			continue
 		}
 
@@ -261,10 +290,14 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 			return
 		}
 		log.Printf("cluster %s: started VM %s (%s)", clusterName, vmName, existingVM.IPAddress)
-		nodeInfos = append(nodeInfos, cluster.NodeInfo{Name: vmName, IP: existingVM.IPAddress})
+		if vmName == cl.AdminVM {
+			adminIP = existingVM.IPAddress
+		} else {
+			nodeInfos = append(nodeInfos, cluster.NodeInfo{Name: vmName, IP: existingVM.IPAddress})
+		}
 	}
 
-	// Provision Kubernetes
+	// Provision Kubernetes (admin VM excluded)
 	log.Printf("cluster %s: provisioning Kubernetes...", clusterName)
 	if err := cluster.ProvisionCluster(cl, sshKeyPath, nodeInfos); err != nil {
 		log.Printf("cluster %s: provisioning failed: %v", clusterName, err)
@@ -297,6 +330,16 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 		cl.SetError(fmt.Sprintf("failed to merge kubeconfig: %v", err))
 		cl.Save(paths.Clusters)
 		return
+	}
+
+	// Copy kubeconfig to admin workstation
+	if cl.AdminVM != "" && adminIP != "" {
+		log.Printf("cluster %s: copying kubeconfig to admin workstation %s...", clusterName, cl.AdminVM)
+		if err := cluster.CopyKubeconfigToVM(adminIP, sshKeyPath, kubeconfigYAML, cl.ControlPlaneIP); err != nil {
+			log.Printf("cluster %s: warning: failed to copy kubeconfig to admin workstation: %v", clusterName, err)
+		} else {
+			log.Printf("cluster %s: kubeconfig copied to admin workstation", clusterName)
+		}
 	}
 
 	cl.State = cluster.StateRunning
@@ -382,16 +425,17 @@ func (s *Server) handleAPIClusterList(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name       string `json:"name"`
-		Workers    int    `json:"workers"`
-		CPUs       int    `json:"cpus"`
-		MemoryMB   int    `json:"memory_mb"`
-		DiskSizeMB int    `json:"disk_size_mb"`
-		K8sVersion string `json:"k8s_version"`
-		SSHKey     string `json:"ssh_key"`
-		SSHKeyPath string `json:"ssh_key_path"`
-		Kernel     string `json:"kernel"`
-		Image      string `json:"image"`
+		Name             string `json:"name"`
+		Workers          int    `json:"workers"`
+		CPUs             int    `json:"cpus"`
+		MemoryMB         int    `json:"memory_mb"`
+		DiskSizeMB       int    `json:"disk_size_mb"`
+		K8sVersion       string `json:"k8s_version"`
+		SSHKey           string `json:"ssh_key"`
+		SSHKeyPath       string `json:"ssh_key_path"`
+		Kernel           string `json:"kernel"`
+		Image            string `json:"image"`
+		AdminWorkstation bool   `json:"admin_workstation"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "Invalid request body", http.StatusBadRequest)
@@ -478,6 +522,15 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	if req.AdminWorkstation {
+		secImage := imgMgr.FindSecurityRootfs()
+		if secImage == "" {
+			jsonError(w, "Admin workstation requires a security-* rootfs image (none found)", http.StatusBadRequest)
+			return
+		}
+		cl.AdminVM = fmt.Sprintf("%s-admin", req.Name)
+	}
+
 	if err := cl.Save(paths.Clusters); err != nil {
 		jsonError(w, "Failed to save cluster: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -485,11 +538,20 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 
 	for _, vmName := range cl.AllVMs() {
 		newVM := vm.NewVM(vmName)
-		newVM.CPUs = cl.CPUs
-		newVM.MemoryMB = cl.MemoryMB
-		newVM.DiskSizeMB = cl.DiskSizeMB
-		newVM.Image = cl.Image
-		newVM.Kernel = cl.Kernel
+		if vmName == cl.AdminVM {
+			secImage := imgMgr.FindSecurityRootfs()
+			newVM.CPUs = 2
+			newVM.MemoryMB = 4096
+			newVM.DiskSizeMB = 20480
+			newVM.Image = secImage
+			newVM.Kernel = ""
+		} else {
+			newVM.CPUs = cl.CPUs
+			newVM.MemoryMB = cl.MemoryMB
+			newVM.DiskSizeMB = cl.DiskSizeMB
+			newVM.Image = cl.Image
+			newVM.Kernel = cl.Kernel
+		}
 		newVM.MacAddress = newVM.GenerateMacAddress()
 		newVM.TapDevice = network.GenerateTapName(newVM.ID)
 		newVM.SSHPublicKey = req.SSHKey

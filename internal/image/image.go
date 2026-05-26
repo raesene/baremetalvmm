@@ -1071,6 +1071,29 @@ func (m *Manager) DownloadK8sRootfs(k8sVersion string) (string, error) {
 	return imageName, nil
 }
 
+// FindSecurityRootfs returns the name of the newest security-* rootfs image
+// available locally, or empty string if none found.
+func (m *Manager) FindSecurityRootfs() string {
+	entries, err := os.ReadDir(m.RootfsDir)
+	if err != nil {
+		return ""
+	}
+	var latest string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasPrefix(name, "security-") && strings.HasSuffix(name, ".ext4") {
+			trimmed := strings.TrimSuffix(name, ".ext4")
+			if trimmed > latest {
+				latest = trimmed
+			}
+		}
+	}
+	return latest
+}
+
 // DefaultDNSServers are used when no custom DNS servers are specified
 var DefaultDNSServers = []string{"8.8.8.8", "8.8.4.4", "1.1.1.1"}
 

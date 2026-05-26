@@ -72,15 +72,40 @@ vmm ssh mycluster-worker-1
 vmm cluster create <name> [flags]
 
 Flags:
-  --workers int        Number of worker nodes (default 0, control-plane only)
-  --cpus int           vCPUs per node (default 2)
-  --memory int         Memory per node in MB (default 4096)
-  --disk int           Disk per node in MB (default 10240)
-  --k8s-version string Kubernetes version (default "1.36.0")
-  --ssh-key string     Path to SSH public key (optional; managed key used if omitted)
-  --kernel string      Kernel name (k8s-kernel recommended)
-  --image string       Rootfs image name
+  --workers int          Number of worker nodes (default 0, control-plane only)
+  --cpus int             vCPUs per node (default 2)
+  --memory int           Memory per node in MB (default 4096)
+  --disk int             Disk per node in MB (default 10240)
+  --k8s-version string   Kubernetes version (default "1.36.0")
+  --ssh-key string       Path to SSH public key (optional; managed key used if omitted)
+  --kernel string        Kernel name (k8s-kernel recommended)
+  --image string         Rootfs image name
+  --admin-workstation    Create an admin workstation VM with security tools and cluster kubeconfig
 ```
+
+## Admin Workstation
+
+You can optionally attach an **admin workstation** VM to a cluster. This is a separate VM (not a Kubernetes node) that uses the security rootfs image and comes pre-configured with the cluster's kubeconfig, so you can run `kubectl` and security tools against the cluster immediately.
+
+```bash
+# Create a cluster with an admin workstation
+sudo vmm cluster create mycluster --workers 2 --admin-workstation
+
+# SSH into the admin workstation
+vmm ssh mycluster-admin
+
+# kubectl is pre-configured
+root@mycluster-admin:~# kubectl get nodes
+```
+
+The admin workstation VM:
+- Uses the latest `security-*` rootfs image (must be available locally; run `sudo vmm image pull` first)
+- Has fixed resources: 2 vCPUs, 4 GB RAM, 20 GB disk, default kernel
+- Gets the cluster kubeconfig written to `/root/.kube/config` with the server URL pointing to the control plane's internal IP
+- Is named `{cluster}-admin` and is managed as part of the cluster (deleted when the cluster is deleted)
+- Is **not** a Kubernetes node — it's excluded from kubeadm provisioning
+
+The admin workstation is also available as a checkbox in the web UI cluster creation form (requires a `security-*` image to be present).
 
 ## Deleting a Cluster
 

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -87,6 +89,45 @@ func MergeKubeconfig(clusterName, kubeconfigYAML string) error {
 		return fmt.Errorf("failed to marshal kubeconfig: %w", err)
 	}
 	return os.WriteFile(kubeconfigPath, data, 0600)
+}
+
+// CopyKubeconfigToVM copies a kubeconfig YAML to a remote VM at /root/.kube/config
+// and rewrites the server URL to point at the control plane's internal IP.
+func CopyKubeconfigToVM(adminIP, sshKeyPath, kubeconfigYAML, controlPlaneIP string) error {
+	client, err := WaitForSSH(adminIP, sshKeyPath, 60*time.Second)
+	if err != nil {
+		return fmt.Errorf("SSH to admin workstation failed: %w", err)
+	}
+	defer client.Close()
+
+	if _, err := client.Run("mkdir -p /root/.kube"); err != nil {
+		return fmt.Errorf("failed to create .kube directory: %w", err)
+	}
+
+	// Rewrite the server address to use the control plane IP directly
+	var kc kubeconfigFile
+	if err := yaml.Unmarshal([]byte(kubeconfigYAML), &kc); err != nil {
+		return fmt.Errorf("failed to parse kubeconfig: %w", err)
+	}
+	for i := range kc.Clusters {
+		kc.Clusters[i].Cluster["server"] = fmt.Sprintf("https://%s:6443", controlPlaneIP)
+	}
+	rewritten, err := yaml.Marshal(&kc)
+	if err != nil {
+		return fmt.Errorf("failed to marshal kubeconfig: %w", err)
+	}
+
+	escaped := strings.ReplaceAll(string(rewritten), "'", "'\\''")
+	cmd := fmt.Sprintf("cat > /root/.kube/config << 'KUBECONFIGEOF'\n%s\nKUBECONFIGEOF", escaped)
+	if _, err := client.Run(cmd); err != nil {
+		return fmt.Errorf("failed to write kubeconfig: %w", err)
+	}
+
+	if _, err := client.Run("chmod 600 /root/.kube/config"); err != nil {
+		return fmt.Errorf("failed to set kubeconfig permissions: %w", err)
+	}
+
+	return nil
 }
 
 func RemoveKubeconfigContext(clusterName string) error {

@@ -1778,6 +1778,7 @@ func clusterCreateCmd() *cobra.Command {
 	var sshKeyPath string
 	var imageName string
 	var kernelName string
+	var adminWorkstation bool
 
 	cmd := &cobra.Command{
 		Use:   "create <name>",
@@ -1896,6 +1897,16 @@ func clusterCreateCmd() *cobra.Command {
 				}
 			}
 
+			// Set up admin workstation if requested
+			if adminWorkstation {
+				secImage := imgMgr.FindSecurityRootfs()
+				if secImage == "" {
+					return fmt.Errorf("--admin-workstation requires a security-* rootfs image (none found, run 'vmm image pull' first)")
+				}
+				cl.AdminVM = fmt.Sprintf("%s-admin", name)
+				fmt.Printf("Admin workstation enabled: %s (image: %s)\n", cl.AdminVM, secImage)
+			}
+
 			// Save cluster config
 			if err := cl.Save(paths.Clusters); err != nil {
 				return fmt.Errorf("failed to save cluster config: %w", err)
@@ -1904,18 +1915,27 @@ func clusterCreateCmd() *cobra.Command {
 			fmt.Printf("Creating cluster '%s' with Kubernetes %s (%d control-plane + %d workers)\n",
 				name, k8sVersion, 1, workers)
 
-			// Create all VMs
+			// Create all VMs (cluster nodes + admin if enabled)
 			allVMs := cl.AllVMs()
 			for _, vmName := range allVMs {
 				if vm.Exists(paths.VMs, vmName) {
 					return fmt.Errorf("VM '%s' already exists", vmName)
 				}
 				newVM := vm.NewVM(vmName)
-				newVM.CPUs = cl.CPUs
-				newVM.MemoryMB = cl.MemoryMB
-				newVM.DiskSizeMB = cl.DiskSizeMB
-				newVM.Image = cl.Image
-				newVM.Kernel = cl.Kernel
+				if vmName == cl.AdminVM {
+					secImage := imgMgr.FindSecurityRootfs()
+					newVM.CPUs = 2
+					newVM.MemoryMB = 4096
+					newVM.DiskSizeMB = 20480
+					newVM.Image = secImage
+					newVM.Kernel = ""
+				} else {
+					newVM.CPUs = cl.CPUs
+					newVM.MemoryMB = cl.MemoryMB
+					newVM.DiskSizeMB = cl.DiskSizeMB
+					newVM.Image = cl.Image
+					newVM.Kernel = cl.Kernel
+				}
 				newVM.MacAddress = newVM.GenerateMacAddress()
 				newVM.TapDevice = network.GenerateTapName(newVM.ID)
 				newVM.SSHPublicKey = sshPubKey
@@ -1930,6 +1950,7 @@ func clusterCreateCmd() *cobra.Command {
 			// Start all VMs
 			fmt.Println("Starting all VMs...")
 			var nodeInfos []cluster.NodeInfo
+			var adminIP string
 			for _, vmName := range allVMs {
 				ip, err := startClusterVM(vmName)
 				if err != nil {
@@ -1937,11 +1958,15 @@ func clusterCreateCmd() *cobra.Command {
 					cl.Save(paths.Clusters)
 					return fmt.Errorf("failed to start VM '%s': %w", vmName, err)
 				}
-				nodeInfos = append(nodeInfos, cluster.NodeInfo{Name: vmName, IP: ip})
+				if vmName == cl.AdminVM {
+					adminIP = ip
+				} else {
+					nodeInfos = append(nodeInfos, cluster.NodeInfo{Name: vmName, IP: ip})
+				}
 				fmt.Printf("  Started VM '%s' (%s)\n", vmName, ip)
 			}
 
-			// Provision Kubernetes
+			// Provision Kubernetes (admin VM is excluded from provisioning)
 			fmt.Println("\nProvisioning Kubernetes cluster...")
 			if err := cluster.ProvisionCluster(cl, sshPrivateKeyPath, nodeInfos); err != nil {
 				cl.SetError(fmt.Sprintf("provisioning failed: %v", err))
@@ -1972,14 +1997,27 @@ func clusterCreateCmd() *cobra.Command {
 				return fmt.Errorf("failed to merge kubeconfig: %w", err)
 			}
 
+			// Copy kubeconfig to admin workstation
+			if cl.AdminVM != "" && adminIP != "" {
+				fmt.Printf("Copying kubeconfig to admin workstation %s...\n", cl.AdminVM)
+				if err := cluster.CopyKubeconfigToVM(adminIP, sshPrivateKeyPath, kubeconfigYAML, cl.ControlPlaneIP); err != nil {
+					fmt.Printf("Warning: failed to copy kubeconfig to admin workstation: %v\n", err)
+				} else {
+					fmt.Println("Kubeconfig copied to admin workstation at /root/.kube/config")
+				}
+			}
+
 			cl.State = cluster.StateRunning
 			cl.Save(paths.Clusters)
 
 			fmt.Printf("\nCluster '%s' is ready!\n", name)
 			fmt.Printf("  Kubernetes: %s\n", cl.K8sVersion)
 			fmt.Printf("  Control plane: %s\n", cl.ControlPlaneIP)
-			fmt.Printf("  Nodes: %d\n", len(allVMs))
+			fmt.Printf("  Nodes: %d\n", len(cl.ClusterVMs()))
 			fmt.Printf("  Context: vmm-%s\n", name)
+			if cl.AdminVM != "" {
+				fmt.Printf("  Admin workstation: %s (%s)\n", cl.AdminVM, adminIP)
+			}
 			fmt.Printf("\nUse: kubectl --context vmm-%s get nodes\n", name)
 
 			return nil
@@ -1994,6 +2032,7 @@ func clusterCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&sshKeyPath, "ssh-key", "", "Path to SSH public key file")
 	cmd.Flags().StringVar(&imageName, "image", "", "Name of rootfs image to use")
 	cmd.Flags().StringVar(&kernelName, "kernel", "", "Name of kernel to use")
+	cmd.Flags().BoolVar(&adminWorkstation, "admin-workstation", false, "Create an admin workstation VM with security tools and cluster kubeconfig")
 	cmd.RegisterFlagCompletionFunc("kernel", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeKernelNames(cmd, nil, toComplete)
 	})

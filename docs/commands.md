@@ -97,7 +97,7 @@ sudo vmm port-forward remove myvm 8080:80
 
 | Command | Description |
 |---------|-------------|
-| `vmm cluster create <name>` | Create a Kubernetes cluster |
+| `vmm cluster create <name>` | Create a Kubernetes cluster (use `--admin-workstation` to add a security tooling VM) |
 | `vmm cluster delete <name>` | Delete a cluster and all its VMs |
 | `vmm cluster list` | List all clusters |
 | `vmm cluster kubeconfig <name>` | Re-extract and merge kubeconfig |

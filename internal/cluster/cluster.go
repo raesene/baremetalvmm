@@ -24,6 +24,7 @@ type Cluster struct {
 	K8sVersion     string    `json:"k8s_version"`
 	ControlPlaneVM string    `json:"control_plane_vm"`
 	WorkerVMs      []string  `json:"worker_vms"`
+	AdminVM        string    `json:"admin_vm,omitempty"`
 	ControlPlaneIP string    `json:"control_plane_ip"`
 	PodSubnet      string    `json:"pod_subnet"`
 	ServiceSubnet  string    `json:"service_subnet"`
@@ -58,6 +59,17 @@ func NewCluster(name string, workers int, k8sVersion string) *Cluster {
 }
 
 func (c *Cluster) AllVMs() []string {
+	vms := []string{c.ControlPlaneVM}
+	vms = append(vms, c.WorkerVMs...)
+	if c.AdminVM != "" {
+		vms = append(vms, c.AdminVM)
+	}
+	return vms
+}
+
+// ClusterVMs returns only the Kubernetes cluster VMs (control plane + workers),
+// excluding the admin workstation.
+func (c *Cluster) ClusterVMs() []string {
 	vms := []string{c.ControlPlaneVM}
 	vms = append(vms, c.WorkerVMs...)
 	return vms
