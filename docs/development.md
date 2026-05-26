@@ -113,9 +113,9 @@ VMs with `auto_start: true` (the default) will be started automatically.
 The install script also sets up a systemd service for the web UI. The password is stored in `/etc/vmm-web/environment` (created automatically with mode 600):
 
 ```bash
-# Set the web UI password
+# Set the web UI password (must be at least 8 characters, no common defaults)
 sudo nano /etc/vmm-web/environment
-# Change: VMM_WEB_PASSWORD=changeme
+# Set: VMM_WEB_PASSWORD=your-secure-password-here
 
 # Enable and start the web UI
 sudo systemctl enable vmm-web

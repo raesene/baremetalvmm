@@ -4,7 +4,7 @@ VMM includes an optional web-based dashboard (`vmm-web`) for managing and monito
 
 ## Starting the Web UI
 
-The web UI requires a password set via the `VMM_WEB_PASSWORD` environment variable:
+The web UI requires a password set via the `VMM_WEB_PASSWORD` environment variable. The password must be at least 8 characters and cannot be a common default (e.g., `changeme`, `password`, `admin`).
 
 ```bash
 # Listen on localhost only (default)
@@ -14,7 +14,7 @@ VMM_WEB_PASSWORD=mysecretpassword sudo -E vmm-web
 VMM_WEB_PASSWORD=mysecretpassword sudo -E vmm-web --listen 0.0.0.0:8080
 ```
 
-Then open `http://<host>:8080` in a browser and log in with username `admin` and the password you set.
+Then open `http://<host>:8080` in a browser and log in with the password you set.
 
 ## Features
 
@@ -78,8 +78,12 @@ When creating VMs or clusters via the API, VMM uses its auto-generated Ed25519 k
 ## Security
 
 - **Default bind address** is `127.0.0.1:8080` (localhost only). You must explicitly pass `--listen 0.0.0.0:8080` to allow remote access.
+- **Password requirements** - Minimum 8 characters, rejects known defaults (`changeme`, `password`, etc.). The server refuses to start with a weak password.
 - **Login rate limiting** - 5 attempts per minute per IP address.
 - **Session cookies** are `HttpOnly` and `SameSite=Strict`.
-- **CSRF protection** on all state-changing requests.
-- **Security headers** - CSP, X-Frame-Options DENY, X-Content-Type-Options nosniff.
+- **CSRF protection** - Separate CSRF token per session (not the session token itself). Bearer API auth is validated before CSRF is skipped.
+- **Security headers** - CSP (`script-src 'self'` + CDN only), X-Frame-Options DENY, X-Content-Type-Options nosniff.
+- **WebSocket origin verification** - Terminal WebSocket connections verify the request origin.
+- **Input validation** - All names, resource values, DNS addresses, and Kubernetes versions are validated at entry points. Image downloads resolve URLs server-side from release tags.
+- **Server timeouts** - ReadHeader (10s), Read (30s), Idle (120s) with graceful shutdown on SIGINT/SIGTERM.
 - The web server runs as root (required for Firecracker operations). For production use, consider putting it behind a reverse proxy with TLS (e.g., nginx, Caddy).

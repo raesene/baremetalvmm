@@ -34,10 +34,11 @@ if command -v vmm-web &> /dev/null; then
     # Create environment file directory and template if not present
     if [ ! -f /etc/vmm-web/environment ]; then
         mkdir -p /etc/vmm-web
-        echo "VMM_WEB_PASSWORD=changeme" > /etc/vmm-web/environment
+        echo "VMM_WEB_PASSWORD=please-set-a-real-password" > /etc/vmm-web/environment
         chmod 600 /etc/vmm-web/environment
         echo ""
         echo "IMPORTANT: Set your vmm-web password in /etc/vmm-web/environment"
+        echo "           Password must be at least 8 characters and not a common default."
     fi
 fi
 

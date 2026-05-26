@@ -52,8 +52,9 @@ Completed fixes (P1, P2, and P3 done):
 - Uninstall script adds vmm-web.service cleanup and fixes NAT rule removal
 - Documentation aligned: Go version, SSH key behavior, listen address
 
-Remaining items:
-- **P4**: Shared service layer refactor, Firecracker jailer integration
+Future work (P4 — significant effort, deferred):
+- **Shared service layer**: Extract VM lifecycle into `internal/service` so CLI and web share one implementation
+- **Firecracker jailer**: Run Firecracker under the jailer with unprivileged UID, chroot, and cgroup limits
 
 ## Key Architecture
 
