@@ -73,6 +73,11 @@ jobs:
             --name vmlinux.bin \
             --output "${{ github.workspace }}"
 
+      - name: Generate checksum
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          sha256sum vmlinux.bin > vmlinux.bin.sha256
+
       - name: Create GitHub release
         if: steps.check_release.outputs.exists == 'false'
         env:
@@ -103,7 +108,8 @@ jobs:
           gh release create "$TAG" \
             --title "$TITLE" \
             --notes "$NOTES" \
-            vmlinux.bin
+            vmlinux.bin \
+            vmlinux.bin.sha256
 
   build-security:
     runs-on: ubuntu-latest
@@ -158,6 +164,11 @@ jobs:
             --config-profile security \
             --output "${{ github.workspace }}"
 
+      - name: Generate checksum
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          sha256sum security-vmlinux.bin > security-vmlinux.bin.sha256
+
       - name: Create GitHub release
         if: steps.check_release.outputs.exists == 'false'
         env:
@@ -207,7 +218,8 @@ jobs:
           gh release create "$TAG" \
             --title "$TITLE" \
             --notes "$NOTES" \
-            security-vmlinux.bin
+            security-vmlinux.bin \
+            security-vmlinux.bin.sha256
 
   build-k8s:
     runs-on: ubuntu-latest
@@ -261,6 +273,11 @@ jobs:
             --name k8s-vmlinux.bin \
             --output "${{ github.workspace }}"
 
+      - name: Generate checksum
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          sha256sum k8s-vmlinux.bin > k8s-vmlinux.bin.sha256
+
       - name: Create GitHub release
         if: steps.check_release.outputs.exists == 'false'
         env:
@@ -295,4 +312,5 @@ jobs:
           gh release create "$TAG" \
             --title "$TITLE" \
             --notes "$NOTES" \
-            k8s-vmlinux.bin
+            k8s-vmlinux.bin \
+            k8s-vmlinux.bin.sha256

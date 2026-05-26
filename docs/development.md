@@ -3,7 +3,7 @@
 ## Building from Source
 
 ```bash
-# Install Go 1.21+
+# Install Go 1.25+
 # Clone the repo
 git clone https://github.com/raesene/baremetalvmm.git
 cd baremetalvmm

@@ -100,18 +100,30 @@ fi
 HOST_IFACE=$(detect_host_interface)
 USER_HOME=$(get_user_home)
 
-# 1. Stop systemd service
-echo "Stopping VMM service..."
+# 1. Stop systemd services
+echo "Stopping VMM services..."
 if systemctl is-active --quiet vmm.service 2>/dev/null; then
     systemctl stop vmm.service
-    echo -e "  ${GREEN}Service stopped${NC}"
+    echo -e "  ${GREEN}vmm.service stopped${NC}"
 fi
 if systemctl is-enabled --quiet vmm.service 2>/dev/null; then
     systemctl disable vmm.service 2>/dev/null || true
-    echo -e "  ${GREEN}Service disabled${NC}"
+    echo -e "  ${GREEN}vmm.service disabled${NC}"
 fi
 if [ ! -f /etc/systemd/system/vmm.service ] && ! systemctl is-active --quiet vmm.service 2>/dev/null; then
-    echo "  Service not installed"
+    echo "  vmm.service not installed"
+fi
+
+if systemctl is-active --quiet vmm-web.service 2>/dev/null; then
+    systemctl stop vmm-web.service
+    echo -e "  ${GREEN}vmm-web.service stopped${NC}"
+fi
+if systemctl is-enabled --quiet vmm-web.service 2>/dev/null; then
+    systemctl disable vmm-web.service 2>/dev/null || true
+    echo -e "  ${GREEN}vmm-web.service disabled${NC}"
+fi
+if [ ! -f /etc/systemd/system/vmm-web.service ] && ! systemctl is-active --quiet vmm-web.service 2>/dev/null; then
+    echo "  vmm-web.service not installed"
 fi
 
 # 2. Stop all Firecracker processes
@@ -154,9 +166,9 @@ fi
 echo "Removing iptables rules..."
 RULES_REMOVED=0
 
-# Remove NAT MASQUERADE rule
-if iptables -t nat -C POSTROUTING -s "$SUBNET" -o "$HOST_IFACE" -j MASQUERADE 2>/dev/null; then
-    iptables -t nat -D POSTROUTING -s "$SUBNET" -o "$HOST_IFACE" -j MASQUERADE 2>/dev/null || true
+# Remove NAT MASQUERADE rule (matches Go code: ! -o bridge, not -o host_iface)
+if iptables -t nat -C POSTROUTING -s "$SUBNET" ! -o "$BRIDGE_NAME" -j MASQUERADE 2>/dev/null; then
+    iptables -t nat -D POSTROUTING -s "$SUBNET" ! -o "$BRIDGE_NAME" -j MASQUERADE 2>/dev/null || true
     echo -e "  ${GREEN}Removed NAT MASQUERADE rule${NC}"
     RULES_REMOVED=$((RULES_REMOVED + 1))
 fi
@@ -209,14 +221,31 @@ else
     echo "  $USER_CONFIG_DIR not found"
 fi
 
-# 8. Remove systemd service file
-echo "Removing systemd service..."
+# 8. Remove systemd service files
+echo "Removing systemd service files..."
+SERVICES_REMOVED=false
 if [ -f /etc/systemd/system/vmm.service ]; then
     rm -f /etc/systemd/system/vmm.service
-    systemctl daemon-reload
     echo -e "  ${GREEN}Removed /etc/systemd/system/vmm.service${NC}"
+    SERVICES_REMOVED=true
 else
-    echo "  Service file not found"
+    echo "  /etc/systemd/system/vmm.service not found"
+fi
+if [ -f /etc/systemd/system/vmm-web.service ]; then
+    rm -f /etc/systemd/system/vmm-web.service
+    echo -e "  ${GREEN}Removed /etc/systemd/system/vmm-web.service${NC}"
+    SERVICES_REMOVED=true
+else
+    echo "  /etc/systemd/system/vmm-web.service not found"
+fi
+if [ "$SERVICES_REMOVED" = true ]; then
+    systemctl daemon-reload
+fi
+
+# Remove vmm-web environment file
+if [ -d /etc/vmm-web ]; then
+    rm -rf /etc/vmm-web
+    echo -e "  ${GREEN}Removed /etc/vmm-web${NC}"
 fi
 
 # 9. Remove binaries

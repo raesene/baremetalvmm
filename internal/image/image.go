@@ -2,7 +2,9 @@ package image
 
 import (
 	"compress/gzip"
+	"crypto/sha256"
 	"debug/elf"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -518,6 +520,64 @@ func (m *Manager) downloadAndDecompressGzip(url, destPath string) error {
 	return os.Rename(tmpPath, destPath)
 }
 
+// downloadAndDecompressGzipVerified downloads a gzipped file, decompresses it,
+// and verifies the SHA256 checksum of the compressed stream matches expectedHash.
+func (m *Manager) downloadAndDecompressGzipVerified(url, destPath, expectedHash string) error {
+	// Ensure directory exists
+	dir := filepath.Dir(destPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	// Create temp file
+	tmpPath := destPath + ".tmp"
+	out, err := os.Create(tmpPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		out.Close()
+		os.Remove(tmpPath) // Clean up temp file on error
+	}()
+
+	// Download
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad status: %s", resp.Status)
+	}
+
+	// Hash the compressed stream using TeeReader
+	hasher := sha256.New()
+	compressedReader := io.TeeReader(resp.Body, hasher)
+
+	// Decompress gzip stream from the tee reader
+	gzReader, err := gzip.NewReader(compressedReader)
+	if err != nil {
+		return fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gzReader.Close()
+
+	if _, err := io.Copy(out, gzReader); err != nil {
+		return fmt.Errorf("failed to decompress: %w", err)
+	}
+
+	// Verify checksum of the compressed data
+	actualHash := hex.EncodeToString(hasher.Sum(nil))
+	if actualHash != expectedHash {
+		return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedHash, actualHash)
+	}
+
+	out.Close()
+
+	// Rename to final path
+	return os.Rename(tmpPath, destPath)
+}
+
 // Manager handles kernel and rootfs image management
 type Manager struct {
 	KernelDir string
@@ -550,9 +610,23 @@ func (m *Manager) EnsureDefaultImages() error {
 			kernelURL = FallbackKernelURL
 		}
 
+		// Try to fetch checksum (best-effort)
+		expectedHash, checksumErr := m.fetchChecksum(kernelURL)
+
 		if err := m.downloadFile(kernelURL, kernelPath); err != nil {
 			return fmt.Errorf("failed to download kernel: %w", err)
 		}
+
+		if checksumErr != nil {
+			fmt.Println("  Warning: no checksum file available, skipping integrity verification")
+		} else {
+			if err := verifyFileChecksum(kernelPath, expectedHash); err != nil {
+				os.Remove(kernelPath)
+				return fmt.Errorf("kernel download integrity check failed: %w", err)
+			}
+			fmt.Println("  Checksum verified")
+		}
+
 		fmt.Println("Kernel downloaded successfully")
 	}
 
@@ -564,9 +638,26 @@ func (m *Manager) EnsureDefaultImages() error {
 		rootfsURL := findLatestRootfsURL()
 		if rootfsURL != "" {
 			fmt.Println("  Found rootfs in GitHub releases")
-			if err := m.downloadAndDecompressGzip(rootfsURL, rootfsPath); err != nil {
-				fmt.Printf("  GitHub download failed (%v), trying fallback URL\n", err)
-				rootfsURL = ""
+
+			// Try to fetch checksum (best-effort)
+			expectedHash, checksumErr := m.fetchChecksum(rootfsURL)
+
+			if checksumErr != nil {
+				// No checksum, download without verification
+				if err := m.downloadAndDecompressGzip(rootfsURL, rootfsPath); err != nil {
+					fmt.Printf("  GitHub download failed (%v), trying fallback URL\n", err)
+					rootfsURL = ""
+				} else {
+					fmt.Println("  Warning: no checksum file available, skipping integrity verification")
+				}
+			} else {
+				// Checksum available, download with verification
+				if err := m.downloadAndDecompressGzipVerified(rootfsURL, rootfsPath, expectedHash); err != nil {
+					fmt.Printf("  GitHub download failed (%v), trying fallback URL\n", err)
+					rootfsURL = ""
+				} else {
+					fmt.Println("  Checksum verified")
+				}
 			}
 		}
 
@@ -745,6 +836,54 @@ func (m *Manager) ListRootfs() ([]string, error) {
 	return listFiles(m.RootfsDir)
 }
 
+// fetchChecksum tries to download a .sha256 checksum file for the given asset URL.
+// Returns the hex-encoded SHA256 hash string, or an error if the checksum file
+// is not available or cannot be parsed. Missing checksum files (HTTP 404) are
+// expected for older releases and should be handled gracefully by callers.
+func (m *Manager) fetchChecksum(assetURL string) (string, error) {
+	checksumURL := assetURL + ".sha256"
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get(checksumURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("checksum file not found (HTTP %d)", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 256))
+	if err != nil {
+		return "", err
+	}
+	// Format: "<hash>  <filename>\n"
+	parts := strings.Fields(strings.TrimSpace(string(data)))
+	if len(parts) == 0 {
+		return "", fmt.Errorf("empty checksum file")
+	}
+	return parts[0], nil
+}
+
+// verifyFileChecksum computes the SHA256 hash of the file at path and compares
+// it against the expected hex-encoded hash. Returns an error on mismatch.
+func verifyFileChecksum(path, expected string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open file for checksum verification: %w", err)
+	}
+	defer f.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, f); err != nil {
+		return fmt.Errorf("failed to compute checksum: %w", err)
+	}
+
+	actual := hex.EncodeToString(hasher.Sum(nil))
+	if actual != expected {
+		return fmt.Errorf("checksum mismatch: expected %s, got %s", expected, actual)
+	}
+	return nil
+}
+
 // downloadFile downloads a file from URL to the specified path
 func (m *Manager) downloadFile(url, destPath string) error {
 	// Ensure directory exists
@@ -911,9 +1050,22 @@ func (m *Manager) DownloadK8sRootfs(k8sVersion string) (string, error) {
 	}
 
 	fmt.Printf("Downloading pre-built Kubernetes %s rootfs...\n", version)
-	if err := m.downloadAndDecompressGzip(url, destPath); err != nil {
-		return "", fmt.Errorf("failed to download k8s rootfs: %w", err)
+
+	// Try to fetch checksum (best-effort for old releases)
+	expectedHash, checksumErr := m.fetchChecksum(url)
+
+	if checksumErr != nil {
+		if err := m.downloadAndDecompressGzip(url, destPath); err != nil {
+			return "", fmt.Errorf("failed to download k8s rootfs: %w", err)
+		}
+		fmt.Println("  Warning: no checksum file available, skipping integrity verification")
+	} else {
+		if err := m.downloadAndDecompressGzipVerified(url, destPath, expectedHash); err != nil {
+			return "", fmt.Errorf("failed to download k8s rootfs: %w", err)
+		}
+		fmt.Println("  Checksum verified")
 	}
+
 	fmt.Printf("Kubernetes rootfs downloaded: %s\n", imageName)
 
 	return imageName, nil
@@ -1239,21 +1391,60 @@ func (m *Manager) FindReleaseURL(tag, assetType string) (string, error) {
 }
 
 // DownloadKernelFromRelease downloads a kernel from a GitHub release URL
+// and verifies its SHA256 checksum if a .sha256 file is available.
 func (m *Manager) DownloadKernelFromRelease(url, localName string) error {
 	destPath := filepath.Join(m.KernelDir, localName)
 	if err := os.MkdirAll(m.KernelDir, 0755); err != nil {
 		return fmt.Errorf("failed to create kernel directory: %w", err)
 	}
-	return m.downloadFile(url, destPath)
+
+	// Try to fetch checksum (best-effort for old releases)
+	expectedHash, checksumErr := m.fetchChecksum(url)
+
+	if err := m.downloadFile(url, destPath); err != nil {
+		return err
+	}
+
+	if checksumErr != nil {
+		fmt.Println("  Warning: no checksum file available, skipping integrity verification")
+	} else {
+		if err := verifyFileChecksum(destPath, expectedHash); err != nil {
+			os.Remove(destPath)
+			return fmt.Errorf("kernel download integrity check failed: %w", err)
+		}
+		fmt.Println("  Checksum verified")
+	}
+
+	return nil
 }
 
 // DownloadRootfsFromRelease downloads a rootfs from a GitHub release URL (gzipped)
+// and verifies its SHA256 checksum if a .sha256 file is available.
+// The checksum covers the compressed (.gz) data, not the decompressed content.
 func (m *Manager) DownloadRootfsFromRelease(url, localName string) error {
 	destPath := filepath.Join(m.RootfsDir, localName+".ext4")
 	if err := os.MkdirAll(m.RootfsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create rootfs directory: %w", err)
 	}
-	return m.downloadAndDecompressGzip(url, destPath)
+
+	// Try to fetch checksum (best-effort for old releases)
+	expectedHash, checksumErr := m.fetchChecksum(url)
+
+	if checksumErr != nil {
+		// No checksum available, download without verification
+		if err := m.downloadAndDecompressGzip(url, destPath); err != nil {
+			return err
+		}
+		fmt.Println("  Warning: no checksum file available, skipping integrity verification")
+	} else {
+		// Checksum available, verify the compressed stream
+		if err := m.downloadAndDecompressGzipVerified(url, destPath, expectedHash); err != nil {
+			return err
+		}
+		fmt.Println("  Checksum verified")
+	}
+
+	return nil
 }
 
 // describeKernel returns a human-readable description based on naming convention.

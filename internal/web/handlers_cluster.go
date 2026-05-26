@@ -342,7 +342,7 @@ func (s *Server) deleteCluster(w http.ResponseWriter, r *http.Request) {
 		if existingVM.State == vm.StateRunning {
 			ctx := context.Background()
 			fcClient.StopVM(ctx, existingVM.SocketPath)
-			if existingVM.PID > 0 {
+			if existingVM.PID > 0 && firecracker.IsFirecrackerProcess(existingVM.PID) {
 				if proc, err := os.FindProcess(existingVM.PID); err == nil {
 					proc.Signal(syscall.SIGKILL)
 				}
@@ -537,7 +537,7 @@ func (s *Server) handleAPIClusterDelete(w http.ResponseWriter, r *http.Request) 
 		if existingVM.State == vm.StateRunning {
 			ctx := context.Background()
 			fcClient.StopVM(ctx, existingVM.SocketPath)
-			if existingVM.PID > 0 {
+			if existingVM.PID > 0 && firecracker.IsFirecrackerProcess(existingVM.PID) {
 				if proc, err := os.FindProcess(existingVM.PID); err == nil {
 					proc.Signal(syscall.SIGKILL)
 				}

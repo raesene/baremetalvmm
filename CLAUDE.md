@@ -8,7 +8,7 @@ VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker
 
 ## Tech Stack
 
-- **Language**: Go 1.21+
+- **Language**: Go 1.25+
 - **VMM Engine**: Firecracker v1.11.0 (via firecracker-go-sdk)
 - **CLI Framework**: Cobra (github.com/spf13/cobra)
 - **Web UI**: Chi router, html/template, HTMX, Tailwind CSS via CDN
@@ -26,7 +26,7 @@ VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker
 
 A code review was performed (see `codex_code_review/review.md`) with an implementation plan at `codex_code_review/implementation_plan.md`.
 
-Completed fixes (P1 and P2 done):
+Completed fixes (P1, P2, and P3 done):
 - gofmt applied to all Go sources
 - CSP inline onclick violation fixed (api_key.html → app.js event listener)
 - Identifier validation added at all 43 CLI and web/API entry points (path traversal prevention)
@@ -43,9 +43,16 @@ Completed fixes (P1 and P2 done):
 - Kubernetes version semver validation at CLI and web entry points
 - Server-side URL resolution for image/kernel downloads (no client-supplied URLs)
 - Atomic state writes for VM and cluster configs (temp file + fsync + rename)
+- SHA256 checksum verification for downloaded kernels and rootfs (best-effort, fail on mismatch)
+- Lifecycle cleanup/rollback on VM start failure (TAP, IP, socket cleaned up in reverse order)
+- PID verification before SIGKILL (check /proc/<pid>/cmdline for "firecracker")
+- Port-forward idempotency (iptables -C check before append, port range validation 1-65535)
+- Subnet prefix derived from config CIDR (no more hardcoded /16 and 255.255.0.0)
+- Install script uses mktemp -d with trap cleanup instead of fixed /tmp paths
+- Uninstall script adds vmm-web.service cleanup and fixes NAT rule removal
+- Documentation aligned: Go version, SSH key behavior, listen address
 
-Remaining items (next session starts with P3):
-- **P3**: Download integrity verification, lifecycle cleanup/rollback, PID verification before kill, port-forward idempotency, subnet hardcoding fix, install/uninstall script fixes, documentation alignment
+Remaining items:
 - **P4**: Shared service layer refactor, Firecracker jailer integration
 
 ## Key Architecture

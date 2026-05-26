@@ -13,7 +13,7 @@ Pretty much all of the coding has been done with [Claude code](https://github.co
 - Ubuntu 24.04 (or compatible Linux distribution). All testing has been done on Ubuntu 24.04, so it's likely only to work with that distro.
 - KVM support (`/dev/kvm` must be accessible)
 - Root access (for networking setup)
-- Go 1.21+ (only if building from source)
+- Go 1.25+ (only if building from source)
 
 ## Quick Start
 

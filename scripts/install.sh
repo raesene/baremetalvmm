@@ -8,6 +8,10 @@ INSTALL_DIR="/usr/local/bin"
 DATA_DIR="/var/lib/vmm"
 GITHUB_REPO="raesene/baremetalvmm"
 
+# Create a secure temp directory and ensure cleanup on exit
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR"' EXIT
+
 # Get the latest binary release version from GitHub API, fallback to default.
 # Only considers v*-tagged releases (skips kernel-*, rootfs-*, etc.).
 get_latest_version() {
@@ -96,22 +100,20 @@ download_prebuilt() {
     local url="https://github.com/${GITHUB_REPO}/releases/download/v${VMM_VERSION}/vmm_${VMM_VERSION}_linux_${arch}.tar.gz"
     echo "Downloading VMM v${VMM_VERSION} for linux/${arch}..."
 
-    if download_file "$url" /tmp/vmm.tar.gz; then
+    if download_file "$url" "$TMPDIR/vmm.tar.gz"; then
         echo "Extracting..."
-        tar -xzf /tmp/vmm.tar.gz -C /tmp vmm vmm-web 2>/dev/null || tar -xzf /tmp/vmm.tar.gz -C /tmp vmm
-        cp /tmp/vmm "$INSTALL_DIR/vmm"
+        tar -xzf "$TMPDIR/vmm.tar.gz" -C "$TMPDIR" vmm vmm-web 2>/dev/null || tar -xzf "$TMPDIR/vmm.tar.gz" -C "$TMPDIR" vmm
+        cp "$TMPDIR/vmm" "$INSTALL_DIR/vmm"
         chmod +x "$INSTALL_DIR/vmm"
-        if [ -f /tmp/vmm-web ]; then
-            cp /tmp/vmm-web "$INSTALL_DIR/vmm-web"
+        if [ -f "$TMPDIR/vmm-web" ]; then
+            cp "$TMPDIR/vmm-web" "$INSTALL_DIR/vmm-web"
             chmod +x "$INSTALL_DIR/vmm-web"
             echo "VMM Web UI installed to $INSTALL_DIR/vmm-web"
         fi
-        rm -f /tmp/vmm.tar.gz /tmp/vmm /tmp/vmm-web
         echo "VMM installed to $INSTALL_DIR/vmm"
         return 0
     else
         echo "Failed to download pre-built binary"
-        rm -f /tmp/vmm.tar.gz
         return 1
     fi
 }
@@ -204,14 +206,13 @@ if [ ! -f "$FC_BIN" ]; then
     echo "Downloading Firecracker $FC_VERSION..."
     ARCH=$(uname -m)
     FC_URL="https://github.com/firecracker-microvm/firecracker/releases/download/${FC_VERSION}/firecracker-${FC_VERSION}-${ARCH}.tgz"
-    if ! download_file "$FC_URL" /tmp/firecracker.tgz; then
+    if ! download_file "$FC_URL" "$TMPDIR/firecracker.tgz"; then
         echo "Error: Failed to download Firecracker"
         exit 1
     fi
-    tar -xzf /tmp/firecracker.tgz -C /tmp
-    cp "/tmp/release-${FC_VERSION}-${ARCH}/firecracker-${FC_VERSION}-${ARCH}" "$FC_BIN"
+    tar -xzf "$TMPDIR/firecracker.tgz" -C "$TMPDIR"
+    cp "$TMPDIR/release-${FC_VERSION}-${ARCH}/firecracker-${FC_VERSION}-${ARCH}" "$FC_BIN"
     chmod +x "$FC_BIN"
-    rm -rf /tmp/firecracker.tgz "/tmp/release-${FC_VERSION}-${ARCH}"
     echo "Firecracker installed to $FC_BIN"
 fi
 

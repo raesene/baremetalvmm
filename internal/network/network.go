@@ -25,6 +25,16 @@ func NewManager(bridgeName, subnet, gateway, hostInterface string) *Manager {
 	}
 }
 
+// prefixLen extracts the prefix length from the subnet CIDR (e.g. "16" from "172.16.0.0/16").
+func (m *Manager) prefixLen() string {
+	_, ipnet, err := net.ParseCIDR(m.Subnet)
+	if err != nil {
+		return "16" // fallback
+	}
+	ones, _ := ipnet.Mask.Size()
+	return fmt.Sprintf("%d", ones)
+}
+
 // EnsureBridge creates the network bridge if it doesn't exist and ensures NAT is configured
 func (m *Manager) EnsureBridge() error {
 	// Create bridge if it doesn't exist
@@ -35,7 +45,7 @@ func (m *Manager) EnsureBridge() error {
 		}
 
 		// Set bridge IP
-		if err := m.runCmd("ip", "addr", "add", m.Gateway+"/16", "dev", m.BridgeName); err != nil {
+		if err := m.runCmd("ip", "addr", "add", m.Gateway+"/"+m.prefixLen(), "dev", m.BridgeName); err != nil {
 			// Might already have an IP, continue
 		}
 
@@ -124,12 +134,27 @@ func (m *Manager) AllocateIP(usedIPs []string) (string, error) {
 	return "", fmt.Errorf("no free IP addresses in subnet %s", m.Subnet)
 }
 
-// AddPortForward adds a DNAT rule for port forwarding
+// AddPortForward adds a DNAT rule for port forwarding.
+// It is idempotent: if the rule already exists, it returns nil.
 func (m *Manager) AddPortForward(hostPort, guestPort int, guestIP, protocol string) error {
-	rule := fmt.Sprintf("-t nat -A PREROUTING -p %s --dport %d -j DNAT --to-destination %s:%d",
-		protocol, hostPort, guestIP, guestPort)
+	if hostPort < 1 || hostPort > 65535 {
+		return fmt.Errorf("invalid host port %d: must be 1-65535", hostPort)
+	}
+	if guestPort < 1 || guestPort > 65535 {
+		return fmt.Errorf("invalid guest port %d: must be 1-65535", guestPort)
+	}
 
-	if err := m.runCmd("iptables", strings.Split(rule, " ")...); err != nil {
+	// Check if rule already exists (iptables -C returns 0 if it does)
+	if err := m.runCmd("iptables", "-t", "nat", "-C", "PREROUTING",
+		"-p", protocol, "--dport", fmt.Sprintf("%d", hostPort),
+		"-j", "DNAT", "--to-destination", fmt.Sprintf("%s:%d", guestIP, guestPort)); err == nil {
+		return nil // Rule already exists
+	}
+
+	// Add the rule
+	if err := m.runCmd("iptables", "-t", "nat", "-A", "PREROUTING",
+		"-p", protocol, "--dport", fmt.Sprintf("%d", hostPort),
+		"-j", "DNAT", "--to-destination", fmt.Sprintf("%s:%d", guestIP, guestPort)); err != nil {
 		return fmt.Errorf("failed to add port forward: %w", err)
 	}
 

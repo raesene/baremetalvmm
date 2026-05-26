@@ -32,7 +32,7 @@ Running VMs have a **Terminal** button on their detail page that opens a full-sc
 
 - Uses the host's SSH private key (auto-detected from `~/.ssh/`, same as `vmm ssh`)
 - Supports terminal resize, scrollback, and clickable links
-- Requires the VM to be in "running" state with an SSH key configured
+- Requires the VM to be in "running" state (the managed SSH key is always available)
 
 ## JSON API
 
@@ -70,6 +70,10 @@ curl http://localhost:8080/api/v1/health
 | GET | `/api/v1/clusters` | List clusters |
 | POST | `/api/v1/clusters` | Create a cluster |
 | DELETE | `/api/v1/clusters/{name}` | Delete a cluster |
+
+## SSH Key Behavior
+
+When creating VMs or clusters via the API, VMM uses its auto-generated Ed25519 key pair (`/var/lib/vmm/ssh/vmm_ed25519`) for SSH access and cluster provisioning. No SSH key needs to be provided in API requests. If a user-provided SSH key is included, it is added alongside the managed key.
 
 ## Security
 

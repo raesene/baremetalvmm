@@ -314,7 +314,7 @@ func deleteCmd() *cobra.Command {
 				if err := fcClient.StopVM(ctx, existingVM.SocketPath); err != nil {
 					fmt.Printf("Warning: failed to stop VM gracefully: %v\n", err)
 					// Try to kill by PID as fallback
-					if existingVM.PID > 0 {
+					if existingVM.PID > 0 && firecracker.IsFirecrackerProcess(existingVM.PID) {
 						if proc, err := os.FindProcess(existingVM.PID); err == nil {
 							proc.Signal(syscall.SIGKILL)
 						}
@@ -328,9 +328,11 @@ func deleteCmd() *cobra.Command {
 				if existingVM.PID > 0 {
 					if proc, err := os.FindProcess(existingVM.PID); err == nil {
 						if err := proc.Signal(syscall.Signal(0)); err == nil {
-							fmt.Printf("Warning: process %d still running, sending SIGKILL...\n", existingVM.PID)
-							proc.Signal(syscall.SIGKILL)
-							time.Sleep(500 * time.Millisecond)
+							if firecracker.IsFirecrackerProcess(existingVM.PID) {
+								fmt.Printf("Warning: process %d still running, sending SIGKILL...\n", existingVM.PID)
+								proc.Signal(syscall.SIGKILL)
+								time.Sleep(500 * time.Millisecond)
+							}
 						}
 					}
 				}
@@ -547,11 +549,27 @@ func startCmd() *cobra.Command {
 				return fmt.Errorf("failed to setup bridge: %w", err)
 			}
 
+			// Track resources for cleanup on failure
+			var cleanupFuncs []func()
+			startSuccess := false
+			defer func() {
+				if !startSuccess {
+					for i := len(cleanupFuncs) - 1; i >= 0; i-- {
+						cleanupFuncs[i]()
+					}
+				}
+			}()
+
 			// Create TAP device if it doesn't exist
 			if !netMgr.TapExists(existingVM.TapDevice) {
 				if err := netMgr.CreateTap(existingVM.TapDevice); err != nil {
 					return fmt.Errorf("failed to create TAP device: %w", err)
 				}
+				cleanupFuncs = append(cleanupFuncs, func() {
+					if err := netMgr.DeleteTap(existingVM.TapDevice); err != nil {
+						fmt.Printf("Warning: failed to clean up TAP device %s: %v\n", existingVM.TapDevice, err)
+					}
+				})
 			}
 
 			// Allocate IP, skipping any already in use
@@ -560,10 +578,24 @@ func startCmd() *cobra.Command {
 				return fmt.Errorf("failed to allocate IP: %w", err)
 			}
 			existingVM.IPAddress = ip
+			cleanupFuncs = append(cleanupFuncs, func() {
+				existingVM.IPAddress = ""
+				existingVM.State = vm.StateError
+				if err := existingVM.Save(paths.VMs); err != nil {
+					fmt.Printf("Warning: failed to save VM state during cleanup: %v\n", err)
+				}
+			})
 
 			// Update state to starting
 			existingVM.State = vm.StateStarting
 			existingVM.Save(paths.VMs)
+
+			// Clean up socket file on failure
+			cleanupFuncs = append(cleanupFuncs, func() {
+				if err := os.Remove(existingVM.SocketPath); err != nil && !os.IsNotExist(err) {
+					fmt.Printf("Warning: failed to clean up socket file %s: %v\n", existingVM.SocketPath, err)
+				}
+			})
 
 			// Start Firecracker
 			ctx := context.Background()
@@ -578,15 +610,17 @@ func startCmd() *cobra.Command {
 				LogPath:     fmt.Sprintf("%s/%s.log", paths.Logs, name),
 				IPAddress:   existingVM.IPAddress,
 				Gateway:     cfg.Gateway,
+				Subnet:      cfg.Subnet,
 				MountDrives: mountDrives,
 			}
 
 			machine, err := fcClient.StartVM(ctx, vmCfg)
 			if err != nil {
-				existingVM.State = vm.StateError
-				existingVM.Save(paths.VMs)
 				return fmt.Errorf("failed to start VM: %w", err)
 			}
+
+			// Mark success to prevent cleanup
+			startSuccess = true
 
 			// Update VM state
 			existingVM.State = vm.StateRunning
@@ -638,7 +672,7 @@ func stopCmd() *cobra.Command {
 			ctx := context.Background()
 			if err := fcClient.StopVM(ctx, existingVM.SocketPath); err != nil {
 				// Try to kill by PID as fallback
-				if existingVM.PID > 0 {
+				if existingVM.PID > 0 && firecracker.IsFirecrackerProcess(existingVM.PID) {
 					if proc, err := os.FindProcess(existingVM.PID); err == nil {
 						proc.Signal(syscall.SIGKILL)
 					}
@@ -1252,6 +1286,20 @@ func portForwardCmd() *cobra.Command {
 			if _, err := fmt.Sscanf(portSpec, "%d:%d", &hostPort, &guestPort); err != nil {
 				return fmt.Errorf("invalid port spec '%s', expected format: host-port:guest-port", portSpec)
 			}
+			if hostPort < 1 || hostPort > 65535 {
+				return fmt.Errorf("invalid host port %d: must be 1-65535", hostPort)
+			}
+			if guestPort < 1 || guestPort > 65535 {
+				return fmt.Errorf("invalid guest port %d: must be 1-65535", guestPort)
+			}
+
+			// Check if this port forward is already recorded on the VM
+			for _, pf := range existingVM.PortForwards {
+				if pf.HostPort == hostPort && pf.GuestPort == guestPort && pf.Protocol == "tcp" {
+					fmt.Printf("Port forward already exists: %d -> %s:%d\n", hostPort, existingVM.IPAddress, guestPort)
+					return nil
+				}
+			}
 
 			netMgr := network.NewManager(cfg.BridgeName, cfg.Subnet, cfg.Gateway, cfg.HostInterface)
 			if err := netMgr.AddPortForward(hostPort, guestPort, existingVM.IPAddress, "tcp"); err != nil {
@@ -1632,6 +1680,7 @@ func autostartCmd() *cobra.Command {
 					LogPath:     fmt.Sprintf("%s/%s.log", paths.Logs, v.Name),
 					IPAddress:   v.IPAddress,
 					Gateway:     cfg.Gateway,
+					Subnet:      cfg.Subnet,
 					MountDrives: mountDrives,
 				}
 
@@ -1685,7 +1734,7 @@ func autostopCmd() *cobra.Command {
 				ctx := context.Background()
 				if err := fcClient.StopVM(ctx, v.SocketPath); err != nil {
 					// Try SIGKILL as fallback
-					if v.PID > 0 {
+					if v.PID > 0 && firecracker.IsFirecrackerProcess(v.PID) {
 						if proc, err := os.FindProcess(v.PID); err == nil {
 							proc.Signal(syscall.SIGKILL)
 						}
@@ -2023,6 +2072,7 @@ func startClusterVM(vmName string) (string, error) {
 		LogPath:    fmt.Sprintf("%s/%s.log", paths.Logs, vmName),
 		IPAddress:  existingVM.IPAddress,
 		Gateway:    cfg.Gateway,
+		Subnet:     cfg.Subnet,
 	}
 
 	machine, err := fcClient.StartVM(ctx, vmCfg)

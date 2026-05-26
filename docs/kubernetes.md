@@ -10,11 +10,7 @@ A Kubernetes-compatible kernel (`k8s-kernel`) is downloaded automatically during
 sudo vmm kernel build --version 6.6 --name k8s-kernel
 ```
 
-You also need an SSH key for VM access:
-
-```bash
-ssh-keygen -t ed25519  # if you don't already have one
-```
+VMM auto-generates an Ed25519 SSH key pair at `/var/lib/vmm/ssh/vmm_ed25519` and uses it for cluster provisioning (running kubeadm over SSH) when no `--ssh-key` is provided. You can optionally pass your own key with `--ssh-key`, which is added alongside the managed key.
 
 If your SSH key has a passphrase, make sure it's loaded in ssh-agent and use `sudo -E` to preserve the agent socket:
 
@@ -81,7 +77,7 @@ Flags:
   --memory int         Memory per node in MB (default 4096)
   --disk int           Disk per node in MB (default 10240)
   --k8s-version string Kubernetes version (default "1.36.0")
-  --ssh-key string     Path to SSH public key (required)
+  --ssh-key string     Path to SSH public key (optional; managed key used if omitted)
   --kernel string      Kernel name (k8s-kernel recommended)
   --image string       Rootfs image name
 ```

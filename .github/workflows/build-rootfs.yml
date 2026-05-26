@@ -60,6 +60,11 @@ jobs:
             --size 512 \
             --output "${{ github.workspace }}"
 
+      - name: Generate checksum
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          sha256sum rootfs.ext4.gz > rootfs.ext4.gz.sha256
+
       - name: Create GitHub release
         if: steps.check_release.outputs.exists == 'false'
         env:
@@ -91,4 +96,5 @@ jobs:
           gh release create "$TAG" \
             --title "$TITLE" \
             --notes "$NOTES" \
-            rootfs.ext4.gz
+            rootfs.ext4.gz \
+            rootfs.ext4.gz.sha256

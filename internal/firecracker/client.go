@@ -3,6 +3,7 @@ package firecracker
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,7 +58,21 @@ type VMConfig struct {
 	LogPath     string
 	IPAddress   string
 	Gateway     string
+	Subnet      string
 	MountDrives []MountDrive
+}
+
+// netmaskFromCIDR derives a dotted-decimal netmask from a CIDR string (e.g. "172.16.0.0/16" -> "255.255.0.0").
+func netmaskFromCIDR(cidr string) string {
+	_, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return "255.255.0.0" // fallback
+	}
+	mask := ipnet.Mask
+	if len(mask) != 4 {
+		return "255.255.0.0"
+	}
+	return fmt.Sprintf("%d.%d.%d.%d", mask[0], mask[1], mask[2], mask[3])
 }
 
 // StartVM starts a Firecracker microVM with the given configuration
@@ -82,7 +97,7 @@ func (c *Client) StartVM(ctx context.Context, cfg *VMConfig) (*sdk.Machine, erro
 	// Add IP configuration if provided
 	// Format: ip=<client-ip>::<gateway-ip>:<netmask>::eth0:off
 	if cfg.IPAddress != "" && cfg.Gateway != "" {
-		kernelArgs += fmt.Sprintf(" ip=%s::%s:255.255.0.0::eth0:off", cfg.IPAddress, cfg.Gateway)
+		kernelArgs += fmt.Sprintf(" ip=%s::%s:%s::eth0:off", cfg.IPAddress, cfg.Gateway, netmaskFromCIDR(cfg.Subnet))
 	}
 
 	// Build drives list starting with rootfs
@@ -227,8 +242,11 @@ func (c *Client) IsRunning(socketPath string, pid int) bool {
 		return false
 	}
 
-	// Check if process is running
+	// Check if process is running and is actually a Firecracker process
 	if pid > 0 {
+		if !IsFirecrackerProcess(pid) {
+			return false
+		}
 		process, err := os.FindProcess(pid)
 		if err != nil {
 			return false

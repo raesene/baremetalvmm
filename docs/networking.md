@@ -42,15 +42,19 @@ sudo vmm port-forward remove myvm 8080:80
 
 ## SSH Key Injection
 
-VMM automatically injects SSH public keys into VMs at startup. When you create a VM with the `--ssh-key` flag, the specified public key is stored in the VM configuration. When the VM starts, VMM:
+VMM automatically generates and manages an Ed25519 SSH key pair at `/var/lib/vmm/ssh/vmm_ed25519`. This managed key is always injected into every VM, so SSH access works out of the box without providing `--ssh-key`.
+
+If you create a VM with the `--ssh-key` flag, that key is added **alongside** the managed key (both are written to `/root/.ssh/authorized_keys`).
+
+When the VM starts, VMM:
 
 1. Mounts the VM's rootfs image
 2. Creates `/root/.ssh/` directory if needed
-3. Writes the public key to `/root/.ssh/authorized_keys`
+3. Writes both the managed key and any user-provided key to `/root/.ssh/authorized_keys`
 4. Sets correct permissions (700 for directory, 600 for file)
 5. Unmounts and boots the VM
 
-This allows passwordless SSH access as root using your existing SSH key pair. SSH key injection requires root privileges (for mounting the rootfs image).
+SSH key injection requires root privileges (for mounting the rootfs image).
 
 ## DNS Configuration
 

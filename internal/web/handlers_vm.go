@@ -284,10 +284,26 @@ func (s *Server) startVM(existingVM *vm.VM) error {
 		return fmt.Errorf("failed to setup bridge: %w", err)
 	}
 
+	// Track resources for cleanup on failure
+	var cleanupFuncs []func()
+	startSuccess := false
+	defer func() {
+		if !startSuccess {
+			for i := len(cleanupFuncs) - 1; i >= 0; i-- {
+				cleanupFuncs[i]()
+			}
+		}
+	}()
+
 	if !netMgr.TapExists(existingVM.TapDevice) {
 		if err := netMgr.CreateTap(existingVM.TapDevice); err != nil {
 			return fmt.Errorf("failed to create TAP device: %w", err)
 		}
+		cleanupFuncs = append(cleanupFuncs, func() {
+			if err := netMgr.DeleteTap(existingVM.TapDevice); err != nil {
+				fmt.Printf("Warning: failed to clean up TAP device %s: %v\n", existingVM.TapDevice, err)
+			}
+		})
 	}
 
 	ip, err := netMgr.AllocateIP(usedVMIPs(paths.VMs))
@@ -295,15 +311,36 @@ func (s *Server) startVM(existingVM *vm.VM) error {
 		return fmt.Errorf("failed to allocate IP: %w", err)
 	}
 	existingVM.IPAddress = ip
+	cleanupFuncs = append(cleanupFuncs, func() {
+		existingVM.IPAddress = ""
+		existingVM.State = vm.StateError
+		if err := existingVM.Save(paths.VMs); err != nil {
+			fmt.Printf("Warning: failed to save VM state during cleanup: %v\n", err)
+		}
+	})
 
 	for _, pf := range existingVM.PortForwards {
 		if err := netMgr.AddPortForward(pf.HostPort, pf.GuestPort, existingVM.IPAddress, pf.Protocol); err != nil {
 			return fmt.Errorf("failed to add port forward %d:%d: %w", pf.HostPort, pf.GuestPort, err)
 		}
+		// Capture pf values for cleanup closure
+		pfCopy := pf
+		cleanupFuncs = append(cleanupFuncs, func() {
+			if err := netMgr.RemovePortForward(pfCopy.HostPort, pfCopy.GuestPort, existingVM.IPAddress, pfCopy.Protocol); err != nil {
+				fmt.Printf("Warning: failed to clean up port forward %d:%d: %v\n", pfCopy.HostPort, pfCopy.GuestPort, err)
+			}
+		})
 	}
 
 	existingVM.State = vm.StateStarting
 	existingVM.Save(paths.VMs)
+
+	// Clean up socket file on failure
+	cleanupFuncs = append(cleanupFuncs, func() {
+		if err := os.Remove(existingVM.SocketPath); err != nil && !os.IsNotExist(err) {
+			fmt.Printf("Warning: failed to clean up socket file %s: %v\n", existingVM.SocketPath, err)
+		}
+	})
 
 	ctx := context.Background()
 	fcClient := firecracker.NewClient()
@@ -318,14 +355,16 @@ func (s *Server) startVM(existingVM *vm.VM) error {
 		LogPath:    fmt.Sprintf("%s/%s.log", paths.Logs, existingVM.Name),
 		IPAddress:  existingVM.IPAddress,
 		Gateway:    s.cfg.Gateway,
+		Subnet:     s.cfg.Subnet,
 	}
 
 	machine, err := fcClient.StartVM(ctx, vmCfg)
 	if err != nil {
-		existingVM.State = vm.StateError
-		existingVM.Save(paths.VMs)
 		return fmt.Errorf("failed to start VM: %w", err)
 	}
+
+	// Mark success to prevent cleanup
+	startSuccess = true
 
 	existingVM.State = vm.StateRunning
 	existingVM.PID = fcClient.GetVMPID(machine)
@@ -395,7 +434,7 @@ func (s *Server) handleVMStop(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 	if err := fcClient.StopVM(ctx, existingVM.SocketPath); err != nil {
-		if existingVM.PID > 0 {
+		if existingVM.PID > 0 && firecracker.IsFirecrackerProcess(existingVM.PID) {
 			if proc, err := os.FindProcess(existingVM.PID); err == nil {
 				proc.Signal(syscall.SIGKILL)
 			}
@@ -455,7 +494,7 @@ func (s *Server) deleteVM(w http.ResponseWriter, r *http.Request) {
 	if existingVM.State == vm.StateRunning {
 		ctx := context.Background()
 		fcClient.StopVM(ctx, existingVM.SocketPath)
-		if existingVM.PID > 0 {
+		if existingVM.PID > 0 && firecracker.IsFirecrackerProcess(existingVM.PID) {
 			if proc, err := os.FindProcess(existingVM.PID); err == nil {
 				proc.Signal(syscall.SIGKILL)
 			}
@@ -643,7 +682,7 @@ func (s *Server) handleAPIVMDelete(w http.ResponseWriter, r *http.Request) {
 	if existingVM.State == vm.StateRunning {
 		ctx := context.Background()
 		fcClient.StopVM(ctx, existingVM.SocketPath)
-		if existingVM.PID > 0 {
+		if existingVM.PID > 0 && firecracker.IsFirecrackerProcess(existingVM.PID) {
 			if proc, err := os.FindProcess(existingVM.PID); err == nil {
 				proc.Signal(syscall.SIGKILL)
 			}
