@@ -1357,7 +1357,7 @@ func (m *Manager) ListAvailableReleases() ([]AvailableRelease, error) {
 			if !strings.HasPrefix(rel.TagName, spec.prefix) {
 				continue
 			}
-			if seen[spec.prefix] {
+			if spec.localName != "" && seen[spec.prefix] {
 				continue
 			}
 			for _, asset := range rel.Assets {
