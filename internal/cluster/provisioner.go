@@ -322,6 +322,10 @@ func ProvisionCluster(cl *Cluster, sshKeyPath string, nodes []NodeInfo) error {
 		return fmt.Errorf("no nodes to provision")
 	}
 
+	if cl.Distro == DistroOpenShift {
+		return provisionMicroShift(cl, sshKeyPath, nodes[0])
+	}
+
 	cpNode := nodes[0]
 	workerNodes := nodes[1:]
 	cl.ControlPlaneIP = cpNode.IP

@@ -67,7 +67,7 @@ Future work (P4 — significant effort, deferred):
 - `internal/image/` — Kernel/rootfs download, Docker import, snapshots
 - `internal/mount/` — Host directory mount as ext4 block devices
 - `internal/sshkey/` — VMM-managed Ed25519 SSH key pair (auto-generated in `/var/lib/vmm/ssh/`)
-- `internal/cluster/` — Kubernetes cluster management (kubeadm + Cilium), admin workstation support
+- `internal/cluster/` — Cluster management. `--type kubeadm` (default): multi-node Kubernetes via kubeadm + Cilium. `--type openshift`: single-node OpenShift-derived cluster via upstream MicroShift (`internal/cluster/openshift.go`), installed on the base Ubuntu rootfs over SSH using OKD payload images (no Red Hat subscription). Admin workstation support for both.
 - `internal/web/` — Web UI handlers, auth, SSE, WebSocket terminal
 - `web/` — Embedded templates and static assets (`go:embed`)
 - `scripts/vmm.service` — Systemd unit for VM auto-start on boot
@@ -88,7 +88,7 @@ vmm port-forward add|list|remove <name> <host>:<guest>
 vmm mount list|sync <name> [tag]
 vmm image list|pull|import|snapshot|delete
 vmm kernel list|import|delete|build
-vmm cluster create <name> [--workers N] [--cpus N] [--memory MB] [--disk MB] [--k8s-version VER] [--ssh-key PATH] [--image NAME] [--kernel NAME] [--admin-workstation]
+vmm cluster create <name> [--type kubeadm|openshift] [--workers N] [--cpus N] [--memory MB] [--disk MB] [--k8s-version VER] [--openshift-version VER] [--ssh-key PATH] [--image NAME] [--kernel NAME] [--admin-workstation]
 vmm cluster delete|list|kubeconfig <name>
 vmm config show|init
 vmm version [--json]

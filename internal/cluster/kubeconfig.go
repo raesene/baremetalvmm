@@ -42,6 +42,40 @@ func ExtractKubeconfig(client *SSHClient) (string, error) {
 	return output, nil
 }
 
+// ExtractMicroShiftKubeconfig returns a kubeconfig usable from the host. MicroShift
+// generates a dedicated kubeconfig per API endpoint (each with the matching CA
+// bundle); because we configure the node IP as a subjectAltName, the per-IP file
+// already points at https://<ip>:6443 with a CA that validates. Falls back to the
+// localhost kubeconfig (with a server rewrite) if the per-IP file is absent.
+func ExtractMicroShiftKubeconfig(client *SSHClient, controlPlaneIP string) (string, error) {
+	perIP := fmt.Sprintf("/var/lib/microshift/resources/kubeadmin/%s/kubeconfig", controlPlaneIP)
+	if output, err := client.Run("cat " + perIP); err == nil && strings.Contains(output, "apiVersion") {
+		return output, nil
+	}
+	output, err := client.Run("cat " + microShiftKubeconfig)
+	if err != nil {
+		return "", fmt.Errorf("failed to read MicroShift kubeconfig: %w", err)
+	}
+	return RewriteServerURL(output, controlPlaneIP)
+}
+
+// RewriteServerURL sets the API server address of every cluster entry in a
+// kubeconfig YAML document to https://<ip>:6443.
+func RewriteServerURL(kubeconfigYAML, ip string) (string, error) {
+	var kc kubeconfigFile
+	if err := yaml.Unmarshal([]byte(kubeconfigYAML), &kc); err != nil {
+		return "", fmt.Errorf("failed to parse kubeconfig: %w", err)
+	}
+	for i := range kc.Clusters {
+		kc.Clusters[i].Cluster["server"] = fmt.Sprintf("https://%s:6443", ip)
+	}
+	out, err := yaml.Marshal(&kc)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal kubeconfig: %w", err)
+	}
+	return string(out), nil
+}
+
 func MergeKubeconfig(clusterName, kubeconfigYAML string) error {
 	contextName := "vmm-" + clusterName
 
@@ -105,19 +139,12 @@ func CopyKubeconfigToVM(adminIP, sshKeyPath, kubeconfigYAML, controlPlaneIP stri
 	}
 
 	// Rewrite the server address to use the control plane IP directly
-	var kc kubeconfigFile
-	if err := yaml.Unmarshal([]byte(kubeconfigYAML), &kc); err != nil {
-		return fmt.Errorf("failed to parse kubeconfig: %w", err)
-	}
-	for i := range kc.Clusters {
-		kc.Clusters[i].Cluster["server"] = fmt.Sprintf("https://%s:6443", controlPlaneIP)
-	}
-	rewritten, err := yaml.Marshal(&kc)
+	rewritten, err := RewriteServerURL(kubeconfigYAML, controlPlaneIP)
 	if err != nil {
-		return fmt.Errorf("failed to marshal kubeconfig: %w", err)
+		return err
 	}
 
-	escaped := strings.ReplaceAll(string(rewritten), "'", "'\\''")
+	escaped := strings.ReplaceAll(rewritten, "'", "'\\''")
 	cmd := fmt.Sprintf("cat > /root/.kube/config << 'KUBECONFIGEOF'\n%s\nKUBECONFIGEOF", escaped)
 	if _, err := client.Run(cmd); err != nil {
 		return fmt.Errorf("failed to write kubeconfig: %w", err)

@@ -174,7 +174,7 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cl := cluster.NewCluster(name, workers, k8sVersion)
+	cl := cluster.NewCluster(name, workers, k8sVersion, cluster.DistroKubeadm)
 	cl.CPUs = cpus
 	cl.MemoryMB = memory
 	cl.DiskSizeMB = disk
@@ -504,7 +504,7 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	cl := cluster.NewCluster(req.Name, req.Workers, req.K8sVersion)
+	cl := cluster.NewCluster(req.Name, req.Workers, req.K8sVersion, cluster.DistroKubeadm)
 	cl.CPUs = req.CPUs
 	cl.MemoryMB = req.MemoryMB
 	cl.DiskSizeMB = req.DiskSizeMB

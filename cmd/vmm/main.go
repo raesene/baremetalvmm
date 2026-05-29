@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -1779,16 +1780,29 @@ func clusterCreateCmd() *cobra.Command {
 	var imageName string
 	var kernelName string
 	var adminWorkstation bool
+	var distro string
+	var openshiftVersion string
 
 	cmd := &cobra.Command{
 		Use:   "create <name>",
-		Short: "Create a Kubernetes cluster from microVMs",
+		Short: "Create a Kubernetes or OpenShift cluster from microVMs",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if err := validate.ClusterName(name); err != nil {
 				return err
 			}
+
+			// Normalize distro selection (accept friendly aliases).
+			switch strings.ToLower(distro) {
+			case "", "kubeadm", "kubernetes", "k8s":
+				distro = cluster.DistroKubeadm
+			case "openshift", "microshift", "ocp", "okd":
+				distro = cluster.DistroOpenShift
+			default:
+				return fmt.Errorf("invalid --type %q: must be 'kubeadm' or 'openshift'", distro)
+			}
+			isOpenShift := distro == cluster.DistroOpenShift
 
 			if err := cfg.EnsureDirectories(); err != nil {
 				return fmt.Errorf("failed to create directories: %w", err)
@@ -1826,6 +1840,23 @@ func clusterCreateCmd() *cobra.Command {
 				}
 			}
 
+			// OpenShift (MicroShift) is single-node and needs a heavier control plane.
+			if isOpenShift {
+				if workers > 0 {
+					fmt.Println("Note: OpenShift (MicroShift) is single-node; ignoring --workers")
+					workers = 0
+				}
+				if !cmd.Flags().Changed("cpus") && cpus < 4 {
+					cpus = 4
+				}
+				if !cmd.Flags().Changed("memory") && memory < 8192 {
+					memory = 8192
+				}
+				if !cmd.Flags().Changed("disk") && disk < 20480 {
+					disk = 20480
+				}
+			}
+
 			// Validate resource bounds
 			if err := validate.CPUs(cpus); err != nil {
 				return err
@@ -1836,24 +1867,43 @@ func clusterCreateCmd() *cobra.Command {
 			if err := validate.DiskSizeMB(disk); err != nil {
 				return err
 			}
-			if err := validate.K8sVersion(k8sVersion); err != nil {
-				return err
-			}
-			if cpus < 2 {
-				return fmt.Errorf("Kubernetes requires at least 2 CPUs (got %d)", cpus)
-			}
-			if memory < 2048 {
-				return fmt.Errorf("Kubernetes requires at least 2048 MB memory (got %d)", memory)
+			if isOpenShift {
+				if err := validate.OpenShiftVersion(openshiftVersion); err != nil {
+					return err
+				}
+				if cpus < 2 {
+					return fmt.Errorf("OpenShift requires at least 2 CPUs (got %d)", cpus)
+				}
+				if memory < 4096 {
+					return fmt.Errorf("OpenShift requires at least 4096 MB memory (got %d)", memory)
+				}
+				if disk < 10240 {
+					return fmt.Errorf("OpenShift requires at least 10240 MB disk (got %d)", disk)
+				}
+			} else {
+				if err := validate.K8sVersion(k8sVersion); err != nil {
+					return err
+				}
+				if cpus < 2 {
+					return fmt.Errorf("Kubernetes requires at least 2 CPUs (got %d)", cpus)
+				}
+				if memory < 2048 {
+					return fmt.Errorf("Kubernetes requires at least 2048 MB memory (got %d)", memory)
+				}
 			}
 
 			// Create cluster config
-			cl := cluster.NewCluster(name, workers, k8sVersion)
+			cl := cluster.NewCluster(name, workers, k8sVersion, distro)
 			cl.CPUs = cpus
 			cl.MemoryMB = memory
 			cl.DiskSizeMB = disk
 			cl.SSHKeyPath = sshPrivateKeyPath
 			cl.Image = imageName
 			cl.Kernel = kernelName
+			if isOpenShift {
+				cl.OpenShiftVer = openshiftVersion
+				cl.K8sVersion = ""
+			}
 
 			// Read SSH public key (if user provided one)
 			var sshPubKey string
@@ -1874,25 +1924,43 @@ func clusterCreateCmd() *cobra.Command {
 				return fmt.Errorf("kernel '%s' not found", kernelName)
 			}
 
-			// Default to k8s-kernel for clusters (requires 6.6+ for Cilium)
-			if !cmd.Flags().Changed("kernel") && imgMgr.KernelExists("k8s-kernel") {
-				kernelName = "k8s-kernel"
-				cl.Kernel = kernelName
-				fmt.Println("Using k8s-kernel (default for clusters)")
-			}
+			if isOpenShift {
+				// MicroShift needs broad kernel module coverage for CRI-O + kindnet;
+				// prefer security-kernel (6.12 LTS), falling back to k8s-kernel.
+				if !cmd.Flags().Changed("kernel") {
+					if imgMgr.KernelExists("security-kernel") {
+						kernelName = "security-kernel"
+						cl.Kernel = kernelName
+						fmt.Println("Using security-kernel (default for OpenShift clusters)")
+					} else if imgMgr.KernelExists("k8s-kernel") {
+						kernelName = "k8s-kernel"
+						cl.Kernel = kernelName
+						fmt.Println("Using k8s-kernel (default for OpenShift clusters)")
+					}
+				}
+				// MicroShift is installed on provision onto the base Ubuntu rootfs;
+				// leaving the image empty uses the default rootfs.
+			} else {
+				// Default to k8s-kernel for clusters (requires 6.6+ for Cilium)
+				if !cmd.Flags().Changed("kernel") && imgMgr.KernelExists("k8s-kernel") {
+					kernelName = "k8s-kernel"
+					cl.Kernel = kernelName
+					fmt.Println("Using k8s-kernel (default for clusters)")
+				}
 
-			// Auto-detect k8s rootfs if no image specified
-			if imageName == "" {
-				if found := imgMgr.FindK8sRootfs(k8sVersion); found != "" {
-					fmt.Printf("Using pre-built Kubernetes rootfs: %s\n", found)
-					imageName = found
-					cl.Image = imageName
-				} else {
-					downloaded, err := imgMgr.DownloadK8sRootfs(k8sVersion)
-					if err == nil && downloaded != "" {
-						fmt.Printf("Using downloaded Kubernetes rootfs: %s\n", downloaded)
-						imageName = downloaded
+				// Auto-detect k8s rootfs if no image specified
+				if imageName == "" {
+					if found := imgMgr.FindK8sRootfs(k8sVersion); found != "" {
+						fmt.Printf("Using pre-built Kubernetes rootfs: %s\n", found)
+						imageName = found
 						cl.Image = imageName
+					} else {
+						downloaded, err := imgMgr.DownloadK8sRootfs(k8sVersion)
+						if err == nil && downloaded != "" {
+							fmt.Printf("Using downloaded Kubernetes rootfs: %s\n", downloaded)
+							imageName = downloaded
+							cl.Image = imageName
+						}
 					}
 				}
 			}
@@ -1912,8 +1980,12 @@ func clusterCreateCmd() *cobra.Command {
 				return fmt.Errorf("failed to save cluster config: %w", err)
 			}
 
-			fmt.Printf("Creating cluster '%s' with Kubernetes %s (%d control-plane + %d workers)\n",
-				name, k8sVersion, 1, workers)
+			if isOpenShift {
+				fmt.Printf("Creating OpenShift cluster '%s' (MicroShift %s, single-node)\n", name, openshiftVersion)
+			} else {
+				fmt.Printf("Creating cluster '%s' with Kubernetes %s (%d control-plane + %d workers)\n",
+					name, k8sVersion, 1, workers)
+			}
 
 			// Create all VMs (cluster nodes + admin if enabled)
 			allVMs := cl.AllVMs()
@@ -1966,8 +2038,12 @@ func clusterCreateCmd() *cobra.Command {
 				fmt.Printf("  Started VM '%s' (%s)\n", vmName, ip)
 			}
 
-			// Provision Kubernetes (admin VM is excluded from provisioning)
-			fmt.Println("\nProvisioning Kubernetes cluster...")
+			// Provision the cluster (admin VM is excluded from provisioning)
+			if isOpenShift {
+				fmt.Println("\nProvisioning OpenShift cluster...")
+			} else {
+				fmt.Println("\nProvisioning Kubernetes cluster...")
+			}
 			if err := cluster.ProvisionCluster(cl, sshPrivateKeyPath, nodeInfos); err != nil {
 				cl.SetError(fmt.Sprintf("provisioning failed: %v", err))
 				cl.Save(paths.Clusters)
@@ -1984,7 +2060,12 @@ func clusterCreateCmd() *cobra.Command {
 			}
 			defer cpClient.Close()
 
-			kubeconfigYAML, err := cluster.ExtractKubeconfig(cpClient)
+			var kubeconfigYAML string
+			if isOpenShift {
+				kubeconfigYAML, err = cluster.ExtractMicroShiftKubeconfig(cpClient, cl.ControlPlaneIP)
+			} else {
+				kubeconfigYAML, err = cluster.ExtractKubeconfig(cpClient)
+			}
 			if err != nil {
 				cl.SetError(fmt.Sprintf("failed to extract kubeconfig: %v", err))
 				cl.Save(paths.Clusters)
@@ -2011,7 +2092,11 @@ func clusterCreateCmd() *cobra.Command {
 			cl.Save(paths.Clusters)
 
 			fmt.Printf("\nCluster '%s' is ready!\n", name)
-			fmt.Printf("  Kubernetes: %s\n", cl.K8sVersion)
+			if isOpenShift {
+				fmt.Printf("  OpenShift (MicroShift): %s\n", cl.OpenShiftVer)
+			} else {
+				fmt.Printf("  Kubernetes: %s\n", cl.K8sVersion)
+			}
 			fmt.Printf("  Control plane: %s\n", cl.ControlPlaneIP)
 			fmt.Printf("  Nodes: %d\n", len(cl.ClusterVMs()))
 			fmt.Printf("  Context: vmm-%s\n", name)
@@ -2024,11 +2109,15 @@ func clusterCreateCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().IntVar(&workers, "workers", 0, "Number of worker nodes")
+	cmd.Flags().StringVar(&distro, "type", "kubeadm", "Cluster type: 'kubeadm' (Kubernetes) or 'openshift' (MicroShift)")
+	cmd.Flags().StringVar(&distro, "distro", "kubeadm", "Alias for --type")
+	cmd.Flags().MarkHidden("distro")
+	cmd.Flags().IntVar(&workers, "workers", 0, "Number of worker nodes (kubeadm only)")
 	cmd.Flags().IntVar(&cpus, "cpus", 2, "CPUs per node")
 	cmd.Flags().IntVar(&memory, "memory", 4096, "Memory per node in MB")
 	cmd.Flags().IntVar(&disk, "disk", 10240, "Disk per node in MB")
-	cmd.Flags().StringVar(&k8sVersion, "k8s-version", "1.36.0", "Kubernetes version")
+	cmd.Flags().StringVar(&k8sVersion, "k8s-version", "1.36.0", "Kubernetes version (kubeadm only)")
+	cmd.Flags().StringVar(&openshiftVersion, "openshift-version", "4.20", "OpenShift/MicroShift major.minor version (openshift only)")
 	cmd.Flags().StringVar(&sshKeyPath, "ssh-key", "", "Path to SSH public key file")
 	cmd.Flags().StringVar(&imageName, "image", "", "Name of rootfs image to use")
 	cmd.Flags().StringVar(&kernelName, "kernel", "", "Name of kernel to use")
@@ -2230,7 +2319,7 @@ func clusterListCmd() *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "NAME\tSTATE\tK8S VERSION\tNODES\tCONTROL PLANE IP\tCONTEXT")
+			fmt.Fprintln(w, "NAME\tSTATE\tTYPE\tVERSION\tNODES\tCONTROL PLANE IP\tCONTEXT")
 			for _, cl := range clusters {
 				// Update VM states
 				fcClient := firecracker.NewClient()
@@ -2252,8 +2341,16 @@ func clusterListCmd() *cobra.Command {
 				}
 
 				nodes := 1 + len(cl.WorkerVMs)
-				fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\tvmm-%s\n",
-					cl.Name, state, cl.K8sVersion, nodes, cl.ControlPlaneIP, cl.Name)
+				distro := cl.Distro
+				if distro == "" {
+					distro = cluster.DistroKubeadm
+				}
+				version := cl.K8sVersion
+				if distro == cluster.DistroOpenShift {
+					version = cl.OpenShiftVer
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\tvmm-%s\n",
+					cl.Name, state, distro, version, nodes, cl.ControlPlaneIP, cl.Name)
 			}
 			w.Flush()
 			return nil
@@ -2296,7 +2393,12 @@ func clusterKubeconfigCmd() *cobra.Command {
 			}
 			defer cpClient.Close()
 
-			kubeconfigYAML, err := cluster.ExtractKubeconfig(cpClient)
+			var kubeconfigYAML string
+			if cl.Distro == cluster.DistroOpenShift {
+				kubeconfigYAML, err = cluster.ExtractMicroShiftKubeconfig(cpClient, cl.ControlPlaneIP)
+			} else {
+				kubeconfigYAML, err = cluster.ExtractKubeconfig(cpClient)
+			}
 			if err != nil {
 				return fmt.Errorf("failed to extract kubeconfig: %w", err)
 			}
