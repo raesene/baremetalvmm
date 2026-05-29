@@ -5,6 +5,9 @@ Wants=network.target
 
 [Service]
 Type=simple
+# systemd does not set HOME for services; vmm-web merges cluster kubeconfigs into
+# $HOME/.kube/config, so pin it to root's home.
+Environment=HOME=/root
 EnvironmentFile=/etc/vmm-web/environment
 ExecStart=/usr/local/bin/vmm-web --listen 127.0.0.1:8080
 Restart=on-failure

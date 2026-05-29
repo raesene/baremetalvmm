@@ -3,6 +3,7 @@ package cluster
 import (
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"time"
@@ -194,6 +195,16 @@ func defaultKubeconfigPath() string {
 	home, _ := os.UserHomeDir()
 	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" && sudoUser != "root" {
 		home = filepath.Join("/home", sudoUser)
+	}
+	if home == "" {
+		// HOME is unset (e.g. vmm-web running under systemd without an explicit
+		// HOME). Resolve the current user's home, defaulting to root's home so we
+		// write /root/.kube/config rather than a stray /.kube/config.
+		if u, err := user.Current(); err == nil && u.HomeDir != "" {
+			home = u.HomeDir
+		} else {
+			home = "/root"
+		}
 	}
 	return filepath.Join(home, ".kube", "config")
 }
