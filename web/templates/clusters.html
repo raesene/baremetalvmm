@@ -17,8 +17,9 @@
             <tr>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Workers</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">K8s Version</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Version</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
                 <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
@@ -33,8 +34,9 @@
                     <p class="text-xs text-red-600 mt-1 max-w-xs truncate" title="{{.StatusMessage}}">{{.StatusMessage}}</p>
                     {{end}}
                 </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{if eq .Distro "openshift"}}openshift{{else}}kubeadm{{end}}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{len .WorkerVMs}}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{.K8sVersion}}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{if eq .Distro "openshift"}}{{.OpenShiftVer}}{{else}}{{.K8sVersion}}{{end}}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
                     <button hx-delete="/clusters/{{.Name}}" hx-target="#cluster-row-{{.Name}}" hx-swap="outerHTML"

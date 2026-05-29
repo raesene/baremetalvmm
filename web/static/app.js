@@ -56,6 +56,43 @@ document.addEventListener('submit', function(e) {
     }
 });
 
+// Cluster create: toggle fields based on cluster type (kubeadm vs openshift)
+(function() {
+    var typeSel = document.getElementById('cluster_type');
+    if (!typeSel) return;
+    var kubeadmEls = document.querySelectorAll('.kubeadm-only');
+    var openshiftEls = document.querySelectorAll('.openshift-only');
+    var imageSel = document.getElementById('image');
+    var kernelSel = document.getElementById('kernel');
+    var cpus = document.getElementById('cpus');
+    var memory = document.getElementById('memory');
+    var disk = document.getElementById('disk');
+
+    function selectKernel(name) {
+        if (!kernelSel) return;
+        for (var i = 0; i < kernelSel.options.length; i++) {
+            if (kernelSel.options[i].value === name) { kernelSel.value = name; return; }
+        }
+    }
+
+    function apply() {
+        var isOcp = typeSel.value === 'openshift';
+        kubeadmEls.forEach(function(el) { el.style.display = isOcp ? 'none' : ''; });
+        openshiftEls.forEach(function(el) { el.style.display = isOcp ? '' : 'none'; });
+        // A disabled control is not submitted, so the hidden image select won't
+        // be sent (and won't trip its required attribute) for OpenShift.
+        if (imageSel) { imageSel.disabled = isOcp; imageSel.required = !isOcp; }
+        // Pick sensible defaults for the selected type.
+        selectKernel(isOcp ? 'security-kernel' : 'k8s-kernel');
+        if (cpus) cpus.value = isOcp ? 4 : 2;
+        if (memory) memory.value = isOcp ? 8192 : 4096;
+        if (disk) disk.value = isOcp ? 20480 : 10240;
+    }
+
+    typeSel.addEventListener('change', apply);
+    apply();
+})();
+
 // Copy API key to clipboard
 (function() {
     var btn = document.getElementById('copy-btn');

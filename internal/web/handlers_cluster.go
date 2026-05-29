@@ -111,6 +111,13 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	distro := cluster.NormalizeDistro(r.FormValue("type"))
+	isOpenShift := distro == cluster.DistroOpenShift
+	openshiftVersion := strings.TrimSpace(r.FormValue("openshift_version"))
+	if openshiftVersion == "" {
+		openshiftVersion = "4.20"
+	}
+
 	workers := formInt(r, "workers", 0)
 	cpus := formInt(r, "cpus", 2)
 	memory := formInt(r, "memory", 4096)
@@ -140,19 +147,43 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	k8sVersion := strings.TrimPrefix(imageName, "k8s-")
-	if imageName == "" || k8sVersion == "" {
-		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
-			"Flash":     "A Kubernetes rootfs image must be selected",
-			"FlashType": "error",
-		})
-		return
-	}
-	if err := validate.K8sVersion(k8sVersion); err != nil {
-		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
-			"Flash": err.Error(), "FlashType": "error",
-		})
-		return
+	var k8sVersion string
+	if isOpenShift {
+		if err := validate.OpenShiftVersion(openshiftVersion); err != nil {
+			s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
+				"Flash": err.Error(), "FlashType": "error",
+			})
+			return
+		}
+		// OpenShift is single-node; ignore any submitted worker count.
+		workers = 0
+		if memory < 4096 {
+			s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
+				"Flash": "OpenShift requires at least 4096 MB memory", "FlashType": "error",
+			})
+			return
+		}
+		if disk < 10240 {
+			s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
+				"Flash": "OpenShift requires at least 10240 MB disk", "FlashType": "error",
+			})
+			return
+		}
+	} else {
+		k8sVersion = strings.TrimPrefix(imageName, "k8s-")
+		if imageName == "" || k8sVersion == "" {
+			s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
+				"Flash":     "A Kubernetes rootfs image must be selected",
+				"FlashType": "error",
+			})
+			return
+		}
+		if err := validate.K8sVersion(k8sVersion); err != nil {
+			s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
+				"Flash": err.Error(), "FlashType": "error",
+			})
+			return
+		}
 	}
 
 	if sshKeyPath == "" {
@@ -168,25 +199,38 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 
 	if cpus < 2 {
 		s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
-			"Flash":     "Kubernetes requires at least 2 CPUs",
+			"Flash":     "Clusters require at least 2 CPUs",
 			"FlashType": "error",
 		})
 		return
 	}
 
-	cl := cluster.NewCluster(name, workers, k8sVersion, cluster.DistroKubeadm)
+	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
+
+	cl := cluster.NewCluster(name, workers, k8sVersion, distro)
 	cl.CPUs = cpus
 	cl.MemoryMB = memory
 	cl.DiskSizeMB = disk
-	cl.Image = imageName
 	cl.Kernel = kernelName
 	cl.SSHKeyPath = sshKeyPath
 
-	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
-
-	// Default to k8s-kernel if available
-	if kernelName == "" && imgMgr.KernelExists("k8s-kernel") {
-		cl.Kernel = "k8s-kernel"
+	if isOpenShift {
+		cl.OpenShiftVer = openshiftVersion
+		// MicroShift installs on the base Ubuntu rootfs (install-on-provision).
+		cl.Image = ""
+		if kernelName == "" {
+			if imgMgr.KernelExists("security-kernel") {
+				cl.Kernel = "security-kernel"
+			} else if imgMgr.KernelExists("k8s-kernel") {
+				cl.Kernel = "k8s-kernel"
+			}
+		}
+	} else {
+		cl.Image = imageName
+		// Default to k8s-kernel if available
+		if kernelName == "" && imgMgr.KernelExists("k8s-kernel") {
+			cl.Kernel = "k8s-kernel"
+		}
 	}
 
 	if adminWorkstation {
@@ -317,7 +361,12 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 	}
 	defer cpClient.Close()
 
-	kubeconfigYAML, err := cluster.ExtractKubeconfig(cpClient)
+	var kubeconfigYAML string
+	if cl.Distro == cluster.DistroOpenShift {
+		kubeconfigYAML, err = cluster.ExtractMicroShiftKubeconfig(cpClient, cl.ControlPlaneIP)
+	} else {
+		kubeconfigYAML, err = cluster.ExtractKubeconfig(cpClient)
+	}
 	if err != nil {
 		log.Printf("cluster %s: failed to extract kubeconfig: %v", clusterName, err)
 		cl.SetError(fmt.Sprintf("failed to extract kubeconfig: %v", err))
@@ -426,11 +475,13 @@ func (s *Server) handleAPIClusterList(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name             string `json:"name"`
+		Type             string `json:"type"`
 		Workers          int    `json:"workers"`
 		CPUs             int    `json:"cpus"`
 		MemoryMB         int    `json:"memory_mb"`
 		DiskSizeMB       int    `json:"disk_size_mb"`
 		K8sVersion       string `json:"k8s_version"`
+		OpenShiftVersion string `json:"openshift_version"`
 		SSHKey           string `json:"ssh_key"`
 		SSHKeyPath       string `json:"ssh_key_path"`
 		Kernel           string `json:"kernel"`
@@ -458,21 +509,30 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, "SSH key path is required for cluster provisioning", http.StatusBadRequest)
 		return
 	}
-	if req.CPUs == 0 {
-		req.CPUs = 2
-	}
-	if req.MemoryMB == 0 {
-		req.MemoryMB = 4096
-	}
-	if req.DiskSizeMB == 0 {
-		req.DiskSizeMB = 10240
-	}
-	if req.K8sVersion == "" {
-		req.K8sVersion = "1.36.0"
-	}
-	if err := validate.K8sVersion(req.K8sVersion); err != nil {
-		jsonError(w, err.Error(), http.StatusBadRequest)
-		return
+	distro := cluster.NormalizeDistro(req.Type)
+	isOpenShift := distro == cluster.DistroOpenShift
+
+	if isOpenShift {
+		if req.CPUs == 0 {
+			req.CPUs = 4
+		}
+		if req.MemoryMB == 0 {
+			req.MemoryMB = 8192
+		}
+		if req.DiskSizeMB == 0 {
+			req.DiskSizeMB = 20480
+		}
+		req.Workers = 0
+	} else {
+		if req.CPUs == 0 {
+			req.CPUs = 2
+		}
+		if req.MemoryMB == 0 {
+			req.MemoryMB = 4096
+		}
+		if req.DiskSizeMB == 0 {
+			req.DiskSizeMB = 10240
+		}
 	}
 
 	if err := validate.CPUs(req.CPUs); err != nil {
@@ -488,12 +548,38 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if req.CPUs < 2 {
-		jsonError(w, "Kubernetes requires at least 2 CPUs", http.StatusBadRequest)
+		jsonError(w, "Clusters require at least 2 CPUs", http.StatusBadRequest)
 		return
 	}
-	if req.MemoryMB < 2048 {
-		jsonError(w, "Kubernetes requires at least 2048 MB memory", http.StatusBadRequest)
-		return
+
+	if isOpenShift {
+		if req.OpenShiftVersion == "" {
+			req.OpenShiftVersion = "4.20"
+		}
+		if err := validate.OpenShiftVersion(req.OpenShiftVersion); err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if req.MemoryMB < 4096 {
+			jsonError(w, "OpenShift requires at least 4096 MB memory", http.StatusBadRequest)
+			return
+		}
+		if req.DiskSizeMB < 10240 {
+			jsonError(w, "OpenShift requires at least 10240 MB disk", http.StatusBadRequest)
+			return
+		}
+	} else {
+		if req.K8sVersion == "" {
+			req.K8sVersion = "1.36.0"
+		}
+		if err := validate.K8sVersion(req.K8sVersion); err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if req.MemoryMB < 2048 {
+			jsonError(w, "Kubernetes requires at least 2048 MB memory", http.StatusBadRequest)
+			return
+		}
 	}
 
 	paths := s.cfg.GetPaths()
@@ -504,21 +590,34 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	cl := cluster.NewCluster(req.Name, req.Workers, req.K8sVersion, cluster.DistroKubeadm)
+	cl := cluster.NewCluster(req.Name, req.Workers, req.K8sVersion, distro)
 	cl.CPUs = req.CPUs
 	cl.MemoryMB = req.MemoryMB
 	cl.DiskSizeMB = req.DiskSizeMB
-	cl.Image = req.Image
 	cl.Kernel = req.Kernel
 	cl.SSHKeyPath = req.SSHKeyPath
 
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
-	if req.Kernel == "" && imgMgr.KernelExists("k8s-kernel") {
-		cl.Kernel = "k8s-kernel"
-	}
-	if req.Image == "" {
-		if found := imgMgr.FindK8sRootfs(req.K8sVersion); found != "" {
-			cl.Image = found
+	if isOpenShift {
+		cl.OpenShiftVer = req.OpenShiftVersion
+		// MicroShift installs on the base Ubuntu rootfs (install-on-provision).
+		cl.Image = ""
+		if req.Kernel == "" {
+			if imgMgr.KernelExists("security-kernel") {
+				cl.Kernel = "security-kernel"
+			} else if imgMgr.KernelExists("k8s-kernel") {
+				cl.Kernel = "k8s-kernel"
+			}
+		}
+	} else {
+		cl.Image = req.Image
+		if req.Kernel == "" && imgMgr.KernelExists("k8s-kernel") {
+			cl.Kernel = "k8s-kernel"
+		}
+		if req.Image == "" {
+			if found := imgMgr.FindK8sRootfs(req.K8sVersion); found != "" {
+				cl.Image = found
+			}
 		}
 	}
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -25,6 +26,17 @@ const (
 	// upstream MicroShift (github.com/microshift-io/microshift).
 	DistroOpenShift = "openshift"
 )
+
+// NormalizeDistro maps user-supplied cluster type values (including friendly
+// aliases) to a canonical distro, defaulting to kubeadm for unknown values.
+func NormalizeDistro(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case DistroOpenShift, "microshift", "ocp", "okd":
+		return DistroOpenShift
+	default:
+		return DistroKubeadm
+	}
+}
 
 type Cluster struct {
 	Name           string    `json:"name"`
