@@ -17,11 +17,22 @@ const (
 	StateError    State = "error"
 )
 
+// Distro identifies the Kubernetes distribution used for a cluster.
+const (
+	// DistroKubeadm is a vanilla Kubernetes cluster provisioned with kubeadm + Cilium.
+	DistroKubeadm = "kubeadm"
+	// DistroOpenShift is a single-node OpenShift-derived cluster provisioned with
+	// upstream MicroShift (github.com/microshift-io/microshift).
+	DistroOpenShift = "openshift"
+)
+
 type Cluster struct {
 	Name           string    `json:"name"`
 	State          State     `json:"state"`
 	StatusMessage  string    `json:"status_message,omitempty"`
+	Distro         string    `json:"distro,omitempty"`
 	K8sVersion     string    `json:"k8s_version"`
+	OpenShiftVer   string    `json:"openshift_version,omitempty"`
 	ControlPlaneVM string    `json:"control_plane_vm"`
 	WorkerVMs      []string  `json:"worker_vms"`
 	AdminVM        string    `json:"admin_vm,omitempty"`
@@ -39,10 +50,14 @@ type Cluster struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-func NewCluster(name string, workers int, k8sVersion string) *Cluster {
+func NewCluster(name string, workers int, k8sVersion, distro string) *Cluster {
+	if distro == "" {
+		distro = DistroKubeadm
+	}
 	c := &Cluster{
 		Name:           name,
 		State:          StateCreating,
+		Distro:         distro,
 		K8sVersion:     k8sVersion,
 		ControlPlaneVM: fmt.Sprintf("%s-control-plane", name),
 		PodSubnet:      "10.244.0.0/16",
@@ -52,8 +67,11 @@ func NewCluster(name string, workers int, k8sVersion string) *Cluster {
 		DiskSizeMB:     10240,
 		CreatedAt:      time.Now(),
 	}
-	for i := 1; i <= workers; i++ {
-		c.WorkerVMs = append(c.WorkerVMs, fmt.Sprintf("%s-worker-%d", name, i))
+	// MicroShift is single-node by design; never create worker VMs.
+	if distro != DistroOpenShift {
+		for i := 1; i <= workers; i++ {
+			c.WorkerVMs = append(c.WorkerVMs, fmt.Sprintf("%s-worker-%d", name, i))
+		}
 	}
 	return c
 }

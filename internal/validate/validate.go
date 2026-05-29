@@ -77,3 +77,13 @@ func K8sVersion(version string) error {
 	}
 	return nil
 }
+
+var openShiftVersionRe = regexp.MustCompile(`^[0-9]+\.[0-9]{1,2}$`)
+
+// OpenShiftVersion validates an OpenShift/MicroShift major.minor version (e.g. "4.20").
+func OpenShiftVersion(version string) error {
+	if !openShiftVersionRe.MatchString(version) {
+		return fmt.Errorf("invalid OpenShift version %q: must be in format MAJOR.MINOR (e.g., 4.20)", version)
+	}
+	return nil
+}

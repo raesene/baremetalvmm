@@ -82,6 +82,7 @@ By default VMs are only reachable from the local machine. Use `vmm port-forward`
 | [Images and Kernels](docs/images-and-kernels.md) | Available images, custom rootfs from Docker, custom kernels, snapshots |
 | [Networking and Mounts](docs/networking.md) | Network architecture, port forwarding, DNS, SSH keys, host directory mounts |
 | [Kubernetes Clusters](docs/kubernetes.md) | Creating and managing Kubernetes clusters with kubeadm + Cilium |
+| [OpenShift Clusters](docs/openshift.md) | Single-node OpenShift-derived clusters via MicroShift |
 | [Web UI](docs/web-ui.md) | Browser-based dashboard, web terminal, and JSON API |
 | [Security Testing](docs/security-testing.md) | Security kernel for vulnerability research and exploit testing |
 | [Development](docs/development.md) | Building from source, project structure, systemd services |
