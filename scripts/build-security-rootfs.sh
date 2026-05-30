@@ -40,6 +40,7 @@ JWT_CLI_VERSION="6.2.0"
 K9S_VERSION="0.32.7"
 KUBELETCTL_VERSION="1.13"
 KIND_VERSION="0.31.0"
+OC_VERSION="4.20"
 
 # Default values
 OUTPUT_DIR="/var/lib/vmm/images/rootfs"
@@ -372,6 +373,17 @@ install_binary_tools() {
         -o "$bin_dir/kind"
     chmod +x "$bin_dir/kind"
 
+    # oc (OpenShift CLI) — downloaded from the Red Hat mirror; no subscription required
+    log_info "  Installing oc (OpenShift CLI) ${OC_VERSION}..."
+    local oc_tmp
+    oc_tmp=$(mktemp -d)
+    curl --retry 3 --retry-delay 5 -fSL \
+        "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable-${OC_VERSION}/openshift-client-linux.tar.gz" \
+        | tar -xz -C "$oc_tmp"
+    mv "$oc_tmp/oc" "$bin_dir/oc"
+    chmod +x "$bin_dir/oc"
+    rm -rf "$oc_tmp"
+
     log_info "Binary tools installed successfully"
 }
 
@@ -596,7 +608,7 @@ log_info "    kubectl ${KUBECTL_VERSION}, Docker Engine (apt), nerdctl ${NERDCTL
 log_info "    nmap, tcpdump, socat, dnsutils, traceroute, whois"
 log_info "    amicontained ${AMICONTAINED_VERSION}, kdigger ${KDIGGER_VERSION}, kubeletctl ${KUBELETCTL_VERSION}"
 log_info "    rbac-tool ${RBAC_TOOL_VERSION}, k9s ${K9S_VERSION}, jwt-cli ${JWT_CLI_VERSION}"
-log_info "    kind ${KIND_VERSION}, starship prompt, kubectx/kubens"
+log_info "    kind ${KIND_VERSION}, starship prompt, kubectx/kubens, oc ${OC_VERSION}"
 echo ""
 echo "To use this rootfs with vmm:"
 echo "  gunzip -c $OUTPUT_DIR/${NAME}.gz > /var/lib/vmm/images/rootfs/security-rootfs.ext4"
