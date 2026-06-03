@@ -305,7 +305,7 @@ jobs:
         if: steps.check_release.outputs.exists == 'false'
         run: |
           BUILD_DIR="${{ steps.build.outputs.build_dir }}"
-          LINUX_DIR=$(ls -d "$BUILD_DIR"/linux-*)
+          LINUX_DIR=$(sudo ls -d "$BUILD_DIR"/linux-*)
 
           sudo bash -c "cd '$LINUX_DIR' && make -j$(nproc) vmlinux"
           sudo cp "$LINUX_DIR/vmlinux" "${{ github.workspace }}/cifs-vuln-vmlinux.bin"
