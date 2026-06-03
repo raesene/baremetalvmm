@@ -427,6 +427,7 @@ create_security_kernel_config() {
     ./scripts/config --enable CONFIG_NFS_V4
     ./scripts/config --enable CONFIG_NFSD
     ./scripts/config --enable CONFIG_CIFS
+    ./scripts/config --enable CONFIG_CIFS_UPCALL
     ./scripts/config --enable CONFIG_9P_FS
     ./scripts/config --enable CONFIG_NET_9P
     ./scripts/config --enable CONFIG_NET_9P_VIRTIO

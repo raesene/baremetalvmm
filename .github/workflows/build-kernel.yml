@@ -190,7 +190,7 @@ jobs:
           - MPTCP (multipath TCP)
           - GRE, IPIP, SIT, IPv6 tunneling
           - Traffic control / queueing disciplines
-          - FUSE, Btrfs, XFS, NFS, CIFS, 9P filesystems
+          - FUSE, Btrfs, XFS, NFS, CIFS (with upcall), 9P filesystems
           - kTLS (kernel TLS)
           - userfaultfd (race condition exploits)
           - AppArmor, SELinux, Landlock LSMs
@@ -220,6 +220,138 @@ jobs:
             --notes "$NOTES" \
             security-vmlinux.bin \
             security-vmlinux.bin.sha256
+
+  build-security-cifs-vuln:
+    runs-on: ubuntu-latest
+    env:
+      KERNEL_SERIES: '6.12'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Query kernel.org for latest 6.12 patch version
+        id: kernel_version
+        run: |
+          LATEST=$(curl -fsSL https://www.kernel.org/releases.json | \
+            jq -r --arg series "$KERNEL_SERIES" \
+            '[.releases[] | select(.version | startswith($series + ".")) | .version] | sort_by(split(".") | map(tonumber)) | last')
+
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "Could not determine latest kernel version for series $KERNEL_SERIES"
+            exit 1
+          fi
+
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Found latest kernel version: $LATEST"
+
+      - name: Check if release already exists
+        id: check_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="cifs-vuln-kernel-${{ steps.kernel_version.outputs.version }}"
+          if gh release view "$TAG" &>/dev/null; then
+            echo "Release $TAG already exists, skipping build"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release $TAG does not exist, proceeding with build"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install build dependencies
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential flex bison bc libelf-dev libssl-dev wget curl jq
+
+      - name: Build security kernel with CIFS upcall (no cleanup)
+        if: steps.check_release.outputs.exists == 'false'
+        id: build
+        run: |
+          chmod +x scripts/build-kernel.sh
+          sudo bash scripts/build-kernel.sh \
+            --version "$KERNEL_SERIES" \
+            --name cifs-vuln-vmlinux.bin \
+            --config-profile security \
+            --no-cleanup \
+            --output "${{ github.workspace }}"
+
+          BUILD_DIR=$(ls -d /tmp/vmm-kernel-build-* | head -1)
+          echo "build_dir=$BUILD_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Revert CVE-2026-46243 fix (remove vet_description)
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          BUILD_DIR="${{ steps.build.outputs.build_dir }}"
+          SPNEGO_FILE=$(find "$BUILD_DIR" -path '*/fs/smb/client/cifs_spnego.c')
+
+          if [ -z "$SPNEGO_FILE" ]; then
+            echo "ERROR: cifs_spnego.c not found in $BUILD_DIR"
+            exit 1
+          fi
+
+          # Verify the fix is present before patching
+          if ! grep -q '\.vet_description = cifs_spnego_key_vet_description,' "$SPNEGO_FILE"; then
+            echo "ERROR: vet_description assignment not found — kernel source may have changed"
+            exit 1
+          fi
+
+          sudo sed -i 's/\.vet_description = cifs_spnego_key_vet_description,/\/\* .vet_description removed for CVE-2026-46243 vuln testing \*\//' "$SPNEGO_FILE"
+
+          echo "Patched: removed .vet_description from cifs_spnego_key_type struct"
+          grep -A1 'vet_description' "$SPNEGO_FILE"
+
+      - name: Incremental rebuild with patch reverted
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          BUILD_DIR="${{ steps.build.outputs.build_dir }}"
+          LINUX_DIR=$(ls -d "$BUILD_DIR"/linux-*)
+
+          sudo bash -c "cd '$LINUX_DIR' && make -j$(nproc) vmlinux"
+          sudo cp "$LINUX_DIR/vmlinux" "${{ github.workspace }}/cifs-vuln-vmlinux.bin"
+
+          sudo rm -rf "$BUILD_DIR"
+
+      - name: Generate checksum
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          sha256sum cifs-vuln-vmlinux.bin > cifs-vuln-vmlinux.bin.sha256
+
+      - name: Create GitHub release
+        if: steps.check_release.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="cifs-vuln-kernel-${{ steps.kernel_version.outputs.version }}"
+          TITLE="CIFS Vuln Testing Kernel ${{ steps.kernel_version.outputs.version }} (CVE-2026-46243, Linux ${KERNEL_SERIES} LTS)"
+          NOTES="Firecracker-compatible Linux kernel ${{ steps.kernel_version.outputs.version }} with CVE-2026-46243 fix **intentionally reverted** for vulnerability testing.
+
+          **WARNING: This kernel is deliberately vulnerable. Use only in isolated test environments.**
+
+          Changes from the standard security kernel:
+          - \`CONFIG_CIFS_UPCALL=y\` — enables the CIFS spnego upcall subsystem
+          - \`cifs_spnego_key_vet_description()\` struct assignment removed — allows userspace-originated \`request_key(\"cifs.spnego\", ...)\` to trigger \`cifs.upcall\`
+
+          This kernel allows reproducing the CVE-2026-46243 container escape via CIFS spnego key type abuse.
+
+          **Pair with**: \`rootfs-24.04-*\` (Default Ubuntu Rootfs) — install \`cifs-utils\` and \`keyutils\` inside the VM.
+
+          Quick start:
+          \`\`\`
+          sudo vmm kernel import cifs-vuln-vmlinux.bin --name cifs-vuln-kernel
+          sudo vmm create testvm --kernel cifs-vuln-kernel --image security-rootfs \\\\
+              --cpus 4 --memory 4096 --disk 8192
+          sudo vmm start testvm
+          sudo vmm ssh testvm -- 'apt-get install -y cifs-utils keyutils'
+          \`\`\`
+
+          Built by GitHub Actions from \`scripts/build-kernel.sh --config-profile security\` with post-build source patching."
+
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            cifs-vuln-vmlinux.bin \
+            cifs-vuln-vmlinux.bin.sha256
 
   build-k8s:
     runs-on: ubuntu-latest
