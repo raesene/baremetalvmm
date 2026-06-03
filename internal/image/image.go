@@ -1341,6 +1341,8 @@ func (m *Manager) ListAvailableReleases() ([]AvailableRelease, error) {
 			func(tag string) string { return "Kubernetes cluster kernel (" + tag + ", Cilium/BPF)" }},
 		{"security-kernel-", "security-vmlinux.bin", "security-kernel", "kernel",
 			func(tag string) string { return "Security testing kernel (" + tag + ", broad module coverage)" }},
+		{"cifs-vuln-kernel-", "cifs-vuln-vmlinux.bin", "cifs-vuln-kernel", "kernel",
+			func(tag string) string { return "CIFS vuln testing kernel (" + tag + ", CVE-2026-46243)" }},
 		{"rootfs-", "rootfs.ext4.gz", "rootfs", "rootfs",
 			func(tag string) string { return "Ubuntu 24.04 base rootfs (" + tag + ")" }},
 		{"k8s-rootfs-", "k8s-rootfs.ext4.gz", "", "rootfs",
@@ -1478,6 +1480,8 @@ func describeKernel(name string, isDefault bool) string {
 		return "General-purpose VM kernel (Linux 6.1 LTS)"
 	case strings.HasPrefix(name, "k8s-"):
 		return "Kubernetes cluster kernel (Linux 6.6 LTS, Cilium/BPF)"
+	case strings.HasPrefix(name, "cifs-vuln-"):
+		return "CIFS vuln testing kernel (CVE-2026-46243, Linux 6.12 LTS)"
 	case strings.HasPrefix(name, "security-"):
 		return "Security testing kernel (Linux 6.12 LTS, broad module coverage)"
 	case strings.HasPrefix(name, "debug-"):

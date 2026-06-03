@@ -69,6 +69,7 @@ func TestDescribeKernel(t *testing.T) {
 		wantSub   string
 	}{
 		{"k8s-kernel", false, "Kubernetes"},
+		{"cifs-vuln-kernel", false, "CIFS"},
 		{"security-kernel", false, "Security"},
 		{"debug-kernel", false, "Debug"},
 		{"minimal-kernel", false, "Minimal"},
