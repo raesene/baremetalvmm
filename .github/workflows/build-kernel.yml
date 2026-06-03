@@ -283,7 +283,7 @@ jobs:
         if: steps.check_release.outputs.exists == 'false'
         run: |
           BUILD_DIR="${{ steps.build.outputs.build_dir }}"
-          SPNEGO_FILE=$(find "$BUILD_DIR" -path '*/fs/smb/client/cifs_spnego.c')
+          SPNEGO_FILE=$(sudo find "$BUILD_DIR" -path '*/fs/smb/client/cifs_spnego.c')
 
           if [ -z "$SPNEGO_FILE" ]; then
             echo "ERROR: cifs_spnego.c not found in $BUILD_DIR"
@@ -291,7 +291,7 @@ jobs:
           fi
 
           # Verify the fix is present before patching
-          if ! grep -q '\.vet_description = cifs_spnego_key_vet_description,' "$SPNEGO_FILE"; then
+          if ! sudo grep -q '\.vet_description = cifs_spnego_key_vet_description,' "$SPNEGO_FILE"; then
             echo "ERROR: vet_description assignment not found — kernel source may have changed"
             exit 1
           fi
@@ -299,7 +299,7 @@ jobs:
           sudo sed -i 's/\.vet_description = cifs_spnego_key_vet_description,/\/\* .vet_description removed for CVE-2026-46243 vuln testing \*\//' "$SPNEGO_FILE"
 
           echo "Patched: removed .vet_description from cifs_spnego_key_type struct"
-          grep -A1 'vet_description' "$SPNEGO_FILE"
+          sudo grep -A1 'vet_description' "$SPNEGO_FILE"
 
       - name: Incremental rebuild with patch reverted
         if: steps.check_release.outputs.exists == 'false'
