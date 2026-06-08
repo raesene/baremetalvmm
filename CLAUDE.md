@@ -14,7 +14,7 @@ VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker
 - **Web UI**: Chi router, html/template, HTMX, Tailwind CSS via CDN
 - **Networking**: Linux TAP devices, bridges, iptables
 - **Storage**: JSON-based VM/cluster configs, ext4 rootfs images
-- **CI/CD**: GitHub Actions (GoReleaser for binary releases, kernel/rootfs build workflows)
+- **CI/CD**: GitHub Actions (CI checks on push/PR, GoReleaser for binary releases, kernel/rootfs build workflows, Dependabot for dependency updates)
 
 ## Input Validation
 
@@ -115,6 +115,25 @@ Create flag defaults can be set in `~/.config/vmm/config.json` under `vm_default
 ### Adding new image/kernel variants
 - Prefix-based naming drives descriptions in `describeKernel()`/`describeRootfs()` in `internal/image/image.go`
 - Prefixes: `k8s-`, `security-`, `debug-`, `minimal-`, or custom
+
+## CI/CD
+
+### CI Checks (`.github/workflows/ci.yml`)
+
+Runs on push to `main` and all PRs. Three parallel jobs:
+- **Test** — `go mod tidy` check, build, `go test -race -shuffle=on` across Go 1.25 + stable
+- **Lint** — `go vet` + `golangci-lint`
+- **Vulnerability Check** — `govulncheck` for known CVEs in dependency call graph
+
+### Dependency Updates (`.github/dependabot.yml`)
+
+Dependabot opens weekly PRs for Go module and GitHub Actions version updates. Minor/patch Go updates are grouped into a single PR.
+
+### Release Workflows
+
+- `release.yaml` — GoReleaser binary release on `v*` tags
+- `build-kernel.yml` — kernel compilation (default, k8s, security, cifs-vuln variants)
+- `build-rootfs.yml` / `build-k8s-rootfs.yml` / `build-security-rootfs.yml` — rootfs image builds
 
 ## Building
 
