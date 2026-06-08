@@ -1,0 +1,104 @@
+version: "2"
+run:
+  concurrency: 4
+  timeout: 5m
+  tests: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 50
+  # Only report issues in new/changed code — allows incremental adoption
+  # without fixing all legacy issues at once. Update this rev periodically
+  # as existing issues are cleaned up.
+  new-from-rev: 17c43a8
+
+linters:
+  enable:
+    # correctness
+    - govet
+    - staticcheck
+    - unused
+    - errcheck
+    - errorlint
+    - nilerr
+    - forcetypeassert
+    - copyloopvar
+    - durationcheck
+    # style
+    - gocritic
+    - misspell
+    - dupword
+    - predeclared
+    - errname
+    - asciicheck
+    # performance
+    - perfsprint
+    - unconvert
+    - ineffassign
+    # security
+    - bidichk
+    - bodyclose
+    # modernization
+    - intrange
+    - usestdlibvars
+    - nolintlint
+
+  disable:
+    # gosec generates too many false positives for a system administration tool
+    # that intentionally runs subprocesses, reads files from variable paths, etc.
+    - gosec
+    - lll
+    - wrapcheck
+    - err113
+    - mnd
+    - nakedret
+    - exhaustruct
+    - gochecknoglobals
+    - depguard
+
+  exclusions:
+    paths:
+      - vendor$
+      - third_party$
+
+    rules:
+      # Ignore unchecked errors in test code
+      - linters: [errcheck]
+        path: _test\.go
+      # Ignore deprecated nhooyr.io/websocket — migration to coder/websocket is tracked separately
+      - linters: [staticcheck]
+        text: "SA1019:.*nhooyr.io/websocket"
+      # Allow duplicate words in shell command strings (e.g. "mount -t bpf bpf")
+      - linters: [dupword]
+        path: provisioner\.go
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (net/http.ResponseWriter).Write
+        - (*os/exec.Cmd).Run
+        - os.Remove
+        - os.RemoveAll
+        - os.MkdirAll
+        - os.Setenv
+        - os.Unsetenv
+        - (*os.Process).Signal
+        - (*text/tabwriter.Writer).Flush
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*github.com/spf13/cobra.Command).RegisterFlagCompletionFunc
+        - (*github.com/spf13/pflag.FlagSet).MarkHidden
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: lax
+    paths:
+      - vendor$
