@@ -4,9 +4,9 @@ go 1.25.3
 
 require (
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
-	github.com/go-chi/chi/v5 v5.2.5
+	github.com/go-chi/chi/v5 v5.3.0
 	github.com/google/uuid v1.6.0
-	github.com/sirupsen/logrus v1.8.1
+	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.52.0
 	gopkg.in/yaml.v3 v3.0.1
