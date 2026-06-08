@@ -79,4 +79,4 @@ jobs:
           go-version: stable
 
       - name: Run govulncheck
-        uses: golang/govulncheck-action@v2
+        uses: golang/govulncheck-action@v1
