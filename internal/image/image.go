@@ -1347,8 +1347,8 @@ func (m *Manager) ListAvailableReleases() ([]AvailableRelease, error) {
 			func(tag string) string { return "Ubuntu 24.04 base rootfs (" + tag + ")" }},
 		{"k8s-rootfs-", "k8s-rootfs.ext4.gz", "", "rootfs",
 			func(tag string) string { return "Kubernetes rootfs (" + tag + ", kubeadm/containerd)" }},
-		{"security-rootfs-", "security-rootfs.ext4.gz", "", "rootfs",
-			func(tag string) string { return "Security rootfs (" + tag + ", container/K8s tools)" }},
+		{"security-rootfs-", "security-rootfs.ext4.gz", "security-rootfs", "rootfs",
+			func(_ string) string { return "Security rootfs (Ubuntu 24.04, container/K8s tools)" }},
 	}
 
 	seen := make(map[string]bool)
@@ -1370,10 +1370,6 @@ func (m *Manager) ListAvailableReleases() ([]AvailableRelease, error) {
 				if localName == "" && spec.prefix == "k8s-rootfs-" {
 					version := strings.TrimPrefix(rel.TagName, "k8s-rootfs-")
 					localName = "k8s-" + version
-				}
-				if localName == "" && spec.prefix == "security-rootfs-" {
-					suffix := strings.TrimPrefix(rel.TagName, "security-rootfs-")
-					localName = "security-" + suffix
 				}
 
 				downloaded := false

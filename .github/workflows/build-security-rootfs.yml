@@ -30,29 +30,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Determine release tag
-        id: tag
-        run: |
-          TAG="security-rootfs-24.04-$(date +%Y%m%d)"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Release tag: $TAG"
-
-      - name: Check if release already exists
-        id: check_release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ steps.tag.outputs.tag }}"
-          if gh release view "$TAG" &>/dev/null; then
-            echo "Release $TAG already exists, skipping build"
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Release $TAG does not exist, proceeding with build"
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Build security rootfs
-        if: steps.check_release.outputs.exists == 'false'
         run: |
           chmod +x scripts/build-security-rootfs.sh
           sudo bash scripts/build-security-rootfs.sh \
@@ -62,20 +40,30 @@ jobs:
             --output "${{ github.workspace }}"
 
       - name: Generate checksum
-        if: steps.check_release.outputs.exists == 'false'
         run: |
           sha256sum security-rootfs.ext4.gz > security-rootfs.ext4.gz.sha256
 
-      - name: Create GitHub release
-        if: steps.check_release.outputs.exists == 'false'
+      - name: Delete previous release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ steps.tag.outputs.tag }}"
+          TAG="security-rootfs-latest"
+          if gh release view "$TAG" &>/dev/null; then
+            echo "Deleting previous release $TAG"
+            gh release delete "$TAG" --yes --cleanup-tag
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="security-rootfs-latest"
           TITLE="Security Rootfs (Ubuntu 24.04, $(date +%Y-%m-%d)) — Container & K8s Security Tools"
           NOTES="Firecracker-compatible Ubuntu 24.04 rootfs with security and container assessment tools pre-installed.
 
           **Use this rootfs for security testing VMs** (\`vmm create --image security-rootfs\`).
+
+          This release is replaced on each build — only the latest version is kept.
 
           Pre-configured with:
           - systemd, OpenSSH server, Docker Engine (started on boot), containerd
