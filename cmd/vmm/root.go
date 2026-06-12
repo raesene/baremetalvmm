@@ -30,6 +30,7 @@ func newRootCmd() *cobra.Command {
 		startCmd(),
 		stopCmd(),
 		sshCmd(),
+		consoleCmd(),
 		configCmd(),
 		imageCmd(),
 		kernelCmd(),

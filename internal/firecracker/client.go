@@ -21,6 +21,18 @@ const (
 	DefaultFirecrackerBin = "/usr/local/bin/firecracker"
 )
 
+// consoleLogPath derives the console log path from the VM log path.
+// e.g. /var/lib/vmm/logs/myvm.log -> /var/lib/vmm/logs/myvm-console.log
+func consoleLogPath(logPath string) string {
+	ext := filepath.Ext(logPath)
+	return logPath[:len(logPath)-len(ext)] + "-console" + ext
+}
+
+// ConsoleLogPath returns the path to the console log for a VM given its log path.
+func ConsoleLogPath(logPath string) string {
+	return consoleLogPath(logPath)
+}
+
 // Client wraps the Firecracker SDK for VM management
 type Client struct {
 	FirecrackerBin string
@@ -161,19 +173,29 @@ func (c *Client) StartVM(ctx context.Context, cfg *VMConfig) (*sdk.Machine, erro
 		sdk.WithLogger(logrus.NewEntry(c.Logger)),
 	}
 
-	// Create log file if specified
+	// Create log directory and console log file
 	if cfg.LogPath != "" {
 		logDir := filepath.Dir(cfg.LogPath)
-		if err := os.MkdirAll(logDir, 0755); err != nil {
+		if err := os.MkdirAll(logDir, 0700); err != nil {
 			return nil, fmt.Errorf("failed to create log directory: %w", err)
 		}
 	}
 
-	// Create the Firecracker command
-	cmd := sdk.VMCommandBuilder{}.
+	// Build Firecracker command, capturing serial console output to a log file
+	cmdBuilder := sdk.VMCommandBuilder{}.
 		WithBin(fcBin).
-		WithSocketPath(cfg.SocketPath).
-		Build(ctx)
+		WithSocketPath(cfg.SocketPath)
+
+	if cfg.LogPath != "" {
+		consolePath := consoleLogPath(cfg.LogPath)
+		consoleFile, err := os.OpenFile(consolePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create console log file: %w", err)
+		}
+		cmdBuilder = cmdBuilder.WithStdout(consoleFile).WithStderr(consoleFile)
+	}
+
+	cmd := cmdBuilder.Build(ctx)
 
 	machineOpts = append(machineOpts, sdk.WithProcessRunner(cmd))
 
