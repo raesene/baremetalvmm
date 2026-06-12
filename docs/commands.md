@@ -44,8 +44,30 @@ sudo vmm create myvm --cpus 2 --memory 2048 --disk 10000 \
 |---------|-------------|
 | `vmm ssh <name>` | SSH into a VM as root |
 | `vmm ssh <name> -u <user>` | SSH as specific user |
+| `vmm console <name>` | View serial console output (tail + follow) |
+| `vmm console <name> --full` | View complete console log |
 
 VMM auto-generates an Ed25519 SSH key at `/var/lib/vmm/ssh/vmm_ed25519` that is always injected into VMs, so SSH access works without `--ssh-key`. If you provide `--ssh-key`, that key is added alongside the managed key. You can use `sudo vmm ssh <name>` if you prefer consistency with other commands - VMM automatically detects the original user and uses their SSH keys.
+
+### Serial Console
+
+Every VM automatically captures serial console output (kernel boot messages, panics, systemd output) to `/var/lib/vmm/logs/<name>-console.log`.
+
+```bash
+# Tail last 50 lines and follow new output (default)
+sudo vmm console myvm
+
+# Show complete console log
+sudo vmm console myvm --full
+
+# Tail last 100 lines without following
+sudo vmm console myvm -n 100 --follow=false
+```
+
+Console logs are especially useful for:
+- Capturing kernel panic output and crash dumps
+- Debugging early boot failures (before SSH is available)
+- Security testing and vulnerability research (kernel exploit output)
 
 ## Networking
 

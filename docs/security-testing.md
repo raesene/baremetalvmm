@@ -49,6 +49,23 @@ sudo vmm cluster create vuln-cluster --workers 1 --cpus 2 --memory 4096 \
     --kernel security-kernel --ssh-key ~/.ssh/id_ed25519.pub
 ```
 
+## Capturing Crash Output
+
+All VMs automatically capture serial console output (kernel boot messages, panics, oops) to `/var/lib/vmm/logs/<name>-console.log`. This is essential for vulnerability research where kernel crashes need to be captured.
+
+```bash
+# Follow console output live while running an exploit
+sudo vmm console vuln-test
+
+# Review crash output after a kernel panic
+sudo vmm console vuln-test --full
+
+# Show last 100 lines of console output
+sudo vmm console vuln-test -n 100 --follow=false
+```
+
+The console log captures everything from early kernel boot through to any panic or oops output, including stack traces and register dumps.
+
 ## Verifying Kernel Capabilities
 
 Check that the required subsystems are available inside the VM:

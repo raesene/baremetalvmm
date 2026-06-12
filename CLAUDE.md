@@ -84,6 +84,7 @@ vmm stop <name>
 vmm delete <name> [-f]
 vmm list [-a]
 vmm ssh <name> [-u user]
+vmm console <name> [--full] [-f] [-n LINES]
 vmm port-forward add|list|remove <name> <host>:<guest>
 vmm mount list|sync <name> [tag]
 vmm image list|pull|import|snapshot|delete
@@ -185,6 +186,8 @@ Requirements: root access, KVM (`/dev/kvm`), Firecracker in PATH.
 ```bash
 cat /var/lib/vmm/vms/<name>.json          # VM state
 cat /var/lib/vmm/logs/<name>.log          # Firecracker logs
+sudo vmm console <name> --full            # Serial console output (kernel boot, panics)
+sudo vmm console <name>                   # Tail + follow console output live
 ip link show vmm-br0                       # Bridge
 sudo iptables -t nat -L -n -v             # NAT rules
 ps aux | grep firecracker                  # Processes

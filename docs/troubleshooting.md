@@ -5,6 +5,8 @@
 ```bash
 cat /var/lib/vmm/vms/<name>.json          # VM state
 cat /var/lib/vmm/logs/<name>.log          # Firecracker logs
+sudo vmm console <name> --full            # Serial console output (kernel boot, panics)
+sudo vmm console <name>                   # Tail + follow console output live
 ip link show vmm-br0                       # Bridge
 sudo iptables -t nat -L -n -v             # NAT rules
 ps aux | grep firecracker                  # Processes
@@ -65,7 +67,12 @@ After updating the config, restart your VM for the NAT rules to be recreated wit
 
 ## VM Won't Start
 
-Check the VM log:
+Check the serial console log for kernel boot errors:
+```bash
+sudo vmm console <name> --full
+```
+
+Or check the Firecracker log:
 ```bash
 cat /var/lib/vmm/logs/<vmname>.log
 ```
