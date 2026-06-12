@@ -170,7 +170,7 @@ Requirements: root access, KVM (`/dev/kvm`), Firecracker in PATH.
 - `v*` — binary releases (GoReleaser)
 - `kernel-*` — default kernel (6.1 series)
 - `k8s-kernel-*` — Kubernetes kernel (6.6 series)
-- `security-kernel-*` — security testing kernel (6.12 LTS, broad module coverage)
+- `security-kernel-*` — security testing kernels (5.10, 5.15, 6.1, 6.6, 6.12, 6.18 LTS series, broad module coverage)
 - `rootfs-*` — default rootfs (format: `rootfs-24.04-YYYYMMDD`)
 - `k8s-rootfs-*` — Kubernetes rootfs (format: `k8s-rootfs-<k8s-version>`)
 

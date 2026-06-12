@@ -2,6 +2,23 @@
 
 VMM includes a **security testing kernel** designed for vulnerability research and PoC exploit testing. This kernel is built from the 6.12 LTS series with broad subsystem coverage, so most kernel exploits that work on Ubuntu will work in VMM VMs.
 
+## Security Kernel Versions
+
+Security kernels are built across all active LTS series, giving you access to older unpatched kernels for vulnerability research:
+
+| Series | Kernel | Use case |
+|--------|--------|----------|
+| 5.10 LTS | `security-kernel-5.10` | Oldest LTS, many unpatched CVEs |
+| 5.15 LTS | `security-kernel-5.15` | Ubuntu 22.04 era kernel |
+| 6.1 LTS | `security-kernel-6.1` | Widely deployed LTS |
+| 6.6 LTS | `security-kernel-6.6` | Intermediate LTS |
+| 6.12 LTS | `security-kernel-6.12` | Current default security kernel |
+| 6.18 LTS | `security-kernel-6.18` | Latest LTS |
+
+Releases are tagged as `security-kernel-<version>` (e.g. `security-kernel-6.1.175`). Each series is rebuilt weekly when a new patch version is available.
+
+Some config options (e.g. io_uring, MPTCP, Landlock) are not available in older kernel series and are silently skipped during build.
+
 ## The Security Kernel
 
 The security kernel (`--config-profile security` in the build script) enables many kernel subsystems beyond what the default and k8s kernels provide:
@@ -27,22 +44,35 @@ The security kernel is available as a pre-built download from GitHub releases (t
 **Option 1: Download from GitHub releases**
 
 ```bash
+# Latest (6.12 series)
 wget https://github.com/raesene/baremetalvmm/releases/download/security-kernel-<version>/security-vmlinux.bin
 sudo vmm kernel import security-vmlinux.bin --name security-kernel
+
+# Older series (e.g. 5.10 for testing older CVEs)
+wget https://github.com/raesene/baremetalvmm/releases/download/security-kernel-<5.10.x-version>/security-vmlinux.bin
+sudo vmm kernel import security-vmlinux.bin --name security-kernel-5.10
 ```
+
+Check [GitHub releases](https://github.com/raesene/baremetalvmm/releases) for all available `security-kernel-*` tags.
 
 **Option 2: Build locally**
 
 ```bash
+# Build any LTS series with the security profile
 sudo bash scripts/build-kernel.sh --version 6.12 --name security-kernel --config-profile security
+sudo bash scripts/build-kernel.sh --version 5.10 --name security-kernel-5.10 --config-profile security
 ```
 
 ## Using the Security Kernel
 
 ```bash
-# Standalone VM
+# Standalone VM with latest security kernel
 sudo vmm create vuln-test --cpus 2 --memory 2048 --kernel security-kernel --ssh-key ~/.ssh/id_ed25519.pub
 sudo vmm start vuln-test
+
+# Standalone VM with an older kernel for testing specific CVEs
+sudo vmm create vuln-test-old --cpus 2 --memory 2048 --kernel security-kernel-5.10 --ssh-key ~/.ssh/id_ed25519.pub
+sudo vmm start vuln-test-old
 
 # Kubernetes cluster (for container escape PoCs)
 sudo vmm cluster create vuln-cluster --workers 1 --cpus 2 --memory 4096 \
@@ -85,7 +115,7 @@ sudo vmm ssh vuln-test -- "python3 -c \"import socket; s = socket.socket(socket.
 
 The **default kernel** (6.1 LTS) and **k8s kernel** (6.6 LTS) include only the subsystems needed for running VMs and Kubernetes. They have a smaller attack surface and are what you'd use for normal development work.
 
-The **security kernel** (6.12 LTS) deliberately enables a broad set of subsystems to match what's available on a stock Ubuntu 24.04 installation, making it suitable for reproducing PoC exploits that target those subsystems.
+The **security kernels** (5.10 through 6.18 LTS) deliberately enable a broad set of subsystems to match what's available on stock Linux installations, making them suitable for reproducing PoC exploits. Having multiple LTS series available lets you test against kernels that lack specific patches — useful when a CVE fix was backported to some series but not others.
 
 ## Cleanup
 

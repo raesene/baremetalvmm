@@ -113,13 +113,17 @@ jobs:
 
   build-security:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel_series: ['5.10', '5.15', '6.1', '6.6', '6.12', '6.18']
     env:
-      KERNEL_SERIES: '6.12'
+      KERNEL_SERIES: ${{ matrix.kernel_series }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Query kernel.org for latest 6.12 patch version
+      - name: Query kernel.org for latest patch version
         id: kernel_version
         run: |
           LATEST=$(curl -fsSL https://www.kernel.org/releases.json | \
@@ -178,7 +182,7 @@ jobs:
           TITLE="Security Testing Kernel ${{ steps.kernel_version.outputs.version }} (Linux ${KERNEL_SERIES} LTS, broad module coverage)"
           NOTES="Firecracker-compatible Linux kernel ${{ steps.kernel_version.outputs.version }} for security testing and vulnerability research.
 
-          **Use this kernel for PoC exploit testing** where you need Ubuntu 24.04-like module availability. NOT for production use.
+          **Use this kernel for PoC exploit testing** where you need broad module availability. NOT for production use.
 
           Built from the ${KERNEL_SERIES} LTS series with broad subsystem coverage for vulnerability research:
           - All features from the default kernel (Docker, cgroups, namespaces, iptables)
@@ -198,19 +202,22 @@ jobs:
           - ftrace, kprobes, uprobes (debugging/tracing)
           - USB/IP, cfg80211
 
+          Note: some config options may not be available in older kernel series and will be
+          silently skipped. The build script applies best-effort configuration for each series.
+
           **Pair with**: \`rootfs-24.04-*\` (Default Ubuntu Rootfs) or \`k8s-rootfs-*\`
 
           Quick start:
           \`\`\`
           # Download and import
           wget <release-url>/security-vmlinux.bin
-          sudo vmm kernel import security-vmlinux.bin --name security-kernel
+          sudo vmm kernel import security-vmlinux.bin --name security-kernel-${KERNEL_SERIES}
 
           # Use for standalone VM
-          sudo vmm create testvm --kernel security-kernel --ssh-key ~/.ssh/id_ed25519.pub
+          sudo vmm create testvm --kernel security-kernel-${KERNEL_SERIES} --ssh-key ~/.ssh/id_ed25519.pub
 
           # Use for Kubernetes cluster
-          sudo vmm cluster create testcluster --kernel security-kernel --ssh-key ~/.ssh/id_ed25519.pub
+          sudo vmm cluster create testcluster --kernel security-kernel-${KERNEL_SERIES} --ssh-key ~/.ssh/id_ed25519.pub
           \`\`\`
 
           Built by GitHub Actions from \`scripts/build-kernel.sh --config-profile security\`."
