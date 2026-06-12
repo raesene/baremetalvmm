@@ -32,7 +32,7 @@ The install script will:
 - Download the pre-built `vmm` and `vmm-web` binaries from GitHub releases (amd64/arm64)
 - Fall back to building from source if download fails
 - Install the binaries to `/usr/local/bin`
-- Download Firecracker v1.11.0
+- Download Firecracker v1.16.0
 - Download pre-built kernels and an Ubuntu 24.04 rootfs from GitHub releases
 - Create data directories in `/var/lib/vmm`
 

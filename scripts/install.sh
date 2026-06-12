@@ -199,10 +199,14 @@ elif [ -f "$(dirname "$0")/build-rootfs.sh" ]; then
     echo "Installed build-rootfs.sh to $SCRIPT_DIR"
 fi
 
-# Download Firecracker if not present
-FC_VERSION="v1.11.0"
+# Download Firecracker if not present or outdated
+FC_VERSION="v1.16.0"
 FC_BIN="/usr/local/bin/firecracker"
-if [ ! -f "$FC_BIN" ]; then
+CURRENT_FC_VERSION=""
+if [ -f "$FC_BIN" ]; then
+    CURRENT_FC_VERSION=$("$FC_BIN" --version 2>/dev/null | head -1 | awk '{print $2}')
+fi
+if [ ! -f "$FC_BIN" ] || [ "$CURRENT_FC_VERSION" != "$FC_VERSION" ]; then
     echo "Downloading Firecracker $FC_VERSION..."
     ARCH=$(uname -m)
     FC_URL="https://github.com/firecracker-microvm/firecracker/releases/download/${FC_VERSION}/firecracker-${FC_VERSION}-${ARCH}.tgz"

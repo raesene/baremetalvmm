@@ -82,7 +82,7 @@ Other software that provided inspiration:
 Tested on Ubuntu 24.04 with:
 - KVM support enabled
 - Go 1.25+
-- Firecracker v1.11.0
+- Firecracker v1.16.0
 
 All core commands verified working:
 ```bash
