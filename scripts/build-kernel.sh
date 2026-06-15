@@ -7,7 +7,7 @@
 #
 # Usage: build-kernel.sh --version <version> --name <name> [--output <dir>]
 #
-# Supported versions: 5.10, 6.1, 6.6
+# Supported versions: 5.10, 5.15, 6.1, 6.6, 6.12, 6.18
 #
 
 set -e
@@ -34,7 +34,7 @@ Build a Firecracker-compatible Linux kernel from source.
 
 Options:
   --version VERSION          Kernel version to build (required)
-                             Supported: 5.10, 6.1, 6.6, 6.12
+                             Supported: 5.10, 5.15, 6.1, 6.6, 6.12, 6.18
   --name NAME                Name for the output kernel file (required)
   --config-profile PROFILE   Configuration profile (default: default)
                              Profiles: default, security, security-kasan
@@ -116,10 +116,10 @@ get_kernel_url() {
 
     # Validate series
     case "$series" in
-        5.10|6.1|6.6|6.12) ;;
+        5.10|5.15|6.1|6.6|6.12|6.18) ;;
         *)
             log_error "Unsupported kernel series: $series"
-            log_info "Supported series: 5.10, 6.1, 6.6, 6.12"
+            log_info "Supported series: 5.10, 5.15, 6.1, 6.6, 6.12, 6.18"
             exit 1
             ;;
     esac
@@ -137,9 +137,11 @@ get_kernel_url() {
         # Fallback to known good versions
         case "$series" in
             5.10) latest="5.10.209" ;;
+            5.15) latest="5.15.174" ;;
             6.1)  latest="6.1.119" ;;
             6.6)  latest="6.6.61" ;;
             6.12) latest="6.12.87" ;;
+            6.18) latest="6.18.1" ;;
         esac
     fi
 
