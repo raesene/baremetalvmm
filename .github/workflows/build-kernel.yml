@@ -27,7 +27,7 @@ jobs:
       KERNEL_SERIES: ${{ github.event.inputs.kernel_series || '6.1' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Query kernel.org for latest patch version
         id: kernel_version
@@ -121,7 +121,7 @@ jobs:
       KERNEL_SERIES: ${{ matrix.kernel_series }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Query kernel.org for latest patch version
         id: kernel_version
@@ -234,7 +234,7 @@ jobs:
       KERNEL_SERIES: '6.12'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Query kernel.org for latest 6.12 patch version
         id: kernel_version
@@ -368,7 +368,7 @@ jobs:
       KERNEL_SERIES: '6.6'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Query kernel.org for latest 6.6 patch version
         id: kernel_version
