@@ -228,6 +228,112 @@ jobs:
             security-vmlinux.bin \
             security-vmlinux.bin.sha256
 
+  build-security-kasan:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel_series: ['5.10', '5.15', '6.1', '6.6', '6.12', '6.18']
+    env:
+      KERNEL_SERIES: ${{ matrix.kernel_series }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Query kernel.org for latest patch version
+        id: kernel_version
+        run: |
+          LATEST=$(curl -fsSL https://www.kernel.org/releases.json | \
+            jq -r --arg series "$KERNEL_SERIES" \
+            '[.releases[] | select(.version | startswith($series + ".")) | .version] | sort_by(split(".") | map(tonumber)) | last')
+
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "Could not determine latest kernel version for series $KERNEL_SERIES"
+            exit 1
+          fi
+
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Found latest kernel version: $LATEST"
+
+      - name: Check if release already exists
+        id: check_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="kasan-kernel-${{ steps.kernel_version.outputs.version }}"
+          if gh release view "$TAG" &>/dev/null; then
+            echo "Release $TAG already exists, skipping build"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release $TAG does not exist, proceeding with build"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install build dependencies
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential flex bison bc libelf-dev libssl-dev wget curl jq
+
+      - name: Build KASAN security testing kernel
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          chmod +x scripts/build-kernel.sh
+          sudo bash scripts/build-kernel.sh \
+            --version "$KERNEL_SERIES" \
+            --name kasan-vmlinux.bin \
+            --config-profile security-kasan \
+            --output "${{ github.workspace }}"
+
+      - name: Generate checksum
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          sha256sum kasan-vmlinux.bin > kasan-vmlinux.bin.sha256
+
+      - name: Create GitHub release
+        if: steps.check_release.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="kasan-kernel-${{ steps.kernel_version.outputs.version }}"
+          TITLE="KASAN Security Kernel ${{ steps.kernel_version.outputs.version }} (Linux ${KERNEL_SERIES} LTS, memory sanitizer)"
+          NOTES="Firecracker-compatible Linux kernel ${{ steps.kernel_version.outputs.version }} with KASAN (Kernel Address Sanitizer) enabled for vulnerability research.
+
+          **Use this kernel to detect memory corruption bugs** — use-after-free, out-of-bounds access, double-free, etc. KASAN instruments all memory accesses and reports violations to the serial console (captured by \`vmm console\`).
+
+          Built from the ${KERNEL_SERIES} LTS series with all security testing subsystems plus KASAN:
+          - All features from the security kernel (IPsec, io_uring, SCTP, userfaultfd, etc.)
+          - CONFIG_KASAN=y (generic software-based, works on x86_64)
+          - CONFIG_KASAN_STACK=y (stack out-of-bounds detection)
+          - CONFIG_KASAN_VMALLOC=y (vmalloc area checking)
+          - CONFIG_KASAN_OUTLINE=y (smaller code size vs inline)
+          - CONFIG_DEBUG_INFO=y, CONFIG_STACKTRACE=y (detailed reports)
+
+          **Important**: KASAN roughly doubles kernel memory usage. Use \`--memory 1024\` or higher when creating VMs.
+
+          **Pair with**: \`rootfs-24.04-*\` (Default Ubuntu Rootfs) or \`security-rootfs-*\`
+
+          Quick start:
+          \`\`\`
+          # Download and import
+          wget <release-url>/kasan-vmlinux.bin
+          sudo vmm kernel import kasan-vmlinux.bin --name kasan-kernel-${KERNEL_SERIES}
+
+          # Create VM with extra memory for KASAN overhead
+          sudo vmm create testvm --kernel kasan-kernel-${KERNEL_SERIES} --memory 1024
+
+          # Monitor for KASAN reports via serial console
+          sudo vmm console testvm --full
+          \`\`\`
+
+          Built by GitHub Actions from \`scripts/build-kernel.sh --config-profile security-kasan\`."
+
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            kasan-vmlinux.bin \
+            kasan-vmlinux.bin.sha256
+
   build-security-cifs-vuln:
     runs-on: ubuntu-latest
     env:

@@ -37,15 +37,18 @@ Options:
                              Supported: 5.10, 6.1, 6.6, 6.12
   --name NAME                Name for the output kernel file (required)
   --config-profile PROFILE   Configuration profile (default: default)
-                             Profiles: default, security
+                             Profiles: default, security, security-kasan
   --output DIR               Output directory (default: /var/lib/vmm/images/kernels)
   --no-cleanup               Keep build directory after completion
   --help                     Show this help message
 
 Profiles:
-  default    Minimal Firecracker config with Docker/K8s networking support
-  security   Broad module coverage matching Ubuntu 24.04 for vulnerability
-             research and security testing (IPsec, SCTP, io_uring, etc.)
+  default         Minimal Firecracker config with Docker/K8s networking support
+  security        Broad module coverage matching Ubuntu 24.04 for vulnerability
+                  research and security testing (IPsec, SCTP, io_uring, etc.)
+  security-kasan  Security profile + KASAN (Kernel Address Sanitizer) for
+                  detecting memory corruption bugs (use-after-free, out-of-bounds,
+                  etc.). Requires ~2x memory. Use --memory 1024+ for VMs.
 
 Examples:
   $0 --version 6.1 --name kernel-6.1
@@ -543,6 +546,46 @@ create_security_kernel_config() {
     done
 }
 
+create_security_kasan_kernel_config() {
+    local kernel_dir="$1"
+
+    log_info "Applying security-kasan profile (security modules + KASAN memory sanitizer)..."
+
+    cd "$kernel_dir"
+
+    # Start with the full security config
+    create_security_kernel_config "$kernel_dir"
+
+    # --- KASAN (Kernel Address Sanitizer) ---
+    ./scripts/config --enable CONFIG_KASAN
+    ./scripts/config --enable CONFIG_KASAN_GENERIC
+    ./scripts/config --enable CONFIG_KASAN_OUTLINE
+    ./scripts/config --enable CONFIG_KASAN_STACK
+    ./scripts/config --enable CONFIG_KASAN_VMALLOC
+
+    # --- Supporting debug options for better KASAN reports ---
+    ./scripts/config --enable CONFIG_STACKTRACE
+    ./scripts/config --enable CONFIG_DEBUG_INFO
+    ./scripts/config --enable CONFIG_FRAME_POINTER
+
+    # Resolve dependencies
+    make olddefconfig
+
+    log_info "Security-KASAN profile applied — verifying KASAN options..."
+
+    local kasan_opts=(
+        CONFIG_KASAN CONFIG_KASAN_GENERIC CONFIG_KASAN_STACK
+        CONFIG_KASAN_VMALLOC CONFIG_STACKTRACE CONFIG_DEBUG_INFO
+    )
+    for opt in "${kasan_opts[@]}"; do
+        if grep -q "^${opt}=y" .config; then
+            log_info "  $opt: enabled"
+        else
+            log_warn "  $opt: NOT enabled (may have unmet dependencies)"
+        fi
+    done
+}
+
 build_kernel() {
     local kernel_dir="$1"
     local nproc="$(nproc)"
@@ -626,10 +669,10 @@ if [ -z "$NAME" ]; then
 fi
 
 case "$CONFIG_PROFILE" in
-    default|security) ;;
+    default|security|security-kasan) ;;
     *)
         log_error "Unknown config profile: $CONFIG_PROFILE"
-        log_info "Supported profiles: default, security"
+        log_info "Supported profiles: default, security, security-kasan"
         exit 1
         ;;
 esac
@@ -657,6 +700,9 @@ KERNEL_DIR="$(download_kernel "$KERNEL_URL")"
 case "$CONFIG_PROFILE" in
     security)
         create_security_kernel_config "$KERNEL_DIR"
+        ;;
+    security-kasan)
+        create_security_kasan_kernel_config "$KERNEL_DIR"
         ;;
     *)
         create_kernel_config "$KERNEL_DIR"

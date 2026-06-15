@@ -111,11 +111,63 @@ sudo vmm ssh vuln-test -- "zcat /proc/config.gz | grep -E 'INET_ESP|AF_RXRPC|IO_
 sudo vmm ssh vuln-test -- "python3 -c \"import socket; s = socket.socket(socket.AF_ALG, socket.SOCK_SEQPACKET, 0); s.bind(('aead', 'gcm(aes)')); print('AF_ALG AEAD: available'); s.close()\""
 ```
 
+## KASAN Security Kernel
+
+The **KASAN kernel** (`--config-profile security-kasan`) adds [Kernel Address Sanitizer](https://www.kernel.org/doc/html/latest/dev-tools/kasan.html) on top of the full security kernel. KASAN instruments all memory accesses at compile time to detect:
+
+- **Use-after-free** — accessing memory after `kfree()`
+- **Out-of-bounds** — heap/stack/global buffer overflows
+- **Double-free** — freeing the same allocation twice
+- **Invalid-free** — freeing a non-heap pointer
+
+When a violation occurs, KASAN prints a detailed report to the serial console including the access type, stack traces for allocation and free, and shadow memory state. Use `vmm console` to capture these reports.
+
+### Getting the KASAN Kernel
+
+```bash
+# Download from GitHub releases
+wget https://github.com/raesene/baremetalvmm/releases/download/kasan-kernel-<version>/kasan-vmlinux.bin
+sudo vmm kernel import kasan-vmlinux.bin --name kasan-kernel
+
+# Or build locally
+sudo bash scripts/build-kernel.sh --version 6.12 --name kasan-kernel --config-profile security-kasan
+```
+
+KASAN kernels are available across all LTS series (5.10–6.18), tagged as `kasan-kernel-<version>`.
+
+### Using the KASAN Kernel
+
+KASAN roughly doubles kernel memory usage due to shadow memory. Use `--memory 1024` or higher:
+
+```bash
+# Create VM with extra memory for KASAN overhead
+sudo vmm create kasan-test --cpus 2 --memory 2048 --kernel kasan-kernel --ssh-key ~/.ssh/id_ed25519.pub
+sudo vmm start kasan-test
+
+# Monitor for KASAN reports in real time
+sudo vmm console kasan-test
+
+# Run your exploit, then check for KASAN output
+sudo vmm console kasan-test --full | grep -A 30 "BUG: KASAN"
+```
+
+### When to Use KASAN vs Standard Security Kernel
+
+| Use case | Kernel |
+|----------|--------|
+| Reproducing a known PoC exploit | Security kernel (faster, lower memory) |
+| Hunting for new memory corruption bugs | KASAN kernel |
+| Verifying a bug is real (not just a crash) | KASAN kernel (precise root cause) |
+| Fuzzing with syzkaller or similar | KASAN kernel (catches silent corruption) |
+| Performance-sensitive testing | Security kernel (no KASAN overhead) |
+
 ## Default vs Security Kernel
 
 The **default kernel** (6.1 LTS) and **k8s kernel** (6.6 LTS) include only the subsystems needed for running VMs and Kubernetes. They have a smaller attack surface and are what you'd use for normal development work.
 
 The **security kernels** (5.10 through 6.18 LTS) deliberately enable a broad set of subsystems to match what's available on stock Linux installations, making them suitable for reproducing PoC exploits. Having multiple LTS series available lets you test against kernels that lack specific patches — useful when a CVE fix was backported to some series but not others.
+
+The **KASAN security kernels** layer memory sanitization on top of the security kernel. They catch memory corruption that would otherwise be silent or produce misleading crashes. The trade-off is ~2x memory usage and 2-3x slower execution.
 
 ## Cleanup
 
