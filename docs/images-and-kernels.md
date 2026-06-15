@@ -23,6 +23,7 @@ Root filesystems:
 | Standalone VMs | `vmlinux.bin` (default) | `rootfs` (default) | `sudo vmm create myvm` |
 | Kubernetes clusters | `k8s-kernel` | `k8s-<version>` (auto-detected) | `sudo vmm cluster create mycluster` |
 | Security/vuln testing | `security-kernel` | `rootfs` (default) or `k8s-<version>` | `sudo vmm create testvm --kernel security-kernel` |
+| Memory bug detection | `kasan-kernel` | `rootfs` (default) | `sudo vmm create testvm --kernel kasan-kernel --memory 1024` |
 
 ### Naming Convention
 
@@ -33,6 +34,7 @@ Kernels and rootfs images follow a prefix-based naming convention so that `vmm i
 | *(default)* | General-purpose (Linux 6.1 LTS, all built-in) | Ubuntu 24.04 base (systemd, SSH, networking) |
 | `k8s-` | Kubernetes/Cilium (Linux 6.6 LTS, BPF JIT, VXLAN, modules) | Kubernetes (kubeadm/containerd pre-installed) |
 | `security-` | Security testing (Linux 6.12 LTS, broad module coverage) | *(not yet used)* |
+| `kasan-` | KASAN security kernel (memory sanitizer + broad modules) | *(not yet used)* |
 | `debug-` | Debug kernel (extra logging and debug options) | *(not yet used)* |
 | `minimal-` | Minimal kernel (reduced feature set) | Minimal image (reduced package set) |
 
@@ -140,11 +142,17 @@ sudo vmm kernel build --version 6.1 --name kernel-6.1
 # Supported versions: 5.10, 6.1, 6.6, 6.12
 ```
 
-For the security testing profile with broad subsystem coverage, use the build script directly:
+For the security testing profile with broad subsystem coverage, or the KASAN profile for memory corruption detection, use the build script directly:
 
 ```bash
+# Security kernel — broad module coverage for exploit testing
 sudo bash scripts/build-kernel.sh --version 6.12 --name security-kernel --config-profile security
+
+# KASAN kernel — security modules + Kernel Address Sanitizer
+sudo bash scripts/build-kernel.sh --version 6.12 --name kasan-kernel --config-profile security-kasan
 ```
+
+The KASAN kernel includes all security kernel subsystems plus `CONFIG_KASAN` (generic mode), `CONFIG_KASAN_STACK`, and `CONFIG_KASAN_VMALLOC`. It detects use-after-free, out-of-bounds, and double-free bugs, reporting them to the serial console (captured by `vmm console`). KASAN roughly doubles kernel memory usage — use `--memory 1024` or higher when creating VMs. See [security-testing.md](security-testing.md#kasan-security-kernel) for details.
 
 #### Build Requirements
 
