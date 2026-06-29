@@ -228,9 +228,10 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		cl.Image = imageName
-		// Default to k8s-kernel if available
-		if kernelName == "" && imgMgr.KernelExists("k8s-kernel") {
-			cl.Kernel = "k8s-kernel"
+		if kernelName == "" {
+			if imgMgr.KernelExists("k8s-kernel") {
+				cl.Kernel = "k8s-kernel"
+			}
 		}
 	}
 
@@ -614,8 +615,10 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		}
 	} else {
 		cl.Image = req.Image
-		if req.Kernel == "" && imgMgr.KernelExists("k8s-kernel") {
-			cl.Kernel = "k8s-kernel"
+		if req.Kernel == "" {
+			if imgMgr.KernelExists("k8s-kernel") {
+				cl.Kernel = "k8s-kernel"
+			}
 		}
 		if req.Image == "" {
 			if found := imgMgr.FindK8sRootfs(req.K8sVersion); found != "" {

@@ -132,7 +132,7 @@ This stops and deletes all VMs in the cluster and removes the kubeconfig context
 | Memory | 4096 MB | Minimum 2048 MB required |
 | Disk | 10240 MB (10 GB) | Needs space for container images |
 | Kubernetes | 1.36.0 | Any version available from pkgs.k8s.io |
-| CNI | Cilium | Cilium (with kube-proxy replacement) or Calico (Tigera operator, VXLAN) |
+| CNI | Cilium | Cilium (with kube-proxy replacement) or Calico (Tigera operator, VXLAN/nftables) |
 | Pod CIDR | 10.244.0.0/16 | Doesn't conflict with VM bridge network |
 | Service CIDR | 10.96.0.0/12 | Standard Kubernetes default |
 

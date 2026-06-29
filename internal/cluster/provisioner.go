@@ -189,7 +189,7 @@ func installKubeadm(client *SSHClient, k8sVersion string) error {
 }
 
 func setHostname(client *SSHClient, hostname, ip string) error {
-	cmd := fmt.Sprintf(`hostnamectl set-hostname %s 2>/dev/null; echo "%s %s" >> /etc/hosts`, hostname, ip, hostname)
+	cmd := fmt.Sprintf(`hostnamectl set-hostname %s 2>/dev/null; grep -q "^127.0.0.1" /etc/hosts || echo "127.0.0.1 localhost" >> /etc/hosts; echo "%s %s" >> /etc/hosts`, hostname, ip, hostname)
 	_, err := client.Run(cmd)
 	return err
 }
@@ -258,9 +258,10 @@ func installCalico(client *SSHClient, podCIDR string) error {
 		"export KUBECONFIG=/etc/kubernetes/admin.conf && " +
 			`kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.29.3/manifests/tigera-operator.yaml`,
 		`export KUBECONFIG=/etc/kubernetes/admin.conf && ` +
-			`for i in $(seq 1 30); do ` +
-			`kubectl get crd installations.operator.tigera.io >/dev/null 2>&1 && break; ` +
-			`sleep 2; done`,
+			`for i in $(seq 1 60); do ` +
+			`kubectl get crd installations.operator.tigera.io apiservers.operator.tigera.io >/dev/null 2>&1 && break; ` +
+			`sleep 2; done && ` +
+			`kubectl wait --for condition=established crd/installations.operator.tigera.io crd/apiservers.operator.tigera.io --timeout=60s`,
 		fmt.Sprintf(`export KUBECONFIG=/etc/kubernetes/admin.conf && cat <<'EOF' | kubectl create -f -
 apiVersion: operator.tigera.io/v1
 kind: Installation
@@ -268,9 +269,11 @@ metadata:
   name: default
 spec:
   calicoNetwork:
+    bgp: Disabled
+    linuxDataplane: Nftables
     ipPools:
     - cidr: %s
-      encapsulation: VXLANCrossSubnet
+      encapsulation: VXLAN
       natOutgoing: Enabled
       nodeSelector: all()
 ---

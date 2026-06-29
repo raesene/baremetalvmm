@@ -210,10 +210,12 @@ func clusterCreateCmd() *cobra.Command {
 				// MicroShift is installed on provision onto the base Ubuntu rootfs;
 				// leaving the image empty uses the default rootfs.
 			} else {
-				if !cmd.Flags().Changed("kernel") && imgMgr.KernelExists("k8s-kernel") {
-					kernelName = "k8s-kernel"
-					cl.Kernel = kernelName
-					fmt.Println("Using k8s-kernel (default for clusters)")
+				if !cmd.Flags().Changed("kernel") {
+					if imgMgr.KernelExists("k8s-kernel") {
+						kernelName = "k8s-kernel"
+						cl.Kernel = kernelName
+						fmt.Println("Using k8s-kernel (default for clusters)")
+					}
 				}
 
 				// Auto-detect k8s rootfs if no image specified
