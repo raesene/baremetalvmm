@@ -44,7 +44,7 @@ After evaluating the options, **Firecracker** was chosen as the VMM engine becau
 | Custom Kernels | Done | Import, build from source (5.10, 6.1, 6.6) |
 | Host Directory Mounts | Done | ext4 block device mounts via fstab |
 | Configurable Defaults | Done | `vm_defaults` in config.json |
-| Kubernetes Clusters | Done | kubeadm + Cilium CNI, single/multi-node |
+| Kubernetes Clusters | Done | kubeadm + Cilium/Calico CNI, single/multi-node |
 | Shell Completion | Done | bash, zsh, fish with dynamic VM/cluster/kernel/image names |
 | SSH Agent Support | Done | Passphrase-protected keys via ssh-agent |
 | Web UI | Done | Chi router, HTMX, Tailwind; dashboard, VM/cluster CRUD, REST API, SSE |

@@ -126,6 +126,7 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 	sshKeyPath := strings.TrimSpace(r.FormValue("ssh_key_path"))
 	kernelName := r.FormValue("kernel")
 	imageName := r.FormValue("image")
+	cni := cluster.NormalizeCNI(r.FormValue("cni"))
 	adminWorkstation := r.FormValue("admin_workstation") == "on"
 
 	if err := validate.CPUs(cpus); err != nil {
@@ -207,7 +208,7 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
-	cl := cluster.NewCluster(name, workers, k8sVersion, distro)
+	cl := cluster.NewCluster(name, workers, k8sVersion, distro, cni)
 	cl.CPUs = cpus
 	cl.MemoryMB = memory
 	cl.DiskSizeMB = disk
@@ -487,6 +488,7 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		Kernel           string `json:"kernel"`
 		Image            string `json:"image"`
 		AdminWorkstation bool   `json:"admin_workstation"`
+		CNI              string `json:"cni"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "Invalid request body", http.StatusBadRequest)
@@ -590,7 +592,8 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	cl := cluster.NewCluster(req.Name, req.Workers, req.K8sVersion, distro)
+	cniVal := cluster.NormalizeCNI(req.CNI)
+	cl := cluster.NewCluster(req.Name, req.Workers, req.K8sVersion, distro, cniVal)
 	cl.CPUs = req.CPUs
 	cl.MemoryMB = req.MemoryMB
 	cl.DiskSizeMB = req.DiskSizeMB

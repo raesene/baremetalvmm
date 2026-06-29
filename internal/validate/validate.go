@@ -78,6 +78,15 @@ func K8sVersion(version string) error {
 	return nil
 }
 
+func CNI(cni string) error {
+	switch cni {
+	case "cilium", "calico":
+		return nil
+	default:
+		return fmt.Errorf("invalid CNI %q: must be 'cilium' or 'calico'", cni)
+	}
+}
+
 var openShiftVersionRe = regexp.MustCompile(`^[0-9]+\.[0-9]{1,2}$`)
 
 // OpenShiftVersion validates an OpenShift/MicroShift major.minor version (e.g. "4.20").

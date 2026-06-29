@@ -132,9 +132,7 @@ echo "net.bridge.bridge-nf-call-iptables = 1" >> /etc/sysctl.d/k8s.conf
 echo "net.bridge.bridge-nf-call-ip6tables = 1" >> /etc/sysctl.d/k8s.conf
 fi`,
 		"sysctl -w net.ipv4.ip_forward=1",
-		// Shared mount propagation (required for Kubernetes and Cilium)
 		"mount --make-rshared /",
-		// Mount bpf filesystem (required by Cilium)
 		"mount -t bpf bpf /sys/fs/bpf || true",
 		// Configure containerd with SystemdCgroup
 		"mkdir -p /etc/containerd",
@@ -201,10 +199,14 @@ func initControlPlane(client *SSHClient, cl *Cluster) error {
 		return fmt.Errorf("failed to set hostname: %w", err)
 	}
 
-	cmd := fmt.Sprintf(
-		"kubeadm init --kubernetes-version=%s --pod-network-cidr=%s --service-cidr=%s --apiserver-advertise-address=%s --node-name=%s --skip-phases=addon/kube-proxy --ignore-preflight-errors=SystemVerification ",
+	kubeadmArgs := fmt.Sprintf(
+		"kubeadm init --kubernetes-version=%s --pod-network-cidr=%s --service-cidr=%s --apiserver-advertise-address=%s --node-name=%s --ignore-preflight-errors=SystemVerification ",
 		cl.K8sVersion, cl.PodSubnet, cl.ServiceSubnet, cl.ControlPlaneIP, cl.ControlPlaneVM,
 	)
+	if cl.CNI == CNICilium || cl.CNI == "" {
+		kubeadmArgs += "--skip-phases=addon/kube-proxy "
+	}
+	cmd := kubeadmArgs
 	output, err := client.Run(cmd)
 	if err != nil {
 		return fmt.Errorf("kubeadm init failed: %w\n%s", err, output)
@@ -246,6 +248,42 @@ func installCilium(client *SSHClient, controlPlaneIP string) error {
 	for _, cmd := range commands {
 		if _, err := client.Run(cmd); err != nil {
 			return fmt.Errorf("cilium install failed: %w", err)
+		}
+	}
+	return nil
+}
+
+func installCalico(client *SSHClient, podCIDR string) error {
+	commands := []string{
+		"export KUBECONFIG=/etc/kubernetes/admin.conf && " +
+			`kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.29.3/manifests/tigera-operator.yaml`,
+		`export KUBECONFIG=/etc/kubernetes/admin.conf && ` +
+			`for i in $(seq 1 30); do ` +
+			`kubectl get crd installations.operator.tigera.io >/dev/null 2>&1 && break; ` +
+			`sleep 2; done`,
+		fmt.Sprintf(`export KUBECONFIG=/etc/kubernetes/admin.conf && cat <<'EOF' | kubectl create -f -
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  calicoNetwork:
+    ipPools:
+    - cidr: %s
+      encapsulation: VXLANCrossSubnet
+      natOutgoing: Enabled
+      nodeSelector: all()
+---
+apiVersion: operator.tigera.io/v1
+kind: APIServer
+metadata:
+  name: default
+spec: {}
+EOF`, podCIDR),
+	}
+	for _, cmd := range commands {
+		if _, err := client.Run(cmd); err != nil {
+			return fmt.Errorf("calico install failed: %w", err)
 		}
 	}
 	return nil
@@ -387,12 +425,25 @@ func ProvisionCluster(cl *Cluster, sshKeyPath string, nodes []NodeInfo) error {
 	}
 	fmt.Println("Control plane initialized.")
 
-	// Install Cilium
-	fmt.Println("Installing Cilium CNI...")
-	if err := installCilium(cpClient, cl.ControlPlaneIP); err != nil {
-		return err
+	// Install CNI
+	cni := cl.CNI
+	if cni == "" {
+		cni = CNICilium
 	}
-	fmt.Println("Cilium installed.")
+	switch cni {
+	case CNICalico:
+		fmt.Println("Installing Calico CNI...")
+		if err := installCalico(cpClient, cl.PodSubnet); err != nil {
+			return err
+		}
+		fmt.Println("Calico installed.")
+	default:
+		fmt.Println("Installing Cilium CNI...")
+		if err := installCilium(cpClient, cl.ControlPlaneIP); err != nil {
+			return err
+		}
+		fmt.Println("Cilium installed.")
+	}
 
 	// Join workers
 	if len(workerNodes) > 0 {

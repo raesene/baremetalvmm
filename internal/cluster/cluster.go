@@ -20,11 +20,13 @@ const (
 
 // Distro identifies the Kubernetes distribution used for a cluster.
 const (
-	// DistroKubeadm is a vanilla Kubernetes cluster provisioned with kubeadm + Cilium.
-	DistroKubeadm = "kubeadm"
-	// DistroOpenShift is a single-node OpenShift-derived cluster provisioned with
-	// upstream MicroShift (github.com/microshift-io/microshift).
+	DistroKubeadm   = "kubeadm"
 	DistroOpenShift = "openshift"
+)
+
+const (
+	CNICilium = "cilium"
+	CNICalico = "calico"
 )
 
 // NormalizeDistro maps user-supplied cluster type values (including friendly
@@ -43,6 +45,7 @@ type Cluster struct {
 	State          State     `json:"state"`
 	StatusMessage  string    `json:"status_message,omitempty"`
 	Distro         string    `json:"distro,omitempty"`
+	CNI            string    `json:"cni,omitempty"`
 	K8sVersion     string    `json:"k8s_version"`
 	OpenShiftVer   string    `json:"openshift_version,omitempty"`
 	ControlPlaneVM string    `json:"control_plane_vm"`
@@ -62,14 +65,27 @@ type Cluster struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-func NewCluster(name string, workers int, k8sVersion, distro string) *Cluster {
+func NormalizeCNI(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case CNICalico:
+		return CNICalico
+	default:
+		return CNICilium
+	}
+}
+
+func NewCluster(name string, workers int, k8sVersion, distro, cni string) *Cluster {
 	if distro == "" {
 		distro = DistroKubeadm
+	}
+	if cni == "" {
+		cni = CNICilium
 	}
 	c := &Cluster{
 		Name:           name,
 		State:          StateCreating,
 		Distro:         distro,
+		CNI:            cni,
 		K8sVersion:     k8sVersion,
 		ControlPlaneVM: fmt.Sprintf("%s-control-plane", name),
 		PodSubnet:      "10.244.0.0/16",

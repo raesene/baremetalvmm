@@ -45,6 +45,7 @@ func clusterCreateCmd() *cobra.Command {
 	var adminWorkstation bool
 	var distro string
 	var openshiftVersion string
+	var cni string
 
 	cmd := &cobra.Command{
 		Use:   "create <name>",
@@ -66,6 +67,11 @@ func clusterCreateCmd() *cobra.Command {
 				return fmt.Errorf("invalid --type %q: must be 'kubeadm' or 'openshift'", distro)
 			}
 			isOpenShift := distro == cluster.DistroOpenShift
+
+			cni = cluster.NormalizeCNI(cni)
+			if err := validate.CNI(cni); err != nil {
+				return err
+			}
 
 			if err := cfg.EnsureDirectories(); err != nil {
 				return fmt.Errorf("failed to create directories: %w", err)
@@ -156,7 +162,7 @@ func clusterCreateCmd() *cobra.Command {
 			}
 
 			// Create cluster config
-			cl := cluster.NewCluster(name, workers, k8sVersion, distro)
+			cl := cluster.NewCluster(name, workers, k8sVersion, distro, cni)
 			cl.CPUs = cpus
 			cl.MemoryMB = memory
 			cl.DiskSizeMB = disk
@@ -204,7 +210,6 @@ func clusterCreateCmd() *cobra.Command {
 				// MicroShift is installed on provision onto the base Ubuntu rootfs;
 				// leaving the image empty uses the default rootfs.
 			} else {
-				// Default to k8s-kernel for clusters (requires 6.6+ for Cilium)
 				if !cmd.Flags().Changed("kernel") && imgMgr.KernelExists("k8s-kernel") {
 					kernelName = "k8s-kernel"
 					cl.Kernel = kernelName
@@ -359,6 +364,7 @@ func clusterCreateCmd() *cobra.Command {
 				fmt.Printf("  OpenShift (MicroShift): %s\n", cl.OpenShiftVer)
 			} else {
 				fmt.Printf("  Kubernetes: %s\n", cl.K8sVersion)
+				fmt.Printf("  CNI: %s\n", cl.CNI)
 			}
 			fmt.Printf("  Control plane: %s\n", cl.ControlPlaneIP)
 			fmt.Printf("  Nodes: %d\n", len(cl.ClusterVMs()))
@@ -384,6 +390,7 @@ func clusterCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&sshKeyPath, "ssh-key", "", "Path to SSH public key file")
 	cmd.Flags().StringVar(&imageName, "image", "", "Name of rootfs image to use")
 	cmd.Flags().StringVar(&kernelName, "kernel", "", "Name of kernel to use")
+	cmd.Flags().StringVar(&cni, "cni", "cilium", "CNI plugin: 'cilium' (default) or 'calico'")
 	cmd.Flags().BoolVar(&adminWorkstation, "admin-workstation", false, "Create an admin workstation VM with security tools and cluster kubeconfig")
 	cmd.RegisterFlagCompletionFunc("kernel", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeKernelNames(cmd, nil, toComplete)
@@ -582,7 +589,7 @@ func clusterListCmd() *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "NAME\tSTATE\tTYPE\tVERSION\tNODES\tCONTROL PLANE IP\tCONTEXT")
+			fmt.Fprintln(w, "NAME\tSTATE\tTYPE\tCNI\tVERSION\tNODES\tCONTROL PLANE IP\tCONTEXT")
 			for _, cl := range clusters {
 				// Update VM states
 				fcClient := firecracker.NewClient()
@@ -612,8 +619,12 @@ func clusterListCmd() *cobra.Command {
 				if distro == cluster.DistroOpenShift {
 					version = cl.OpenShiftVer
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\tvmm-%s\n",
-					cl.Name, state, distro, version, nodes, cl.ControlPlaneIP, cl.Name)
+				cniDisplay := cl.CNI
+				if cniDisplay == "" {
+					cniDisplay = cluster.CNICilium
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\t%s\tvmm-%s\n",
+					cl.Name, state, distro, cniDisplay, version, nodes, cl.ControlPlaneIP, cl.Name)
 			}
 			w.Flush()
 			return nil

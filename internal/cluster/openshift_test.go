@@ -33,7 +33,7 @@ func TestCrioCandidateList(t *testing.T) {
 }
 
 func TestNewClusterOpenShiftSingleNode(t *testing.T) {
-	c := NewCluster("ocp", 3, "", DistroOpenShift)
+	c := NewCluster("ocp", 3, "", DistroOpenShift, "")
 	if c.Distro != DistroOpenShift {
 		t.Errorf("Distro = %q, want %q", c.Distro, DistroOpenShift)
 	}
@@ -46,7 +46,7 @@ func TestNewClusterOpenShiftSingleNode(t *testing.T) {
 }
 
 func TestNewClusterDefaultsToKubeadm(t *testing.T) {
-	c := NewCluster("k", 2, "1.36.0", "")
+	c := NewCluster("k", 2, "1.36.0", "", "")
 	if c.Distro != DistroKubeadm {
 		t.Errorf("empty distro should default to kubeadm, got %q", c.Distro)
 	}

@@ -1,6 +1,6 @@
 # Kubernetes Clusters
 
-VMM can create Kubernetes clusters from multiple Firecracker VMs, similar to [kind](https://kind.sigs.k8s.io/) but with VM-level isolation for each node. Clusters are bootstrapped with kubeadm and use Cilium as the CNI plugin.
+VMM can create Kubernetes clusters from multiple Firecracker VMs, similar to [kind](https://kind.sigs.k8s.io/) but with VM-level isolation for each node. Clusters are bootstrapped with kubeadm and support Cilium (default) or Calico as the CNI plugin.
 
 ## Prerequisites
 
@@ -29,6 +29,9 @@ sudo vmm cluster create mycluster --ssh-key ~/.ssh/id_ed25519.pub --kernel k8s-k
 # Multi-node cluster with 2 workers (3 VMs total)
 sudo vmm cluster create mycluster --workers 2 --ssh-key ~/.ssh/id_ed25519.pub --kernel k8s-kernel
 
+# Cluster with Calico CNI instead of Cilium
+sudo vmm cluster create mycluster --cni calico --kernel k8s-kernel
+
 # With custom resources
 sudo vmm cluster create mycluster --workers 2 \
   --cpus 4 --memory 8192 --disk 20480 \
@@ -41,7 +44,7 @@ The create command:
 1. Creates Firecracker VMs (`{name}-control-plane`, `{name}-worker-1`, etc.)
 2. Installs containerd, kubeadm, kubelet, and kubectl via SSH
 3. Runs `kubeadm init` on the control plane
-4. Installs Cilium CNI (with kube-proxy replacement)
+4. Installs the selected CNI (Cilium with kube-proxy replacement, or Calico via Tigera operator)
 5. Joins worker nodes to the cluster
 6. Merges kubeconfig into `~/.kube/config` as context `vmm-{name}`
 
@@ -78,6 +81,7 @@ Flags:
   --disk int             Disk per node in MB (default 10240)
   --k8s-version string   Kubernetes version (default "1.36.0")
   --ssh-key string       Path to SSH public key (optional; managed key used if omitted)
+  --cni string           CNI plugin: 'cilium' (default) or 'calico'
   --kernel string        Kernel name (k8s-kernel recommended)
   --image string         Rootfs image name
   --admin-workstation    Create an admin workstation VM with security tools and cluster kubeconfig
@@ -128,7 +132,7 @@ This stops and deletes all VMs in the cluster and removes the kubeconfig context
 | Memory | 4096 MB | Minimum 2048 MB required |
 | Disk | 10240 MB (10 GB) | Needs space for container images |
 | Kubernetes | 1.36.0 | Any version available from pkgs.k8s.io |
-| CNI | Cilium | With kube-proxy replacement enabled |
+| CNI | Cilium | Cilium (with kube-proxy replacement) or Calico (Tigera operator, VXLAN) |
 | Pod CIDR | 10.244.0.0/16 | Doesn't conflict with VM bridge network |
 | Service CIDR | 10.96.0.0/12 | Standard Kubernetes default |
 
@@ -136,7 +140,7 @@ This stops and deletes all VMs in the cluster and removes the kubeconfig context
 
 - **containerd** (from Ubuntu repos) with SystemdCgroup enabled
 - **kubeadm**, **kubelet**, **kubectl** (from pkgs.k8s.io)
-- **Cilium CLI** (on control plane only)
+- **Cilium CLI** (on control plane, when using Cilium CNI) or **Calico** (via Tigera operator, when using Calico CNI)
 - Kernel modules and sysctl settings for networking and cgroups
-- BPF filesystem mount for Cilium
+- BPF filesystem mount
 - Shared mount propagation for Kubernetes volumes
