@@ -1311,19 +1311,31 @@ type AvailableRelease struct {
 // ListAvailableReleases queries GitHub for all downloadable kernel and rootfs releases
 func (m *Manager) ListAvailableReleases() ([]AvailableRelease, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Get(GitHubAPI)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query GitHub: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API returned %s", resp.Status)
-	}
 
 	var releases []ghRelease
-	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
-		return nil, fmt.Errorf("failed to parse GitHub response: %w", err)
+	for page := 1; page <= 5; page++ {
+		url := fmt.Sprintf("%s?per_page=100&page=%d", GitHubAPI, page)
+		resp, err := client.Get(url)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query GitHub: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("GitHub API returned %s", resp.Status)
+		}
+
+		var pageReleases []ghRelease
+		if err := json.NewDecoder(resp.Body).Decode(&pageReleases); err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("failed to parse GitHub response: %w", err)
+		}
+		resp.Body.Close()
+
+		releases = append(releases, pageReleases...)
+		if len(pageReleases) < 100 {
+			break
+		}
 	}
 
 	type releaseSpec struct {
@@ -1372,6 +1384,15 @@ func (m *Manager) ListAvailableReleases() ([]AvailableRelease, error) {
 				if localName == "" && spec.prefix == "k8s-rootfs-" {
 					version := strings.TrimPrefix(rel.TagName, "k8s-rootfs-")
 					localName = "k8s-" + version
+					// Only show latest patch per minor version (e.g., latest 1.36.x)
+					parts := strings.SplitN(version, ".", 3)
+					if len(parts) >= 2 {
+						minorKey := spec.prefix + parts[0] + "." + parts[1]
+						if seen[minorKey] {
+							continue
+						}
+						seen[minorKey] = true
+					}
 				}
 
 				downloaded := false

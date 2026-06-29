@@ -24,13 +24,46 @@ func kernelCmd() *cobra.Command {
 			paths := cfg.GetPaths()
 			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
+			remote, _ := cmd.Flags().GetBool("remote")
+			if remote {
+				fmt.Println("Querying GitHub releases...")
+				releases, err := imgMgr.ListAvailableReleases()
+				if err != nil {
+					return fmt.Errorf("failed to query remote releases: %w", err)
+				}
+
+				found := false
+				for _, r := range releases {
+					if r.Type != "kernel" {
+						continue
+					}
+					if !found {
+						fmt.Println("Available kernels on GitHub:")
+						found = true
+					}
+					status := "  "
+					if r.Downloaded {
+						status = "✓ "
+					}
+					fmt.Printf("  %s%-20s  %s  [%s]\n", status, r.LocalName, r.Description, r.Tag)
+				}
+				if !found {
+					fmt.Println("No kernel releases found on GitHub.")
+				} else {
+					fmt.Println("\n  ✓ = already downloaded")
+					fmt.Println("  Use 'vmm kernel pull <name>' to download a kernel")
+				}
+				return nil
+			}
+
 			kernels, err := imgMgr.ListKernelsWithInfo()
 			if err != nil {
 				return fmt.Errorf("failed to list kernels: %w", err)
 			}
 
 			if len(kernels) == 0 {
-				fmt.Println("No kernels found. Run 'vmm image pull' to download the default kernel.")
+				fmt.Println("No kernels found. Run 'vmm kernel pull' or 'vmm image pull' to download kernels.")
+				fmt.Println("Use 'vmm kernel list --remote' to see available kernels on GitHub.")
 				return nil
 			}
 
@@ -47,6 +80,7 @@ func kernelCmd() *cobra.Command {
 			return nil
 		},
 	}
+	listCmd.Flags().Bool("remote", false, "Show kernels available on GitHub")
 
 	var forceImport bool
 	importCmd := &cobra.Command{
@@ -185,6 +219,58 @@ Examples:
 	buildCmd.MarkFlagRequired("version")
 	buildCmd.MarkFlagRequired("name")
 
-	cmd.AddCommand(listCmd, importCmd, deleteCmd, buildCmd)
+	pullCmd := &cobra.Command{
+		Use:   "pull <name>",
+		Short: "Download a kernel from GitHub releases",
+		Long: `Download a kernel from GitHub releases.
+
+Use 'vmm kernel list --remote' to see available kernels.
+
+Examples:
+  vmm kernel pull k8s-kernel
+  vmm kernel pull security-kernel
+  vmm kernel pull vmlinux.bin`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			if err := validate.KernelName(name); err != nil {
+				return err
+			}
+
+			if err := cfg.EnsureDirectories(); err != nil {
+				return fmt.Errorf("failed to create directories: %w", err)
+			}
+
+			paths := cfg.GetPaths()
+			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
+
+			force, _ := cmd.Flags().GetBool("force")
+			if imgMgr.KernelExists(name) && !force {
+				return fmt.Errorf("kernel '%s' already exists locally. Use --force to overwrite", name)
+			}
+
+			fmt.Println("Querying GitHub releases...")
+			releases, err := imgMgr.ListAvailableReleases()
+			if err != nil {
+				return fmt.Errorf("failed to query releases: %w", err)
+			}
+
+			for _, r := range releases {
+				if r.Type == "kernel" && r.LocalName == name {
+					fmt.Printf("Downloading %s (%s)...\n", r.LocalName, r.Tag)
+					if err := imgMgr.DownloadKernelFromRelease(r.DownloadURL, r.LocalName); err != nil {
+						return fmt.Errorf("download failed: %w", err)
+					}
+					fmt.Printf("Kernel '%s' downloaded successfully.\n", r.LocalName)
+					return nil
+				}
+			}
+
+			return fmt.Errorf("kernel '%s' not found in GitHub releases. Use 'vmm kernel list --remote' to see available kernels", name)
+		},
+	}
+	pullCmd.Flags().Bool("force", false, "Overwrite existing kernel")
+
+	cmd.AddCommand(listCmd, pullCmd, importCmd, deleteCmd, buildCmd)
 	return cmd
 }

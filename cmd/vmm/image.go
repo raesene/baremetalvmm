@@ -23,6 +23,38 @@ func imageCmd() *cobra.Command {
 			paths := cfg.GetPaths()
 			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
+			remote, _ := cmd.Flags().GetBool("remote")
+			if remote {
+				fmt.Println("Querying GitHub releases...")
+				releases, err := imgMgr.ListAvailableReleases()
+				if err != nil {
+					return fmt.Errorf("failed to query remote releases: %w", err)
+				}
+
+				found := false
+				for _, r := range releases {
+					if r.Type != "rootfs" {
+						continue
+					}
+					if !found {
+						fmt.Println("Available rootfs images on GitHub:")
+						found = true
+					}
+					status := "  "
+					if r.Downloaded {
+						status = "✓ "
+					}
+					fmt.Printf("  %s%-20s  %s  [%s]\n", status, r.LocalName, r.Description, r.Tag)
+				}
+				if !found {
+					fmt.Println("No rootfs releases found on GitHub.")
+				} else {
+					fmt.Println("\n  ✓ = already downloaded")
+					fmt.Println("  Use 'vmm image pull <name>' to download an image")
+				}
+				return nil
+			}
+
 			fmt.Println("Kernels:")
 			kernels, _ := imgMgr.ListKernelsWithInfo()
 			if len(kernels) == 0 {
@@ -56,10 +88,24 @@ func imageCmd() *cobra.Command {
 			return nil
 		},
 	}
+	listCmd.Flags().Bool("remote", false, "Show rootfs images available on GitHub")
 
 	pullCmd := &cobra.Command{
-		Use:   "pull",
-		Short: "Download default kernel and rootfs images",
+		Use:   "pull [name]",
+		Short: "Download rootfs images from GitHub releases",
+		Long: `Download rootfs images from GitHub releases.
+
+Without arguments, downloads the default kernel and rootfs if not present.
+With a name argument, downloads a specific rootfs image.
+
+Use 'vmm image list --remote' to see available images.
+
+Examples:
+  vmm image pull                    # Download defaults
+  vmm image pull rootfs             # Download default rootfs
+  vmm image pull k8s-1.36.2         # Download Kubernetes 1.36.2 rootfs
+  vmm image pull security-rootfs    # Download security rootfs`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := cfg.EnsureDirectories(); err != nil {
 				return fmt.Errorf("failed to create directories: %w", err)
@@ -68,16 +114,47 @@ func imageCmd() *cobra.Command {
 			paths := cfg.GetPaths()
 			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
-			if err := imgMgr.EnsureDefaultImages(); err != nil {
-				return fmt.Errorf("failed to download images: %w", err)
+			if len(args) == 0 {
+				if err := imgMgr.EnsureDefaultImages(); err != nil {
+					return fmt.Errorf("failed to download images: %w", err)
+				}
+				fmt.Println("Images downloaded successfully")
+				fmt.Printf("  Kernel: %s\n", imgMgr.GetDefaultKernelPath())
+				fmt.Printf("  Rootfs: %s\n", imgMgr.GetDefaultRootfsPath())
+				return nil
 			}
 
-			fmt.Println("Images downloaded successfully")
-			fmt.Printf("  Kernel: %s\n", imgMgr.GetDefaultKernelPath())
-			fmt.Printf("  Rootfs: %s\n", imgMgr.GetDefaultRootfsPath())
-			return nil
+			name := args[0]
+			if err := validate.ImageName(name); err != nil {
+				return err
+			}
+
+			force, _ := cmd.Flags().GetBool("force")
+			if imgMgr.ImageExists(name) && !force {
+				return fmt.Errorf("image '%s' already exists locally. Use --force to overwrite", name)
+			}
+
+			fmt.Println("Querying GitHub releases...")
+			releases, err := imgMgr.ListAvailableReleases()
+			if err != nil {
+				return fmt.Errorf("failed to query releases: %w", err)
+			}
+
+			for _, r := range releases {
+				if r.Type == "rootfs" && r.LocalName == name {
+					fmt.Printf("Downloading %s (%s)...\n", r.LocalName, r.Tag)
+					if err := imgMgr.DownloadRootfsFromRelease(r.DownloadURL, r.LocalName); err != nil {
+						return fmt.Errorf("download failed: %w", err)
+					}
+					fmt.Printf("Image '%s' downloaded successfully.\n", r.LocalName)
+					return nil
+				}
+			}
+
+			return fmt.Errorf("image '%s' not found in GitHub releases. Use 'vmm image list --remote' to see available images", name)
 		},
 	}
+	pullCmd.Flags().Bool("force", false, "Overwrite existing image")
 
 	var importSize int
 	importCmd := &cobra.Command{
