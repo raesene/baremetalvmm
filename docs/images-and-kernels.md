@@ -40,6 +40,48 @@ Kernels and rootfs images follow a prefix-based naming convention so that `vmm i
 
 When adding new kernel or rootfs variants, use an appropriate prefix so that the description auto-populates. Custom user-imported images without a recognized prefix show as "Custom kernel" or "Custom image".
 
+## Discovering and Downloading Remote Images
+
+Use `--remote` on the list commands to see what kernels and rootfs images are available on GitHub releases, along with whether each is already downloaded locally:
+
+```bash
+$ vmm kernel list --remote
+Querying GitHub releases...
+Available kernels on GitHub:
+  ✓ security-kernel       Security testing kernel (security-kernel-6.6.143, broad module coverage)
+  ✓ vmlinux.bin           General-purpose VM kernel (kernel-6.1.176)
+    kasan-kernel          KASAN security kernel (kasan-kernel-6.6.143, memory sanitizer)
+  ✓ k8s-kernel            Kubernetes cluster kernel (k8s-kernel-6.6.143, Cilium/BPF)
+
+  ✓ = already downloaded
+
+$ vmm image list --remote
+Querying GitHub releases...
+Available rootfs images on GitHub:
+  ✓ rootfs                Ubuntu 24.04 base rootfs (rootfs-24.04-20260629)
+  ✓ k8s-1.36.2            Kubernetes rootfs (k8s-rootfs-1.36.2, kubeadm/containerd)
+    k8s-1.35.6            Kubernetes rootfs (k8s-rootfs-1.35.6, kubeadm/containerd)
+
+  ✓ = already downloaded
+```
+
+For each series (kernel, k8s-kernel, security-kernel, etc.) only the latest release is shown. For k8s-rootfs, the latest patch version of each Kubernetes minor release is shown.
+
+Download a specific kernel or image by name:
+
+```bash
+# Download a kernel
+sudo vmm kernel pull kasan-kernel
+
+# Download a rootfs image
+sudo vmm image pull k8s-1.35.6
+
+# Overwrite an existing local copy
+sudo vmm kernel pull security-kernel --force
+```
+
+Without arguments, `vmm image pull` downloads the default kernel and rootfs if they are not already present (backward-compatible behavior).
+
 ## Custom Rootfs from Docker
 
 VMM can import Docker images as VM root filesystems. The import process exports the container filesystem, installs systemd/openssh-server/networking tools, configures it for Firecracker, and creates an ext4 filesystem image.

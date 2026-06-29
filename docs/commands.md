@@ -100,8 +100,10 @@ sudo vmm port-forward remove myvm 8080:80
 
 | Command | Description |
 |---------|-------------|
-| `vmm image list` | List available images with descriptions |
-| `vmm image pull` | Download default images |
+| `vmm image list` | List locally available images with descriptions |
+| `vmm image list --remote` | Show rootfs images available on GitHub releases |
+| `vmm image pull` | Download default kernel and rootfs if not present |
+| `vmm image pull <name>` | Download a specific rootfs image from GitHub releases |
 | `vmm image import <docker-image> --name <name>` | Import a Docker image as rootfs |
 | `vmm image snapshot <vm> --name <name>` | Snapshot a stopped VM's rootfs as a reusable base image |
 | `vmm image delete <name>` | Delete an imported image |
@@ -110,7 +112,9 @@ sudo vmm port-forward remove myvm 8080:80
 
 | Command | Description |
 |---------|-------------|
-| `vmm kernel list` | List available kernels |
+| `vmm kernel list` | List locally available kernels |
+| `vmm kernel list --remote` | Show kernels available on GitHub releases |
+| `vmm kernel pull <name>` | Download a specific kernel from GitHub releases |
 | `vmm kernel import <path> --name <name>` | Import a custom kernel binary |
 | `vmm kernel build --version <ver> --name <name>` | Build a kernel from source |
 | `vmm kernel delete <name>` | Delete a custom kernel |

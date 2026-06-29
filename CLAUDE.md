@@ -87,8 +87,8 @@ vmm ssh <name> [-u user]
 vmm console <name> [--full] [-f] [-n LINES]
 vmm port-forward add|list|remove <name> <host>:<guest>
 vmm mount list|sync <name> [tag]
-vmm image list|pull|import|snapshot|delete
-vmm kernel list|import|delete|build
+vmm image list [--remote]|pull [name]|import|snapshot|delete
+vmm kernel list [--remote]|pull <name>|import|delete|build
 vmm cluster create <name> [--type kubeadm|openshift] [--cni cilium|calico] [--workers N] [--cpus N] [--memory MB] [--disk MB] [--k8s-version VER] [--openshift-version VER] [--ssh-key PATH] [--image NAME] [--kernel NAME] [--admin-workstation]
 vmm cluster delete|list|kubeconfig <name>
 vmm config show|init
