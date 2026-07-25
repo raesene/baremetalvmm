@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -433,15 +432,12 @@ func (s *Server) handleVMStop(w http.ResponseWriter, r *http.Request) {
 	existingVM.Save(paths.VMs)
 
 	ctx := context.Background()
-	if err := fcClient.StopVM(ctx, existingVM.SocketPath); err != nil {
-		if existingVM.PID > 0 && firecracker.IsFirecrackerProcess(existingVM.PID) {
-			if proc, err := os.FindProcess(existingVM.PID); err == nil {
-				proc.Signal(syscall.SIGKILL)
-			}
-		}
+	if err := fcClient.Terminate(ctx, existingVM); err != nil {
+		existingVM.State = vm.StateError
+		existingVM.Save(paths.VMs)
+		httpError(w, r, err.Error(), http.StatusInternalServerError)
+		return
 	}
-
-	time.Sleep(500 * time.Millisecond)
 
 	netMgr := network.NewManager(s.cfg.BridgeName, s.cfg.Subnet, s.cfg.Gateway, s.cfg.HostInterface)
 	if existingVM.TapDevice != "" && netMgr.TapExists(existingVM.TapDevice) {
@@ -454,10 +450,9 @@ func (s *Server) handleVMStop(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Terminate already cleared the PID and removed the socket
 	existingVM.State = vm.StateStopped
-	existingVM.PID = 0
 	existingVM.Save(paths.VMs)
-	os.Remove(existingVM.SocketPath)
 
 	if isHTMXRequest(r) {
 		s.renderVMRow(w, existingVM)
@@ -493,13 +488,13 @@ func (s *Server) deleteVM(w http.ResponseWriter, r *http.Request) {
 
 	if existingVM.State == vm.StateRunning {
 		ctx := context.Background()
-		fcClient.StopVM(ctx, existingVM.SocketPath)
-		if existingVM.PID > 0 && firecracker.IsFirecrackerProcess(existingVM.PID) {
-			if proc, err := os.FindProcess(existingVM.PID); err == nil {
-				proc.Signal(syscall.SIGKILL)
-			}
+		// Never remove the VM record while its process survives
+		if err := fcClient.Terminate(ctx, existingVM); err != nil {
+			existingVM.State = vm.StateError
+			existingVM.Save(paths.VMs)
+			httpError(w, r, err.Error(), http.StatusInternalServerError)
+			return
 		}
-		time.Sleep(500 * time.Millisecond)
 	}
 
 	netMgr := network.NewManager(s.cfg.BridgeName, s.cfg.Subnet, s.cfg.Gateway, s.cfg.HostInterface)
@@ -681,13 +676,13 @@ func (s *Server) handleAPIVMDelete(w http.ResponseWriter, r *http.Request) {
 
 	if existingVM.State == vm.StateRunning {
 		ctx := context.Background()
-		fcClient.StopVM(ctx, existingVM.SocketPath)
-		if existingVM.PID > 0 && firecracker.IsFirecrackerProcess(existingVM.PID) {
-			if proc, err := os.FindProcess(existingVM.PID); err == nil {
-				proc.Signal(syscall.SIGKILL)
-			}
+		// Never remove the VM record while its process survives
+		if err := fcClient.Terminate(ctx, existingVM); err != nil {
+			existingVM.State = vm.StateError
+			existingVM.Save(paths.VMs)
+			jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
-		time.Sleep(500 * time.Millisecond)
 	}
 
 	netMgr := network.NewManager(s.cfg.BridgeName, s.cfg.Subnet, s.cfg.Gateway, s.cfg.HostInterface)

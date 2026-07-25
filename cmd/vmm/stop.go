@@ -3,9 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
-	"syscall"
-	"time"
 
 	"github.com/raesene/baremetalvmm/internal/firecracker"
 	"github.com/raesene/baremetalvmm/internal/network"
@@ -45,18 +42,14 @@ func stopCmd() *cobra.Command {
 			existingVM.State = vm.StateStopping
 			existingVM.Save(paths.VMs)
 
+			// Terminate the Firecracker process, escalating to signals if the
+			// guest does not shut down. Returns only once the process is gone.
 			ctx := context.Background()
-			if err := fcClient.StopVM(ctx, existingVM.SocketPath); err != nil {
-				// Try to kill by PID as fallback
-				if existingVM.PID > 0 && firecracker.IsFirecrackerProcess(existingVM.PID) {
-					if proc, err := os.FindProcess(existingVM.PID); err == nil {
-						proc.Signal(syscall.SIGKILL)
-					}
-				}
+			if err := fcClient.Terminate(ctx, existingVM); err != nil {
+				existingVM.State = vm.StateError
+				existingVM.Save(paths.VMs)
+				return fmt.Errorf("failed to stop VM '%s': %w", name, err)
 			}
-
-			// Wait briefly for process to exit
-			time.Sleep(500 * time.Millisecond)
 
 			// Clean up TAP device so it can be reused on next start
 			netMgr := network.NewManager(cfg.BridgeName, cfg.Subnet, cfg.Gateway, cfg.HostInterface)
@@ -74,13 +67,9 @@ func stopCmd() *cobra.Command {
 				}
 			}
 
-			// Cleanup
+			// Cleanup (Terminate already cleared the PID and removed the socket)
 			existingVM.State = vm.StateStopped
-			existingVM.PID = 0
 			existingVM.Save(paths.VMs)
-
-			// Remove socket
-			os.Remove(existingVM.SocketPath)
 
 			fmt.Printf("VM '%s' stopped\n", name)
 			return nil

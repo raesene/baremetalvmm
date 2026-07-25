@@ -201,6 +201,12 @@ create_kernel_config() {
     ./scripts/config --enable CONFIG_VIRTIO_NET
     ./scripts/config --enable CONFIG_SERIAL_8250
     ./scripts/config --enable CONFIG_SERIAL_8250_CONSOLE
+    # i8042 keyboard controller: Firecracker's shutdown request is delivered as
+    # Ctrl+Alt+Del through this device. Without it the guest never sees the
+    # request and can only be terminated by signalling the VMM.
+    ./scripts/config --enable CONFIG_SERIO
+    ./scripts/config --enable CONFIG_SERIO_I8042
+    ./scripts/config --enable CONFIG_KEYBOARD_ATKBD
     ./scripts/config --enable CONFIG_EXT4_FS
     ./scripts/config --enable CONFIG_NET
     ./scripts/config --enable CONFIG_INET

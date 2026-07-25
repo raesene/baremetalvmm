@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -426,6 +425,7 @@ func (s *Server) deleteCluster(w http.ResponseWriter, r *http.Request) {
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
 	// Delete all VMs in the cluster
+	var stopFailures []string
 	for _, vmName := range cl.AllVMs() {
 		existingVM, err := vm.Load(paths.VMs, vmName)
 		if err != nil {
@@ -435,13 +435,13 @@ func (s *Server) deleteCluster(w http.ResponseWriter, r *http.Request) {
 		fcClient.UpdateVMState(existingVM)
 		if existingVM.State == vm.StateRunning {
 			ctx := context.Background()
-			fcClient.StopVM(ctx, existingVM.SocketPath)
-			if existingVM.PID > 0 && firecracker.IsFirecrackerProcess(existingVM.PID) {
-				if proc, err := os.FindProcess(existingVM.PID); err == nil {
-					proc.Signal(syscall.SIGKILL)
-				}
+			// Keep the VM record if the process survives, so it is not orphaned
+			if err := fcClient.Terminate(ctx, existingVM); err != nil {
+				existingVM.State = vm.StateError
+				existingVM.Save(paths.VMs)
+				stopFailures = append(stopFailures, vmName)
+				continue
 			}
-			time.Sleep(500 * time.Millisecond)
 		}
 
 		if existingVM.TapDevice != "" && netMgr.TapExists(existingVM.TapDevice) {
@@ -450,6 +450,11 @@ func (s *Server) deleteCluster(w http.ResponseWriter, r *http.Request) {
 		imgMgr.DeleteVMRootfs(vmName, paths.VMs)
 		os.Remove(existingVM.SocketPath)
 		vm.Delete(paths.VMs, vmName)
+	}
+
+	if len(stopFailures) > 0 {
+		httpError(w, r, fmt.Sprintf("could not stop VMs %v; cluster not deleted", stopFailures), http.StatusInternalServerError)
+		return
 	}
 
 	cluster.Delete(paths.Clusters, name)
@@ -694,6 +699,7 @@ func (s *Server) handleAPIClusterDelete(w http.ResponseWriter, r *http.Request) 
 	netMgr := network.NewManager(s.cfg.BridgeName, s.cfg.Subnet, s.cfg.Gateway, s.cfg.HostInterface)
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
+	var stopFailures []string
 	for _, vmName := range cl.AllVMs() {
 		existingVM, err := vm.Load(paths.VMs, vmName)
 		if err != nil {
@@ -703,13 +709,13 @@ func (s *Server) handleAPIClusterDelete(w http.ResponseWriter, r *http.Request) 
 		fcClient.UpdateVMState(existingVM)
 		if existingVM.State == vm.StateRunning {
 			ctx := context.Background()
-			fcClient.StopVM(ctx, existingVM.SocketPath)
-			if existingVM.PID > 0 && firecracker.IsFirecrackerProcess(existingVM.PID) {
-				if proc, err := os.FindProcess(existingVM.PID); err == nil {
-					proc.Signal(syscall.SIGKILL)
-				}
+			// Keep the VM record if the process survives, so it is not orphaned
+			if err := fcClient.Terminate(ctx, existingVM); err != nil {
+				existingVM.State = vm.StateError
+				existingVM.Save(paths.VMs)
+				stopFailures = append(stopFailures, vmName)
+				continue
 			}
-			time.Sleep(500 * time.Millisecond)
 		}
 
 		if existingVM.TapDevice != "" && netMgr.TapExists(existingVM.TapDevice) {
@@ -718,6 +724,11 @@ func (s *Server) handleAPIClusterDelete(w http.ResponseWriter, r *http.Request) 
 		imgMgr.DeleteVMRootfs(vmName, paths.VMs)
 		os.Remove(existingVM.SocketPath)
 		vm.Delete(paths.VMs, vmName)
+	}
+
+	if len(stopFailures) > 0 {
+		jsonError(w, fmt.Sprintf("could not stop VMs %v; cluster not deleted", stopFailures), http.StatusInternalServerError)
+		return
 	}
 
 	cluster.Delete(paths.Clusters, name)

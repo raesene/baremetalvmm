@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"syscall"
-	"time"
 
 	"github.com/raesene/baremetalvmm/internal/firecracker"
 	"github.com/raesene/baremetalvmm/internal/image"
@@ -46,33 +44,15 @@ func deleteCmd() *cobra.Command {
 				if !force {
 					return fmt.Errorf("VM '%s' is running. Use --force to delete anyway", name)
 				}
-				// Stop VM if force
+				// Stop VM if force. Never delete the VM's state while its
+				// Firecracker process survives, or the process is orphaned
+				// with no record of how to reach it.
 				fmt.Printf("Stopping VM '%s'...\n", name)
 				ctx := context.Background()
-				if err := fcClient.StopVM(ctx, existingVM.SocketPath); err != nil {
-					fmt.Printf("Warning: failed to stop VM gracefully: %v\n", err)
-					// Try to kill by PID as fallback
-					if existingVM.PID > 0 && firecracker.IsFirecrackerProcess(existingVM.PID) {
-						if proc, err := os.FindProcess(existingVM.PID); err == nil {
-							proc.Signal(syscall.SIGKILL)
-						}
-					}
-				}
-
-				// Wait for process to exit
-				time.Sleep(500 * time.Millisecond)
-
-				// Verify process is gone, force kill if still running
-				if existingVM.PID > 0 {
-					if proc, err := os.FindProcess(existingVM.PID); err == nil {
-						if err := proc.Signal(syscall.Signal(0)); err == nil {
-							if firecracker.IsFirecrackerProcess(existingVM.PID) {
-								fmt.Printf("Warning: process %d still running, sending SIGKILL...\n", existingVM.PID)
-								proc.Signal(syscall.SIGKILL)
-								time.Sleep(500 * time.Millisecond)
-							}
-						}
-					}
+				if err := fcClient.Terminate(ctx, existingVM); err != nil {
+					existingVM.State = vm.StateError
+					existingVM.Save(paths.VMs)
+					return fmt.Errorf("refusing to delete VM '%s': %w", name, err)
 				}
 			}
 

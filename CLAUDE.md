@@ -51,6 +51,7 @@ Completed fixes (P1, P2, and P3 done):
 - Install script uses mktemp -d with trap cleanup instead of fixed /tmp paths
 - Uninstall script adds vmm-web.service cleanup and fixes NAT rule removal
 - Documentation aligned: Go version, SSH key behavior, listen address
+- Firecracker process termination: `Client.Terminate()` escalates Ctrl+Alt+Del → SIGTERM → SIGKILL and waits for the process to actually exit before a VM is marked stopped or deleted (guest kernels without CONFIG_SERIO_I8042 never see Ctrl+Alt+Del, so the old fire-and-forget stop orphaned every VM). VM liveness is determined by matching `/proc/<pid>/cmdline` against the VM's API socket rather than by the socket file's existence
 
 Future work (P4 — significant effort, deferred):
 - **Shared service layer**: Extract VM lifecycle into `internal/service` so CLI and web share one implementation

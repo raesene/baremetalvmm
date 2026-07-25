@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
-	"syscall"
 	"time"
 
 	"github.com/raesene/baremetalvmm/internal/firecracker"
@@ -199,20 +197,15 @@ func autostopCmd() *cobra.Command {
 				fmt.Printf("Stopping VM '%s'...\n", v.Name)
 
 				ctx := context.Background()
-				if err := fcClient.StopVM(ctx, v.SocketPath); err != nil {
-					// Try SIGKILL as fallback
-					if v.PID > 0 && firecracker.IsFirecrackerProcess(v.PID) {
-						if proc, err := os.FindProcess(v.PID); err == nil {
-							proc.Signal(syscall.SIGKILL)
-						}
-					}
+				if err := fcClient.Terminate(ctx, v); err != nil {
+					fmt.Printf("Warning: %v\n", err)
+					v.State = vm.StateError
+					v.Save(paths.VMs)
+					continue
 				}
 
 				v.State = vm.StateStopped
-				v.PID = 0
 				v.Save(paths.VMs)
-
-				os.Remove(v.SocketPath)
 				stopped++
 			}
 

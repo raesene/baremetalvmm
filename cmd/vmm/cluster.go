@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"text/tabwriter"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/raesene/baremetalvmm/internal/cluster"
@@ -521,6 +521,7 @@ func clusterDeleteCmd() *cobra.Command {
 			netMgr := network.NewManager(cfg.BridgeName, cfg.Subnet, cfg.Gateway, cfg.HostInterface)
 			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 
+			var deleteErrors []string
 			for _, vmName := range cl.AllVMs() {
 				existingVM, err := vm.Load(paths.VMs, vmName)
 				if err != nil {
@@ -532,8 +533,14 @@ func clusterDeleteCmd() *cobra.Command {
 				if existingVM.State == vm.StateRunning {
 					fmt.Printf("  Stopping VM '%s'...\n", vmName)
 					ctx := context.Background()
-					if err := fcClient.StopVM(ctx, existingVM.SocketPath); err != nil {
-						fmt.Printf("  Warning: failed to stop VM '%s': %v\n", vmName, err)
+					if err := fcClient.Terminate(ctx, existingVM); err != nil {
+						// Keep the VM's state file so the surviving process
+						// stays traceable instead of being orphaned.
+						fmt.Printf("  Warning: %v; keeping VM '%s'\n", err, vmName)
+						existingVM.State = vm.StateError
+						existingVM.Save(paths.VMs)
+						deleteErrors = append(deleteErrors, vmName)
+						continue
 					}
 				}
 
@@ -550,6 +557,10 @@ func clusterDeleteCmd() *cobra.Command {
 				os.Remove(existingVM.SocketPath)
 				vm.Delete(paths.VMs, vmName)
 				fmt.Printf("  Deleted VM '%s'\n", vmName)
+			}
+
+			if len(deleteErrors) > 0 {
+				return fmt.Errorf("could not stop VMs %v; cluster '%s' not deleted", deleteErrors, name)
 			}
 
 			// Remove kubeconfig context
