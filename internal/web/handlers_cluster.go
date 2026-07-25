@@ -438,7 +438,9 @@ func (s *Server) deleteCluster(w http.ResponseWriter, r *http.Request) {
 			// Keep the VM record if the process survives, so it is not orphaned
 			if err := fcClient.Terminate(ctx, existingVM); err != nil {
 				existingVM.State = vm.StateError
-				existingVM.Save(paths.VMs)
+				if saveErr := existingVM.Save(paths.VMs); saveErr != nil {
+					log.Printf("failed to save state for VM %s: %v", vmName, saveErr)
+				}
 				stopFailures = append(stopFailures, vmName)
 				continue
 			}
@@ -712,7 +714,9 @@ func (s *Server) handleAPIClusterDelete(w http.ResponseWriter, r *http.Request) 
 			// Keep the VM record if the process survives, so it is not orphaned
 			if err := fcClient.Terminate(ctx, existingVM); err != nil {
 				existingVM.State = vm.StateError
-				existingVM.Save(paths.VMs)
+				if saveErr := existingVM.Save(paths.VMs); saveErr != nil {
+					log.Printf("failed to save state for VM %s: %v", vmName, saveErr)
+				}
 				stopFailures = append(stopFailures, vmName)
 				continue
 			}

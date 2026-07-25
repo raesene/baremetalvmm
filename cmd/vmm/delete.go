@@ -51,7 +51,9 @@ func deleteCmd() *cobra.Command {
 				ctx := context.Background()
 				if err := fcClient.Terminate(ctx, existingVM); err != nil {
 					existingVM.State = vm.StateError
-					existingVM.Save(paths.VMs)
+					if saveErr := existingVM.Save(paths.VMs); saveErr != nil {
+						fmt.Printf("Warning: failed to save VM state: %v\n", saveErr)
+					}
 					return fmt.Errorf("refusing to delete VM '%s': %w", name, err)
 				}
 			}

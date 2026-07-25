@@ -102,7 +102,9 @@ func tailFollow(path string, n int, follow bool) error {
 	// Follow: keep reading from current position
 	offset, _ := f.Seek(0, io.SeekCurrent)
 	for {
-		f.Seek(offset, io.SeekStart)
+		if _, err := f.Seek(offset, io.SeekStart); err != nil {
+			return fmt.Errorf("failed to seek console log: %w", err)
+		}
 		scanner = bufio.NewScanner(f)
 		scanner.Buffer(buf, 1024*1024)
 		for scanner.Scan() {

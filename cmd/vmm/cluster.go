@@ -538,7 +538,9 @@ func clusterDeleteCmd() *cobra.Command {
 						// stays traceable instead of being orphaned.
 						fmt.Printf("  Warning: %v; keeping VM '%s'\n", err, vmName)
 						existingVM.State = vm.StateError
-						existingVM.Save(paths.VMs)
+						if saveErr := existingVM.Save(paths.VMs); saveErr != nil {
+							fmt.Printf("  Warning: failed to save VM state: %v\n", saveErr)
+						}
 						deleteErrors = append(deleteErrors, vmName)
 						continue
 					}

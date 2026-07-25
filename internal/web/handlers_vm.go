@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -434,7 +435,9 @@ func (s *Server) handleVMStop(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 	if err := fcClient.Terminate(ctx, existingVM); err != nil {
 		existingVM.State = vm.StateError
-		existingVM.Save(paths.VMs)
+		if saveErr := existingVM.Save(paths.VMs); saveErr != nil {
+			log.Printf("failed to save state for VM %s: %v", name, saveErr)
+		}
 		httpError(w, r, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -491,7 +494,9 @@ func (s *Server) deleteVM(w http.ResponseWriter, r *http.Request) {
 		// Never remove the VM record while its process survives
 		if err := fcClient.Terminate(ctx, existingVM); err != nil {
 			existingVM.State = vm.StateError
-			existingVM.Save(paths.VMs)
+			if saveErr := existingVM.Save(paths.VMs); saveErr != nil {
+				log.Printf("failed to save state for VM %s: %v", name, saveErr)
+			}
 			httpError(w, r, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -679,7 +684,9 @@ func (s *Server) handleAPIVMDelete(w http.ResponseWriter, r *http.Request) {
 		// Never remove the VM record while its process survives
 		if err := fcClient.Terminate(ctx, existingVM); err != nil {
 			existingVM.State = vm.StateError
-			existingVM.Save(paths.VMs)
+			if saveErr := existingVM.Save(paths.VMs); saveErr != nil {
+				log.Printf("failed to save state for VM %s: %v", name, saveErr)
+			}
 			jsonError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

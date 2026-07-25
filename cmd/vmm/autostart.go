@@ -153,7 +153,9 @@ func autostartCmd() *cobra.Command {
 				if err != nil {
 					fmt.Printf("  Error: failed to start: %v\n", err)
 					v.State = vm.StateError
-					v.Save(paths.VMs)
+					if saveErr := v.Save(paths.VMs); saveErr != nil {
+						fmt.Printf("Warning: failed to save VM state: %v\n", saveErr)
+					}
 					continue
 				}
 
@@ -200,7 +202,9 @@ func autostopCmd() *cobra.Command {
 				if err := fcClient.Terminate(ctx, v); err != nil {
 					fmt.Printf("Warning: %v\n", err)
 					v.State = vm.StateError
-					v.Save(paths.VMs)
+					if saveErr := v.Save(paths.VMs); saveErr != nil {
+						fmt.Printf("Warning: failed to save VM state: %v\n", saveErr)
+					}
 					continue
 				}
 
