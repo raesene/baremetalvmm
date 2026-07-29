@@ -1,6 +1,7 @@
 package mount
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -48,11 +49,7 @@ func (m *Manager) CreateMountImage(mount *vm.Mount, vmName string) error {
 		return fmt.Errorf("failed to calculate directory size: %w", err)
 	}
 
-	// Add 20% overhead for filesystem metadata, minimum 16MB
-	sizeMB = int(float64(sizeMB) * 1.2)
-	if sizeMB < 16 {
-		sizeMB = 16
-	}
+	// calculateDirSize already includes filesystem overhead and minimum.
 
 	fmt.Printf("  Creating mount image for '%s' (%d MB)...\n", mount.GuestTag, sizeMB)
 
@@ -103,10 +100,7 @@ func (m *Manager) SyncMountImage(mount *vm.Mount, vmName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to calculate directory size: %w", err)
 	}
-	sizeMB = int(float64(sizeMB) * 1.2)
-	if sizeMB < 16 {
-		sizeMB = 16
-	}
+	// calculateDirSize already includes filesystem overhead and minimum.
 
 	// Get current image size
 	imgInfo, err := os.Stat(mount.ImagePath)
@@ -164,6 +158,8 @@ func (m *Manager) SyncMountImage(mount *vm.Mount, vmName string) error {
 	tarCreate := exec.Command("tar", "-cf", "-", "-C", mount.HostPath, ".")
 	tarExtract := exec.Command("tar", "-xf", "-", "-C", mountPoint)
 	tarExtract.Stdin, _ = tarCreate.StdoutPipe()
+	var extractStderr bytes.Buffer
+	tarExtract.Stderr = &extractStderr
 
 	if err := tarExtract.Start(); err != nil {
 		return fmt.Errorf("failed to start tar extract: %w", err)
@@ -172,7 +168,7 @@ func (m *Manager) SyncMountImage(mount *vm.Mount, vmName string) error {
 		return fmt.Errorf("failed to create tar: %w", err)
 	}
 	if err := tarExtract.Wait(); err != nil {
-		return fmt.Errorf("failed to extract tar: %w", err)
+		return fmt.Errorf("failed to extract tar: %w: %s", err, extractStderr.String())
 	}
 
 	return nil
@@ -222,6 +218,8 @@ func (m *Manager) copyFilesToImage(srcDir, imagePath string) error {
 	tarCreate := exec.Command("tar", "-cf", "-", "-C", srcDir, ".")
 	tarExtract := exec.Command("tar", "-xf", "-", "-C", mountPoint)
 	tarExtract.Stdin, _ = tarCreate.StdoutPipe()
+	var extractStderr bytes.Buffer
+	tarExtract.Stderr = &extractStderr
 
 	if err := tarExtract.Start(); err != nil {
 		return fmt.Errorf("failed to start tar extract: %w", err)
@@ -230,29 +228,49 @@ func (m *Manager) copyFilesToImage(srcDir, imagePath string) error {
 		return fmt.Errorf("failed to create tar: %w", err)
 	}
 	if err := tarExtract.Wait(); err != nil {
-		return fmt.Errorf("failed to extract tar: %w", err)
+		return fmt.Errorf("failed to extract tar: %w: %s", err, extractStderr.String())
 	}
 
 	return nil
 }
 
-// calculateDirSize returns the size of a directory in MB
+// calculateDirSize returns the estimated ext4 image size needed to hold a
+// directory, in MB. It accounts for both file content and filesystem overhead
+// (inodes, journal, block group descriptors). A naive 1.2x multiplier on raw
+// bytes breaks on trees with many small files (e.g. .git/objects) where inode
+// and metadata overhead dominates.
 func calculateDirSize(path string) (int, error) {
-	var size int64
+	var contentBytes int64
+	var fileCount int64
 	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if !info.IsDir() {
-			size += info.Size()
+			contentBytes += info.Size()
 		}
+		fileCount++
 		return nil
 	})
 	if err != nil {
 		return 0, err
 	}
-	// Convert to MB (round up)
-	sizeMB := int((size + 1024*1024 - 1) / (1024 * 1024))
+
+	// Each file/dir needs an inode (256 bytes) plus directory entry overhead
+	// (~64 bytes average). Round up to 4KB per entry to account for block
+	// alignment on the ext4 side.
+	inodeOverhead := fileCount * 4096
+
+	// Fixed ext4 overhead: journal (4-32MB), superblock copies, block group
+	// descriptors. Use 32MB as a safe baseline.
+	const fixedOverheadMB = 32
+
+	totalBytes := contentBytes + inodeOverhead
+	sizeMB := int((totalBytes+1024*1024-1)/(1024*1024)) + fixedOverheadMB
+
+	if sizeMB < 64 {
+		sizeMB = 64
+	}
 	return sizeMB, nil
 }
 
