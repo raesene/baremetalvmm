@@ -41,6 +41,10 @@ func MountTag(tag string) error {
 	return Name("mount tag", tag)
 }
 
+func SnapshotName(name string) error {
+	return Name("snapshot", name)
+}
+
 func CPUs(n int) error {
 	if n < 1 || n > 32 {
 		return fmt.Errorf("CPUs must be between 1 and 32 (got %d)", n)

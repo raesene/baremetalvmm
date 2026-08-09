@@ -165,6 +165,9 @@ func (s *Server) setupRouter() {
 		r.Get("/vms/{name}/terminal", s.handleTerminalPage)
 		r.Delete("/vms/{name}", s.handleVMDelete)
 		r.Post("/vms/{name}/delete", s.handleVMDeletePost)
+		r.Post("/vms/{name}/snapshots", s.handleSnapshotCreate)
+		r.Post("/vms/{name}/snapshots/{snapshot}/restore", s.handleSnapshotRestore)
+		r.Post("/vms/{name}/snapshots/{snapshot}/delete", s.handleSnapshotDelete)
 
 		// Image management HTML routes
 		r.Get("/images", s.handleImages)
@@ -193,6 +196,10 @@ func (s *Server) setupRouter() {
 			r.Post("/vms/{name}/start", s.handleAPIVMStart)
 			r.Post("/vms/{name}/stop", s.handleAPIVMStop)
 			r.Delete("/vms/{name}", s.handleAPIVMDelete)
+			r.Get("/vms/{name}/snapshots", s.handleAPISnapshotList)
+			r.Post("/vms/{name}/snapshots", s.handleAPISnapshotCreate)
+			r.Post("/vms/{name}/snapshots/{snapshot}/restore", s.handleAPISnapshotRestore)
+			r.Delete("/vms/{name}/snapshots/{snapshot}", s.handleAPISnapshotDelete)
 
 			r.Get("/clusters", s.handleAPIClusterList)
 			r.Post("/clusters", s.handleAPIClusterCreate)

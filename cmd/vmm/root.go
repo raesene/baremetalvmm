@@ -36,6 +36,7 @@ func newRootCmd() *cobra.Command {
 		kernelCmd(),
 		portForwardCmd(),
 		mountCmd(),
+		snapshotCmd(),
 		clusterCmd(),
 		versionCmd(),
 		autostartCmd(),

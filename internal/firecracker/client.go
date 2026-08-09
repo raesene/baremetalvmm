@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -210,6 +211,135 @@ func (c *Client) StartVM(ctx context.Context, cfg *VMConfig) (*sdk.Machine, erro
 		return nil, fmt.Errorf("failed to start Firecracker machine: %w", err)
 	}
 
+	return machine, nil
+}
+
+// Version returns the Firecracker binary version string (e.g. "v1.16.0"), or an
+// empty string if it cannot be determined. Snapshot memory/state files are tied
+// to the Firecracker version, so this is recorded with each snapshot.
+func (c *Client) Version() string {
+	fcBin := c.FirecrackerBin
+	if _, err := os.Stat(fcBin); err != nil {
+		if path, err := exec.LookPath("firecracker"); err == nil {
+			fcBin = path
+		} else {
+			return ""
+		}
+	}
+	out, err := exec.Command(fcBin, "--version").Output()
+	if err != nil {
+		return ""
+	}
+	// Output looks like: "Firecracker v1.16.0\n..."
+	firstLine := strings.SplitN(string(out), "\n", 2)[0]
+	fields := strings.Fields(firstLine)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[len(fields)-1]
+}
+
+// PauseVM pauses a running Firecracker VM over its API socket. The VM must be
+// paused before a snapshot can be created.
+func (c *Client) PauseVM(ctx context.Context, socketPath string) error {
+	machine, err := c.connectToMachine(ctx, socketPath)
+	if err != nil {
+		return fmt.Errorf("failed to connect to VM: %w", err)
+	}
+	if err := machine.PauseVM(ctx); err != nil {
+		return fmt.Errorf("failed to pause VM: %w", err)
+	}
+	return nil
+}
+
+// ResumeVM resumes a paused Firecracker VM over its API socket.
+func (c *Client) ResumeVM(ctx context.Context, socketPath string) error {
+	machine, err := c.connectToMachine(ctx, socketPath)
+	if err != nil {
+		return fmt.Errorf("failed to connect to VM: %w", err)
+	}
+	if err := machine.ResumeVM(ctx); err != nil {
+		return fmt.Errorf("failed to resume VM: %w", err)
+	}
+	return nil
+}
+
+// CreateSnapshotFiles writes a full snapshot (guest memory + device/vcpu state)
+// of a paused VM to memPath and statePath. The VM must already be paused; the
+// Firecracker process writes both files itself, so their parent directory must
+// exist and be writable by that process.
+func (c *Client) CreateSnapshotFiles(ctx context.Context, socketPath, memPath, statePath string) error {
+	machine, err := c.connectToMachine(ctx, socketPath)
+	if err != nil {
+		return fmt.Errorf("failed to connect to VM: %w", err)
+	}
+	if err := machine.CreateSnapshot(ctx, memPath, statePath); err != nil {
+		return fmt.Errorf("failed to create snapshot: %w", err)
+	}
+	return nil
+}
+
+// RestoreVM starts a fresh Firecracker process that loads a previously created
+// snapshot (memPath + statePath) and resumes the guest. The block devices and
+// TAP network device referenced by the snapshot state must already exist at the
+// same host paths / names they had when the snapshot was taken.
+func (c *Client) RestoreVM(ctx context.Context, socketPath, logPath, memPath, statePath string) (*sdk.Machine, error) {
+	// LoadSnapshot validation requires the socket to be absent and both
+	// snapshot files to exist.
+	os.Remove(socketPath)
+	if _, err := os.Stat(memPath); err != nil {
+		return nil, fmt.Errorf("snapshot memory file not found at %s: %w", memPath, err)
+	}
+	if _, err := os.Stat(statePath); err != nil {
+		return nil, fmt.Errorf("snapshot state file not found at %s: %w", statePath, err)
+	}
+
+	fcBin := c.FirecrackerBin
+	if _, err := os.Stat(fcBin); err != nil {
+		if path, err := exec.LookPath("firecracker"); err == nil {
+			fcBin = path
+		} else {
+			return nil, fmt.Errorf("firecracker binary not found at %s or in PATH", c.FirecrackerBin)
+		}
+	}
+
+	machineOpts := []sdk.Opt{
+		sdk.WithLogger(logrus.NewEntry(c.Logger)),
+	}
+
+	cmdBuilder := sdk.VMCommandBuilder{}.
+		WithBin(fcBin).
+		WithSocketPath(socketPath)
+
+	if logPath != "" {
+		if err := os.MkdirAll(filepath.Dir(logPath), 0700); err != nil {
+			return nil, fmt.Errorf("failed to create log directory: %w", err)
+		}
+		consolePath := consoleLogPath(logPath)
+		consoleFile, err := os.OpenFile(consolePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create console log file: %w", err)
+		}
+		cmdBuilder = cmdBuilder.WithStdout(consoleFile).WithStderr(consoleFile)
+	}
+
+	cmd := cmdBuilder.Build(ctx)
+	machineOpts = append(machineOpts,
+		sdk.WithProcessRunner(cmd),
+		sdk.WithSnapshot(memPath, statePath, func(cfg *sdk.SnapshotConfig) {
+			cfg.ResumeVM = true
+		}),
+	)
+
+	fcCfg := sdk.Config{SocketPath: socketPath}
+
+	machine, err := sdk.NewMachine(ctx, fcCfg, machineOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Firecracker machine: %w", err)
+	}
+	if err := machine.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to restore VM from snapshot: %w", err)
+	}
 	return machine, nil
 }
 

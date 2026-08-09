@@ -9,6 +9,7 @@ import (
 	"github.com/raesene/baremetalvmm/internal/image"
 	"github.com/raesene/baremetalvmm/internal/mount"
 	"github.com/raesene/baremetalvmm/internal/network"
+	"github.com/raesene/baremetalvmm/internal/snapshot"
 	"github.com/raesene/baremetalvmm/internal/validate"
 	"github.com/raesene/baremetalvmm/internal/vm"
 	"github.com/spf13/cobra"
@@ -86,6 +87,15 @@ func deleteCmd() *cobra.Command {
 				if err := mountMgr.DeleteAllMountImages(name, existingVM.Mounts); err != nil {
 					fmt.Printf("Warning: failed to delete mount images: %v\n", err)
 				}
+			}
+
+			// Delete any snapshots belonging to this VM
+			snapMgr := snapshot.NewManager(paths.Snapshots)
+			if snaps, _ := snapMgr.List(name); len(snaps) > 0 {
+				fmt.Printf("Deleting %d snapshot(s) for VM '%s'...\n", len(snaps), name)
+			}
+			if err := snapMgr.DeleteAllForVM(name); err != nil {
+				fmt.Printf("Warning: failed to delete snapshots: %v\n", err)
 			}
 
 			// Delete socket file

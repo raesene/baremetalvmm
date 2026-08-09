@@ -44,6 +44,18 @@ document.addEventListener('submit', function(e) {
     }
 });
 
+// Show a busy state on long-running action buttons (snapshot create/restore).
+// Runs after the confirm handler; skips if that handler cancelled submission.
+document.addEventListener('submit', function(e) {
+    if (e.defaultPrevented) return;
+    var btn = e.submitter;
+    if (btn && btn.getAttribute('data-busy')) {
+        btn.disabled = true;
+        btn.textContent = btn.getAttribute('data-busy');
+        btn.classList.add('opacity-60', 'cursor-wait');
+    }
+});
+
 // Show spinner on download buttons
 document.addEventListener('submit', function(e) {
     if (!e.target.classList.contains('download-form')) return;

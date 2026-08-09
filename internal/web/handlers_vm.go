@@ -15,6 +15,7 @@ import (
 	"github.com/raesene/baremetalvmm/internal/firecracker"
 	"github.com/raesene/baremetalvmm/internal/image"
 	"github.com/raesene/baremetalvmm/internal/network"
+	"github.com/raesene/baremetalvmm/internal/snapshot"
 	"github.com/raesene/baremetalvmm/internal/sshkey"
 	"github.com/raesene/baremetalvmm/internal/validate"
 	"github.com/raesene/baremetalvmm/internal/vm"
@@ -244,8 +245,15 @@ func (s *Server) handleVMDetail(w http.ResponseWriter, r *http.Request) {
 	fcClient := firecracker.NewClient()
 	fcClient.UpdateVMState(v)
 
+	snapMgr := snapshot.NewManager(paths.Snapshots)
+	snaps, err := snapMgr.List(name)
+	if err != nil {
+		log.Printf("failed to list snapshots for VM %s: %v", name, err)
+	}
+
 	s.renderPage(w, r, "vm_detail.html", "vms", map[string]interface{}{
-		"VM": v,
+		"VM":        v,
+		"Snapshots": snaps,
 	})
 }
 
@@ -515,6 +523,7 @@ func (s *Server) deleteVM(w http.ResponseWriter, r *http.Request) {
 
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 	imgMgr.DeleteVMRootfs(name, paths.VMs)
+	snapshot.NewManager(paths.Snapshots).DeleteAllForVM(name)
 	os.Remove(existingVM.SocketPath)
 	vm.Delete(paths.VMs, name)
 
@@ -705,6 +714,7 @@ func (s *Server) handleAPIVMDelete(w http.ResponseWriter, r *http.Request) {
 
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 	imgMgr.DeleteVMRootfs(name, paths.VMs)
+	snapshot.NewManager(paths.Snapshots).DeleteAllForVM(name)
 	os.Remove(existingVM.SocketPath)
 	vm.Delete(paths.VMs, name)
 

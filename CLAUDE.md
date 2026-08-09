@@ -67,6 +67,7 @@ Future work (P4 — significant effort, deferred):
 - `internal/network/` — TAP, bridge, iptables, NAT (MASQUERADE with `! -o vmm-br0`)
 - `internal/image/` — Kernel/rootfs download, Docker import, snapshots
 - `internal/mount/` — Host directory mount as ext4 block devices
+- `internal/snapshot/` — Full VM snapshots (guest memory + device state via Firecracker's snapshot API, plus a copy of the rootfs and mount images taken while the VM is paused). Restore is in-place: it rolls a VM back to one of its own snapshots, reusing the frozen IP/MAC/TAP identity. Stored under `/var/lib/vmm/snapshots/<vm>/<name>/` (`memory`, `vmstate`, `rootfs.ext4`, `snapshot.json`). Firecracker snapshot primitives (`PauseVM`, `CreateSnapshotFiles`, `ResumeVM`, `RestoreVM`) live in `internal/firecracker/client.go`.
 - `internal/sshkey/` — VMM-managed Ed25519 SSH key pair (auto-generated in `/var/lib/vmm/ssh/`)
 - `internal/cluster/` — Cluster management. `--type kubeadm` (default): multi-node Kubernetes via kubeadm with CNI selection (`--cni cilium` default, or `--cni calico` for Calico via Tigera operator). `--type openshift`: single-node OpenShift-derived cluster via upstream MicroShift (`internal/cluster/openshift.go`), installed on the base Ubuntu rootfs over SSH using OKD payload images (no Red Hat subscription). Admin workstation support for both.
 - `internal/web/` — Web UI handlers, auth, SSE, WebSocket terminal
@@ -74,7 +75,7 @@ Future work (P4 — significant effort, deferred):
 - `scripts/vmm.service` — Systemd unit for VM auto-start on boot
 - `scripts/vmm-web.service` — Systemd unit for web UI (reads password from `/etc/vmm-web/environment`)
 
-Data directory: `/var/lib/vmm` (vms, images, kernels, logs, sockets, mounts, clusters, ssh)
+Data directory: `/var/lib/vmm` (vms, images, kernels, logs, sockets, mounts, clusters, ssh, snapshots)
 
 ## CLI Commands
 
@@ -88,6 +89,7 @@ vmm ssh <name> [-u user]
 vmm console <name> [--full] [-f] [-n LINES]
 vmm port-forward add|list|remove <name> <host>:<guest>
 vmm mount list|sync <name> [tag]
+vmm snapshot create <vm> <name> [--stop]|list [vm]|restore <vm> <name> [-f] [--no-start]|show <vm> <name>|delete <vm> <name>
 vmm image list [--remote]|pull [name]|import|snapshot|delete
 vmm kernel list [--remote]|pull <name>|import|delete|build
 vmm cluster create <name> [--type kubeadm|openshift] [--cni cilium|calico] [--workers N] [--cpus N] [--memory MB] [--disk MB] [--k8s-version VER] [--openshift-version VER] [--ssh-key PATH] [--image NAME] [--kernel NAME] [--admin-workstation]

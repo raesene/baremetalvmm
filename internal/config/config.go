@@ -48,17 +48,18 @@ func (c *Config) GetVMDefaults() VMDefaults {
 
 // Paths returns commonly used paths derived from the config
 type Paths struct {
-	Config   string
-	VMs      string
-	Images   string
-	Kernels  string
-	Rootfs   string
-	Sockets  string
-	Logs     string
-	State    string
-	Mounts   string
-	Clusters string
-	SSH      string
+	Config    string
+	VMs       string
+	Images    string
+	Kernels   string
+	Rootfs    string
+	Sockets   string
+	Logs      string
+	State     string
+	Mounts    string
+	Clusters  string
+	SSH       string
+	Snapshots string
 }
 
 // detectDefaultInterface finds the network interface used for the default route
@@ -101,17 +102,18 @@ func DefaultConfig() *Config {
 // GetPaths returns all standard paths based on the data directory
 func (c *Config) GetPaths() *Paths {
 	return &Paths{
-		Config:   filepath.Join(c.DataDir, "config"),
-		VMs:      filepath.Join(c.DataDir, "vms"),
-		Images:   filepath.Join(c.DataDir, "images"),
-		Kernels:  filepath.Join(c.DataDir, "images", "kernels"),
-		Rootfs:   filepath.Join(c.DataDir, "images", "rootfs"),
-		Sockets:  filepath.Join(c.DataDir, "sockets"),
-		Logs:     filepath.Join(c.DataDir, "logs"),
-		State:    filepath.Join(c.DataDir, "state"),
-		Mounts:   filepath.Join(c.DataDir, "mounts"),
-		Clusters: filepath.Join(c.DataDir, "clusters"),
-		SSH:      filepath.Join(c.DataDir, "ssh"),
+		Config:    filepath.Join(c.DataDir, "config"),
+		VMs:       filepath.Join(c.DataDir, "vms"),
+		Images:    filepath.Join(c.DataDir, "images"),
+		Kernels:   filepath.Join(c.DataDir, "images", "kernels"),
+		Rootfs:    filepath.Join(c.DataDir, "images", "rootfs"),
+		Sockets:   filepath.Join(c.DataDir, "sockets"),
+		Logs:      filepath.Join(c.DataDir, "logs"),
+		State:     filepath.Join(c.DataDir, "state"),
+		Mounts:    filepath.Join(c.DataDir, "mounts"),
+		Clusters:  filepath.Join(c.DataDir, "clusters"),
+		SSH:       filepath.Join(c.DataDir, "ssh"),
+		Snapshots: filepath.Join(c.DataDir, "snapshots"),
 	}
 }
 
@@ -129,6 +131,7 @@ func (c *Config) EnsureDirectories() error {
 		paths.Mounts,
 		paths.Clusters,
 		paths.SSH,
+		paths.Snapshots,
 	}
 
 	for _, dir := range dirs {
