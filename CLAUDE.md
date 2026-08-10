@@ -75,7 +75,7 @@ Future work (P4 — significant effort, deferred):
 - `scripts/vmm.service` — Systemd unit for VM auto-start on boot
 - `scripts/vmm-web.service` — Systemd unit for web UI (reads password from `/etc/vmm-web/environment`)
 
-Data directory: `/var/lib/vmm` (vms, images, kernels, logs, sockets, mounts, clusters, ssh, snapshots)
+Data directory: `/var/lib/vmm` (vms, images, kernels, logs, sockets, mounts, clusters, ssh, snapshots). Configurable via the `data_dir` field in `config.json`, set with `vmm config init --data-dir PATH` or `vmm config set data_dir PATH`. All subpaths derive from it via `Config.GetPaths()`; changing it repoints future operations only and does not move existing data.
 
 ## CLI Commands
 
@@ -94,7 +94,7 @@ vmm image list [--remote]|pull [name]|import|snapshot|delete
 vmm kernel list [--remote]|pull <name>|import|delete|build
 vmm cluster create <name> [--type kubeadm|openshift] [--cni cilium|calico] [--workers N] [--cpus N] [--memory MB] [--disk MB] [--k8s-version VER] [--openshift-version VER] [--ssh-key PATH] [--image NAME] [--kernel NAME] [--admin-workstation]
 vmm cluster delete|list|kubeconfig <name>
-vmm config show|init
+vmm config show|init [--data-dir PATH]|set <key> <value>   # set supports: data_dir
 vmm version [--json]
 ```
 

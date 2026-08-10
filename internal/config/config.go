@@ -3,6 +3,7 @@ package config
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,6 +98,19 @@ func DefaultConfig() *Config {
 		Gateway:       DefaultGateway,
 		HostInterface: detectDefaultInterface(),
 	}
+}
+
+// ValidateDataDir checks that a data directory path is usable: it must be a
+// non-empty absolute path. This is a filesystem path rather than an identifier,
+// so the identifier name pattern in internal/validate does not apply.
+func ValidateDataDir(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("data directory cannot be empty")
+	}
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("data directory must be an absolute path: %q", path)
+	}
+	return nil
 }
 
 // GetPaths returns all standard paths based on the data directory
