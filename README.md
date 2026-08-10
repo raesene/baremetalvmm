@@ -50,9 +50,16 @@ Use `--yes` or `-y` to skip the confirmation prompt. The script is idempotent an
 # Initialize config
 vmm config init
 
+# (Optional) store VM data somewhere other than the default /var/lib/vmm
+sudo vmm config init --data-dir /srv/vmm-data
+
 # Pull the default kernel and rootfs images
 sudo vmm image pull
 ```
+
+The data directory (default `/var/lib/vmm`) can be changed later with
+`sudo vmm config set data_dir <path>`. See [docs/configuration.md](docs/configuration.md#data-directory)
+for details. Changing it does not move existing data.
 
 ### Basic Usage
 

@@ -81,10 +81,18 @@ func configCmd() *cobra.Command {
 		},
 	}
 
+	var initDataDir string
 	initCmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize VMM directories and default config",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if initDataDir != "" {
+				if err := config.ValidateDataDir(initDataDir); err != nil {
+					return err
+				}
+				cfg.DataDir = initDataDir
+			}
+
 			if err := cfg.EnsureDirectories(); err != nil {
 				return fmt.Errorf("failed to create directories: %w", err)
 			}
@@ -99,7 +107,45 @@ func configCmd() *cobra.Command {
 			return nil
 		},
 	}
+	initCmd.Flags().StringVar(&initDataDir, "data-dir", "", "Data directory for VM state, images, and logs (default /var/lib/vmm)")
 
-	cmd.AddCommand(showCmd, initCmd)
+	setCmd := &cobra.Command{
+		Use:   "set <key> <value>",
+		Short: "Set a configuration value",
+		Long: "Set a configuration value and save it to the config file.\n\n" +
+			"Supported keys:\n" +
+			"  data_dir  Directory where VMM stores all state, images, and logs.",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			key, value := args[0], args[1]
+			switch key {
+			case "data_dir":
+				if err := config.ValidateDataDir(value); err != nil {
+					return err
+				}
+				oldDir := cfg.DataDir
+				cfg.DataDir = value
+
+				if err := cfg.EnsureDirectories(); err != nil {
+					return fmt.Errorf("failed to create directories: %w", err)
+				}
+				if err := cfg.Save(config.ConfigPath()); err != nil {
+					return fmt.Errorf("failed to save config: %w", err)
+				}
+
+				fmt.Printf("data_dir: %s -> %s\n", oldDir, value)
+				fmt.Printf("Config saved to: %s\n", config.ConfigPath())
+				if oldDir != value {
+					fmt.Printf("\nNote: existing data in %s was not moved.\n", oldDir)
+					fmt.Println("Move it manually if you want to keep existing VMs, images, and snapshots.")
+				}
+				return nil
+			default:
+				return fmt.Errorf("unknown config key %q (supported: data_dir)", key)
+			}
+		},
+	}
+
+	cmd.AddCommand(showCmd, initCmd, setCmd)
 	return cmd
 }

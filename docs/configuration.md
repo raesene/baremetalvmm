@@ -8,6 +8,38 @@ VMM stores its configuration at `~/.config/vmm/config.json`. Initialize it with:
 vmm config init
 ```
 
+## Data Directory
+
+VMM stores all of its state — VM configs, images, kernels, logs, sockets, mounts,
+clusters, SSH keys, and snapshots — under a single data directory. The default is
+`/var/lib/vmm`.
+
+You can point VMM at a different location, for example a larger or faster disk:
+
+```bash
+# Set the location when initializing:
+sudo vmm config init --data-dir /srv/vmm-data
+
+# Or change it on an existing installation:
+sudo vmm config set data_dir /srv/vmm-data
+```
+
+Both commands validate the path (it must be absolute), create the directory tree
+at the new location, and save the value to `config.json` (the `data_dir` field).
+The resolution order is: `--data-dir` flag on `config init` > saved `data_dir` in
+`config.json` > built-in default (`/var/lib/vmm`).
+
+> **Changing the data directory does not move existing data.** It only repoints
+> future operations. If you already have VMs, images, or snapshots in the old
+> location and want to keep them, stop all VMs and move the directory contents to
+> the new location yourself.
+
+> **Note for systemd:** `vmm.service` and `vmm-web.service` run as root and read
+> root's config at `/root/.config/vmm/config.json`. If you set a custom data
+> directory as a normal user (even via `sudo`, which writes to the invoking
+> user's home), the systemd services will not see it. Run `sudo vmm config set`
+> as root, or ensure both point at the same config file.
+
 ## Configurable VM Defaults
 
 You can set default values for `vmm create` parameters in the config file under a `vm_defaults` section. This is useful if you typically use the same settings for most VMs.
