@@ -1363,6 +1363,8 @@ func (m *Manager) ListAvailableReleases() ([]AvailableRelease, error) {
 			func(tag string) string { return "Kubernetes rootfs (" + tag + ", kubeadm/containerd)" }},
 		{"security-rootfs-", "security-rootfs.ext4.gz", "security-rootfs", "rootfs",
 			func(_ string) string { return "Security rootfs (Ubuntu 24.04, container/K8s tools)" }},
+		{"dev-rootfs-", "dev-rootfs.ext4.gz", "dev-rootfs", "rootfs",
+			func(_ string) string { return "Dev rootfs (Ubuntu 24.04, development tools)" }},
 	}
 
 	seen := make(map[string]bool)
@@ -1524,6 +1526,8 @@ func describeRootfs(name string, isDefault bool) string {
 		return "Kubernetes image (kubeadm/containerd pre-installed)"
 	case strings.HasPrefix(name, "security-"):
 		return "Security testing image (container/K8s security tools)"
+	case strings.HasPrefix(name, "dev-"):
+		return "Development image (build tools, editors, utilities)"
 	case strings.HasPrefix(name, "minimal-"):
 		return "Minimal image (reduced package set)"
 	default:

@@ -1,0 +1,98 @@
+name: Build Dev Rootfs
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_image:
+        description: 'Docker base image (e.g. ubuntu:24.04)'
+        required: false
+        default: 'ubuntu:24.04'
+  push:
+    paths:
+      - 'scripts/build-dev-rootfs.sh'
+      - 'scripts/dev-rootfs-files/**'
+      - '.github/workflows/build-dev-rootfs.yml'
+    branches:
+      - main
+  schedule:
+    # Weekly on Monday at 10:00 UTC (after security rootfs build at 09:00)
+    - cron: '0 10 * * 1'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      BASE_IMAGE: ${{ github.event.inputs.base_image || 'ubuntu:24.04' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Build dev rootfs
+        run: |
+          chmod +x scripts/build-dev-rootfs.sh
+          sudo bash scripts/build-dev-rootfs.sh \
+            --base-image "$BASE_IMAGE" \
+            --name dev-rootfs.ext4 \
+            --size 4096 \
+            --output "${{ github.workspace }}"
+
+      - name: Generate checksum
+        run: |
+          sha256sum dev-rootfs.ext4.gz > dev-rootfs.ext4.gz.sha256
+
+      - name: Delete previous release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="dev-rootfs-latest"
+          if gh release view "$TAG" &>/dev/null; then
+            echo "Deleting previous release $TAG"
+            gh release delete "$TAG" --yes --cleanup-tag
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="dev-rootfs-latest"
+          TITLE="Dev Rootfs (Ubuntu 24.04, $(date +%Y-%m-%d)) — Development Tools"
+          NOTES="Firecracker-compatible Ubuntu 24.04 rootfs with development tools pre-installed.
+
+          **Use this rootfs for development VMs** (\`vmm create --image dev-rootfs\`).
+
+          This release is replaced on each build — only the latest version is kept.
+
+          Pre-configured with:
+          - systemd, OpenSSH server, Docker Engine (started on boot), containerd
+          - **Languages**: Go (latest stable), Node.js 22, python3
+          - **AI tools**: pi coding agent
+          - **Build tools**: build-essential, make, git
+          - **Editors**: vim, nano
+          - **Utilities**: curl, wget, jq, tmux, htop, tree, strace, ltrace, file, less
+          - **Extras**: starship prompt
+          - Serial console on ttyS0, systemd-networkd
+
+          **Pair with**: \`kernel-*\` (Default Kernel)
+
+          Quick start:
+          \`\`\`
+          # Download and decompress
+          gunzip dev-rootfs.ext4.gz
+          sudo mv dev-rootfs.ext4 /var/lib/vmm/images/rootfs/dev-rootfs.ext4
+
+          # Create a development VM
+          sudo vmm create devvm --image dev-rootfs --ssh-key ~/.ssh/id_ed25519.pub
+          sudo vmm start devvm
+          sudo vmm ssh devvm
+          \`\`\`
+
+          Built from \`$BASE_IMAGE\` by GitHub Actions using \`scripts/build-dev-rootfs.sh\`."
+
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            dev-rootfs.ext4.gz \
+            dev-rootfs.ext4.gz.sha256
