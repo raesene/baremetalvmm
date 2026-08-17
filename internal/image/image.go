@@ -1260,9 +1260,15 @@ func InjectSSHKey(rootfsPath, sshPublicKey string) error {
 		return fmt.Errorf("failed to create .ssh directory: %w", err)
 	}
 
-	// Write the authorized_keys file
+	// Merge with any keys already present in the rootfs image
 	authKeysPath := filepath.Join(sshDir, "authorized_keys")
-	if err := os.WriteFile(authKeysPath, []byte(sshPublicKey), 0600); err != nil {
+	existing, _ := os.ReadFile(authKeysPath)
+	merged := strings.TrimSpace(string(existing))
+	if merged != "" {
+		merged += "\n"
+	}
+	merged += sshPublicKey
+	if err := os.WriteFile(authKeysPath, []byte(merged), 0600); err != nil {
 		return fmt.Errorf("failed to write authorized_keys: %w", err)
 	}
 
