@@ -120,6 +120,15 @@ Create flag defaults can be set in `~/.config/vmm/config.json` under `vm_default
 - Prefix-based naming drives descriptions in `describeKernel()`/`describeRootfs()` in `internal/image/image.go`
 - Prefixes: `k8s-`, `security-`, `kasan-`, `debug-`, `minimal-`, or custom
 
+### Kernel build profiles (`scripts/build-kernel.sh --config-profile`)
+
+All profiles start from Firecracker's minimal CI config and layer options on top.
+
+- **`default`** — Minimal Firecracker config with Docker/K8s networking (BPF JIT, cgroups, namespaces, iptables/nftables, overlay FS). Used for standalone VMs (6.1 LTS).
+- **`k8s`** — Extends `default` with Datadog and eBPF observability support. Adds BTF (`CONFIG_DEBUG_INFO_BTF`, requires `dwarves` package for `pahole`), dynamic ftrace (`CONFIG_FUNCTION_TRACER`, `CONFIG_DYNAMIC_FTRACE`), kprobes/uprobes, perf events, traffic-control BPF, conntrack netlink, and securityfs. Build fails if any of the 22 mandatory options are missing after `olddefconfig`. Used for k8s clusters (6.6 LTS).
+- **`security`** — Extends `default` with broad subsystem coverage for vulnerability research (IPsec, io_uring, SCTP, userfaultfd, AppArmor/SELinux, ftrace/kprobes, etc.). No BTF.
+- **`security-kasan`** — Extends `security` with KASAN memory sanitizer. Requires ~2x memory.
+
 ## CI/CD
 
 ### CI Checks (`.github/workflows/ci.yml`)
@@ -136,7 +145,7 @@ Dependabot opens weekly PRs for Go module and GitHub Actions version updates. Mi
 ### Release Workflows
 
 - `release.yaml` — GoReleaser binary release on `v*` tags
-- `build-kernel.yml` — kernel compilation (default, k8s, security, cifs-vuln variants)
+- `build-kernel.yml` — kernel compilation (default, k8s, security, cifs-vuln variants). The k8s job requires `dwarves` for BTF generation.
 - `build-rootfs.yml` / `build-k8s-rootfs.yml` / `build-security-rootfs.yml` — rootfs image builds
 
 ## Building
@@ -172,7 +181,7 @@ Requirements: root access, KVM (`/dev/kvm`), Firecracker in PATH.
 
 - `v*` — binary releases (GoReleaser)
 - `kernel-*` — default kernel (6.1 series)
-- `k8s-kernel-*` — Kubernetes kernel (6.6 series)
+- `k8s-kernel-*` — Kubernetes kernel (6.6 series, BTF/BPF/tracing for Datadog eBPF agents)
 - `security-kernel-*` — security testing kernels (5.10, 5.15, 6.1, 6.6, 6.12, 6.18 LTS series, broad module coverage)
 - `kasan-kernel-*` — KASAN security kernels (same LTS series, memory sanitizer enabled)
 - `rootfs-*` — default rootfs (format: `rootfs-24.04-YYYYMMDD`)
