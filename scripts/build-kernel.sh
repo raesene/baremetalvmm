@@ -387,11 +387,18 @@ create_k8s_kernel_config() {
     ./scripts/config --enable CONFIG_UPROBE_EVENTS
     ./scripts/config --enable CONFIG_TRACEPOINTS
     ./scripts/config --enable CONFIG_FTRACE
+    ./scripts/config --enable CONFIG_FUNCTION_TRACER
+    ./scripts/config --enable CONFIG_DYNAMIC_FTRACE
+    ./scripts/config --enable CONFIG_DYNAMIC_FTRACE_WITH_REGS
+    ./scripts/config --enable CONFIG_FTRACE_MCOUNT_RECORD
     ./scripts/config --enable CONFIG_FTRACE_SYSCALLS
     ./scripts/config --enable CONFIG_BPF_EVENTS
     ./scripts/config --enable CONFIG_DEBUG_FS
     ./scripts/config --enable CONFIG_KALLSYMS
     ./scripts/config --enable CONFIG_KALLSYMS_ALL
+
+    # --- Securityfs (Datadog system-probe mounts /sys/kernel/security) ---
+    ./scripts/config --enable CONFIG_SECURITYFS
 
     # --- BTF for CO-RE (required by Datadog system-probe) ---
     ./scripts/config --disable CONFIG_DEBUG_INFO_NONE
@@ -419,9 +426,11 @@ create_k8s_kernel_config() {
     for opt in \
         CONFIG_BPF_SYSCALL CONFIG_BPF_JIT CONFIG_CGROUP_BPF \
         CONFIG_PERF_EVENTS CONFIG_KPROBES CONFIG_KPROBE_EVENTS \
-        CONFIG_UPROBE_EVENTS CONFIG_FTRACE CONFIG_BPF_EVENTS \
+        CONFIG_UPROBE_EVENTS CONFIG_FTRACE CONFIG_FUNCTION_TRACER \
+        CONFIG_DYNAMIC_FTRACE CONFIG_DYNAMIC_FTRACE_WITH_REGS \
+        CONFIG_FTRACE_MCOUNT_RECORD CONFIG_BPF_EVENTS \
         CONFIG_TRACING CONFIG_DEBUG_INFO_BTF CONFIG_DEBUG_FS \
-        CONFIG_NET_CLS_BPF CONFIG_NET_ACT_BPF \
+        CONFIG_NET_CLS_BPF CONFIG_NET_ACT_BPF CONFIG_SECURITYFS \
         CONFIG_CFS_BANDWIDTH CONFIG_CGROUPS; do
         if grep -q "^${opt}=y" .config; then
             log_info "  $opt: enabled"
