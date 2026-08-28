@@ -406,6 +406,9 @@ create_k8s_kernel_config() {
     ./scripts/config --enable CONFIG_DEBUG_INFO_BTF
     ./scripts/config --enable CONFIG_DEBUG_INFO_BTF_MODULES
 
+    # --- Conntrack netlink (Datadog NPM flow tracking) ---
+    ./scripts/config --enable CONFIG_NF_CT_NETLINK
+
     # --- Traffic control for network-aware workload protection ---
     ./scripts/config --enable CONFIG_NET_SCHED
     ./scripts/config --enable CONFIG_NET_CLS
@@ -430,6 +433,7 @@ create_k8s_kernel_config() {
         CONFIG_DYNAMIC_FTRACE CONFIG_DYNAMIC_FTRACE_WITH_REGS \
         CONFIG_FTRACE_MCOUNT_RECORD CONFIG_BPF_EVENTS \
         CONFIG_TRACING CONFIG_DEBUG_INFO_BTF CONFIG_DEBUG_FS \
+        CONFIG_NF_CT_NETLINK \
         CONFIG_NET_CLS_BPF CONFIG_NET_ACT_BPF CONFIG_SECURITYFS \
         CONFIG_CFS_BANDWIDTH CONFIG_CGROUPS; do
         if grep -q "^${opt}=y" .config; then
