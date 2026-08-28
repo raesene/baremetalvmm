@@ -37,13 +37,15 @@ Options:
                              Supported: 5.10, 5.15, 6.1, 6.6, 6.12, 6.18
   --name NAME                Name for the output kernel file (required)
   --config-profile PROFILE   Configuration profile (default: default)
-                             Profiles: default, security, security-kasan
+                             Profiles: default, k8s, security, security-kasan
   --output DIR               Output directory (default: /var/lib/vmm/images/kernels)
   --no-cleanup               Keep build directory after completion
   --help                     Show this help message
 
 Profiles:
   default         Minimal Firecracker config with Docker/K8s networking support
+  k8s             Kubernetes profile with BTF, tracing, and traffic-control BPF
+                  for Datadog and other eBPF-based observability agents
   security        Broad module coverage matching Ubuntu 24.04 for vulnerability
                   research and security testing (IPsec, SCTP, io_uring, etc.)
   security-kasan  Security profile + KASAN (Kernel Address Sanitizer) for
@@ -85,6 +87,11 @@ check_dependencies() {
         "libssl-dev"
         "wget"
     )
+
+    # BTF generation requires pahole from the dwarves package
+    if [ "$CONFIG_PROFILE" = "k8s" ]; then
+        packages+=("dwarves")
+    fi
 
     for pkg in "${packages[@]}"; do
         if ! dpkg -l "$pkg" &>/dev/null; then
@@ -357,6 +364,77 @@ create_kernel_config() {
             grep "${opt}" .config || echo "${opt} not found in .config"
         fi
     done
+}
+
+create_k8s_kernel_config() {
+    local kernel_dir="$1"
+
+    log_info "Applying Kubernetes profile (BPF/BTF, tracing, traffic-control for Datadog compatibility)..."
+
+    cd "$kernel_dir"
+
+    # Start with the default Firecracker config (includes networking, cgroups, basic BPF)
+    create_kernel_config "$kernel_dir"
+
+    # --- BPF enhancements ---
+    ./scripts/config --enable CONFIG_BPF_STREAM_PARSER
+
+    # --- Perf events, tracing, and probe attachment ---
+    ./scripts/config --enable CONFIG_PERF_EVENTS
+    ./scripts/config --enable CONFIG_KPROBES
+    ./scripts/config --enable CONFIG_KPROBE_EVENTS
+    ./scripts/config --enable CONFIG_UPROBES
+    ./scripts/config --enable CONFIG_UPROBE_EVENTS
+    ./scripts/config --enable CONFIG_TRACEPOINTS
+    ./scripts/config --enable CONFIG_FTRACE
+    ./scripts/config --enable CONFIG_FTRACE_SYSCALLS
+    ./scripts/config --enable CONFIG_BPF_EVENTS
+    ./scripts/config --enable CONFIG_DEBUG_FS
+    ./scripts/config --enable CONFIG_KALLSYMS
+    ./scripts/config --enable CONFIG_KALLSYMS_ALL
+
+    # --- BTF for CO-RE (required by Datadog system-probe) ---
+    ./scripts/config --disable CONFIG_DEBUG_INFO_NONE
+    ./scripts/config --enable CONFIG_DEBUG_INFO_DWARF5
+    ./scripts/config --enable CONFIG_DEBUG_INFO_BTF
+    ./scripts/config --enable CONFIG_DEBUG_INFO_BTF_MODULES
+
+    # --- Traffic control for network-aware workload protection ---
+    ./scripts/config --enable CONFIG_NET_SCHED
+    ./scripts/config --enable CONFIG_NET_CLS
+    ./scripts/config --enable CONFIG_NET_CLS_ACT
+    ./scripts/config --enable CONFIG_NET_SCH_INGRESS
+    ./scripts/config --enable CONFIG_NET_CLS_BPF
+    ./scripts/config --enable CONFIG_NET_ACT_BPF
+
+    # --- Kernel config/headers access for diagnostics ---
+    ./scripts/config --enable CONFIG_IKHEADERS
+
+    # Resolve dependencies
+    make olddefconfig
+
+    log_info "Kubernetes profile applied — verifying mandatory options..."
+
+    local failed=false
+    for opt in \
+        CONFIG_BPF_SYSCALL CONFIG_BPF_JIT CONFIG_CGROUP_BPF \
+        CONFIG_PERF_EVENTS CONFIG_KPROBES CONFIG_KPROBE_EVENTS \
+        CONFIG_UPROBE_EVENTS CONFIG_FTRACE CONFIG_BPF_EVENTS \
+        CONFIG_TRACING CONFIG_DEBUG_INFO_BTF CONFIG_DEBUG_FS \
+        CONFIG_NET_CLS_BPF CONFIG_NET_ACT_BPF \
+        CONFIG_CFS_BANDWIDTH CONFIG_CGROUPS; do
+        if grep -q "^${opt}=y" .config; then
+            log_info "  $opt: enabled"
+        else
+            log_error "  REQUIRED option missing: $opt"
+            failed=true
+        fi
+    done
+
+    if [ "$failed" = true ]; then
+        log_error "One or more required kernel options are missing. Aborting."
+        exit 1
+    fi
 }
 
 create_security_kernel_config() {
@@ -677,10 +755,10 @@ if [ -z "$NAME" ]; then
 fi
 
 case "$CONFIG_PROFILE" in
-    default|security|security-kasan) ;;
+    default|k8s|security|security-kasan) ;;
     *)
         log_error "Unknown config profile: $CONFIG_PROFILE"
-        log_info "Supported profiles: default, security, security-kasan"
+        log_info "Supported profiles: default, k8s, security, security-kasan"
         exit 1
         ;;
 esac
@@ -706,6 +784,9 @@ KERNEL_URL="$(get_kernel_url "$VERSION")"
 KERNEL_DIR="$(download_kernel "$KERNEL_URL")"
 
 case "$CONFIG_PROFILE" in
+    k8s)
+        create_k8s_kernel_config "$KERNEL_DIR"
+        ;;
     security)
         create_security_kernel_config "$KERNEL_DIR"
         ;;

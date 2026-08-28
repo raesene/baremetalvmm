@@ -509,7 +509,7 @@ jobs:
         if: steps.check_release.outputs.exists == 'false'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq build-essential flex bison bc libelf-dev libssl-dev wget curl jq
+          sudo apt-get install -y -qq build-essential flex bison bc libelf-dev libssl-dev wget curl jq dwarves
 
       - name: Build Kubernetes-compatible kernel
         if: steps.check_release.outputs.exists == 'false'
@@ -518,6 +518,7 @@ jobs:
           sudo bash scripts/build-kernel.sh \
             --version "$KERNEL_SERIES" \
             --name k8s-vmlinux.bin \
+            --config-profile k8s \
             --output "${{ github.workspace }}"
 
       - name: Generate checksum
@@ -531,20 +532,22 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="k8s-kernel-${{ steps.kernel_version.outputs.version }}"
-          TITLE="Kubernetes VM Kernel ${{ steps.kernel_version.outputs.version }} (Linux ${KERNEL_SERIES} LTS, Cilium/BPF)"
-          NOTES="Firecracker-compatible Linux kernel ${{ steps.kernel_version.outputs.version }} for Kubernetes clusters.
+          TITLE="Kubernetes VM Kernel ${{ steps.kernel_version.outputs.version }} (Linux ${KERNEL_SERIES} LTS, BTF/BPF/Datadog)"
+          NOTES="Firecracker-compatible Linux kernel ${{ steps.kernel_version.outputs.version }} for Kubernetes clusters with eBPF observability support.
 
           **Use this kernel for Kubernetes clusters** (\`vmm cluster create\`). For standalone VMs, use the \`kernel-*\` release instead.
 
-          Built from the ${KERNEL_SERIES} LTS series with full Kubernetes and Cilium CNI support:
+          Built from the ${KERNEL_SERIES} LTS series with full Kubernetes, Cilium CNI, and Datadog eBPF support:
           - BPF JIT and eBPF subsystem (required by Cilium)
+          - BTF (BPF Type Format) for CO-RE — enables Datadog system-probe, Cilium, and other eBPF agents
+          - Perf events, kprobes, uprobes, tracepoints, ftrace (eBPF program attachment)
+          - Traffic control with BPF classifier/action (Datadog CWS network detection)
           - VXLAN and Geneve tunnel devices (Cilium networking)
           - Cgroups v2 with CPU bandwidth control (Kubernetes resource limits)
           - Namespaces, overlay filesystem, bridge networking
           - iptables/nftables with all match modules
-          - containerd support (overlay, cgroups, namespaces)
+          - /proc/config.gz and /sys/kernel/kheaders.tar.xz for diagnostics
           - Virtio block and network drivers
-          - Kernel modules enabled (required for BPF JIT)
 
           **Pair with**: \`k8s-rootfs-*\` (Kubernetes Rootfs with kubeadm pre-installed)
 
@@ -554,7 +557,7 @@ jobs:
           sudo vmm cluster create mycluster --kernel k8s-kernel --ssh-key ~/.ssh/id_ed25519.pub
           \`\`\`
 
-          Built by GitHub Actions from \`scripts/build-kernel.sh\`."
+          Built by GitHub Actions from \`scripts/build-kernel.sh --config-profile k8s\`."
 
           gh release create "$TAG" \
             --title "$TITLE" \
