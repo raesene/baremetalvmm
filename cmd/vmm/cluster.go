@@ -450,11 +450,14 @@ func startClusterVM(vmName string) (string, error) {
 		}
 	}
 
-	ip, err := netMgr.AllocateIP(usedVMIPs(paths.VMs))
-	if err != nil {
-		return "", fmt.Errorf("failed to allocate IP: %w", err)
+	// Reuse existing IP if the VM already has one, otherwise allocate
+	if existingVM.IPAddress == "" {
+		ip, err := netMgr.AllocateIP(usedVMIPs(paths.VMs))
+		if err != nil {
+			return "", fmt.Errorf("failed to allocate IP: %w", err)
+		}
+		existingVM.IPAddress = ip
 	}
-	existingVM.IPAddress = ip
 
 	existingVM.State = vm.StateStarting
 	existingVM.Save(paths.VMs)
@@ -487,7 +490,7 @@ func startClusterVM(vmName string) (string, error) {
 	existingVM.StartedAt = time.Now()
 	existingVM.Save(paths.VMs)
 
-	return ip, nil
+	return existingVM.IPAddress, nil
 }
 
 func clusterDeleteCmd() *cobra.Command {

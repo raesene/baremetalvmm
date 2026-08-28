@@ -152,12 +152,14 @@ func startCmd() *cobra.Command {
 				})
 			}
 
-			// Allocate IP, skipping any already in use
-			ip, err := netMgr.AllocateIP(usedVMIPs(paths.VMs))
-			if err != nil {
-				return fmt.Errorf("failed to allocate IP: %w", err)
+			// Reuse existing IP if the VM already has one, otherwise allocate
+			if existingVM.IPAddress == "" {
+				ip, err := netMgr.AllocateIP(usedVMIPs(paths.VMs))
+				if err != nil {
+					return fmt.Errorf("failed to allocate IP: %w", err)
+				}
+				existingVM.IPAddress = ip
 			}
-			existingVM.IPAddress = ip
 			cleanupFuncs = append(cleanupFuncs, func() {
 				existingVM.IPAddress = ""
 				existingVM.State = vm.StateError

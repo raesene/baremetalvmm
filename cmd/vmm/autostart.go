@@ -128,9 +128,11 @@ func autostartCmd() *cobra.Command {
 					}
 				}
 
-				// Allocate IP
-				ip, _ := netMgr.AllocateIP(usedVMIPs(paths.VMs))
-				v.IPAddress = ip
+				// Reuse existing IP if the VM already has one, otherwise allocate
+				if v.IPAddress == "" {
+					ip, _ := netMgr.AllocateIP(usedVMIPs(paths.VMs))
+					v.IPAddress = ip
+				}
 
 				// Start VM
 				ctx := context.Background()
