@@ -62,7 +62,7 @@ go test ./...
 │   └── web/                  # Web UI server, handlers, auth
 ├── web/
 │   ├── embed.go              # Go embed directive for assets
-│   ├── templates/            # HTML templates (HTMX + Tailwind)
+│   ├── templates/            # HTML templates (HTMX + web/static/style.css)
 │   └── static/               # JS/CSS assets (htmx, sse, styles)
 ├── scripts/
 │   ├── install.sh            # Installation script

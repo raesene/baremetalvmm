@@ -1,7 +1,9 @@
 // Auto-dismiss flash messages
 setTimeout(function() {
     var flash = document.getElementById('flash');
-    if (flash) flash.style.display = 'none';
+    if (!flash) return;
+    flash.classList.add('is-fading');
+    setTimeout(function() { flash.remove(); }, 400);
 }, 5000);
 
 // Add CSRF token to HTMX requests
@@ -9,6 +11,75 @@ document.body.addEventListener('htmx:configRequest', function(event) {
     var token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     event.detail.headers['X-CSRF-Token'] = token;
 });
+
+// Live VM state: /events emits {"name":..., "state":...} whenever a VM changes
+// state. Update any status chip for that VM on the page and, on the dashboard,
+// append a line to the activity log.
+(function() {
+    var statusEl = document.getElementById('event-status');
+    if (!statusEl || !window.EventSource) return;
+    var statusText = document.getElementById('event-status-text');
+    var log = document.getElementById('event-log');
+    var logChip = document.getElementById('log-chip');
+    var levels = { running: 'ok', created: 'info', stopped: 'info', starting: 'warn', stopping: 'warn', error: 'err', deleted: 'warn' };
+
+    function setLive(live) {
+        statusEl.classList.toggle('is-live', live);
+        statusEl.classList.toggle('is-down', !live);
+        statusText.textContent = live ? 'event stream live' : 'event stream reconnecting';
+        if (logChip) logChip.className = live ? 'chip chip-running' : 'chip chip-error';
+    }
+
+    function updateChips(name, state) {
+        document.querySelectorAll('[data-vm]').forEach(function(el) {
+            if (el.getAttribute('data-vm') !== name) return;
+            var chip = el.querySelector('[data-state]');
+            if (!chip) return;
+            chip.className = 'chip chip-' + state;
+            var label = chip.querySelector('[data-state-label]');
+            if (label) label.textContent = state;
+        });
+    }
+
+    function appendLog(name, state) {
+        if (!log) return;
+        var empty = log.querySelector('.log-empty');
+        if (empty) empty.remove();
+
+        var li = document.createElement('li');
+        li.className = 'is-new';
+        var ts = document.createElement('span');
+        ts.className = 'ts';
+        ts.textContent = new Date().toLocaleTimeString([], { hour12: false });
+        var lvl = document.createElement('span');
+        var level = levels[state] || 'info';
+        lvl.className = 'lvl-' + level;
+        lvl.textContent = '[' + level.toUpperCase() + ']';
+        var obj = document.createElement('span');
+        obj.className = 'obj';
+        var vmName = document.createElement('span');
+        vmName.className = 'tok-data';
+        vmName.textContent = name;
+        obj.appendChild(vmName);
+        obj.appendChild(document.createTextNode(' → ' + state));
+        li.appendChild(ts);
+        li.appendChild(lvl);
+        li.appendChild(obj);
+        log.insertBefore(li, log.firstChild);
+        while (log.children.length > 50) log.removeChild(log.lastChild);
+    }
+
+    var source = new EventSource('/events');
+    source.addEventListener('open', function() { setLive(true); });
+    source.addEventListener('error', function() { setLive(false); });
+    source.addEventListener('vm-update', function(e) {
+        var msg;
+        try { msg = JSON.parse(e.data); } catch (err) { return; }
+        if (!msg || !msg.name || !msg.state) return;
+        updateChips(msg.name, msg.state);
+        appendLog(msg.name, msg.state);
+    });
+})();
 
 // Port forward management on VM create form
 (function() {
@@ -18,18 +89,18 @@ document.body.addEventListener('htmx:configRequest', function(event) {
 
     addBtn.addEventListener('click', function() {
         var row = document.createElement('div');
-        row.className = 'flex items-center space-x-2 mb-2';
-        row.innerHTML = '<input type="number" name="host_port" min="1" max="65535" placeholder="Host port" class="w-1/3 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">' +
-            '<span class="text-gray-400">:</span>' +
-            '<input type="number" name="guest_port" min="1" max="65535" placeholder="Guest port" class="w-1/3 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">' +
-            '<select name="protocol" class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"><option value="tcp">TCP</option><option value="udp">UDP</option></select>' +
-            '<button type="button" class="remove-port-forward text-red-500 hover:text-red-700 text-sm px-2" title="Remove">\u2715</button>';
+        row.className = 'pf-row';
+        row.innerHTML = '<input type="number" name="host_port" min="1" max="65535" placeholder="host port" class="input">' +
+            '<span class="pf-sep">→</span>' +
+            '<input type="number" name="guest_port" min="1" max="65535" placeholder="guest port" class="input">' +
+            '<select name="protocol" class="input"><option value="tcp">tcp</option><option value="udp">udp</option></select>' +
+            '<button type="button" class="pf-remove" title="Remove">✕</button>';
         container.appendChild(row);
     });
 
     container.addEventListener('click', function(e) {
-        if (e.target.classList.contains('remove-port-forward')) {
-            e.target.closest('.flex').remove();
+        if (e.target.classList.contains('pf-remove')) {
+            e.target.closest('.pf-row').remove();
         }
     });
 })();
@@ -52,19 +123,18 @@ document.addEventListener('submit', function(e) {
     if (btn && btn.getAttribute('data-busy')) {
         btn.disabled = true;
         btn.textContent = btn.getAttribute('data-busy');
-        btn.classList.add('opacity-60', 'cursor-wait');
+        btn.classList.add('is-busy');
     }
 });
 
-// Show spinner on download buttons
+// Show a busy state on download buttons
 document.addEventListener('submit', function(e) {
     if (!e.target.classList.contains('download-form')) return;
     var btn = e.target.querySelector('.download-btn');
     if (btn) {
         btn.disabled = true;
-        btn.textContent = 'Downloading...';
-        btn.classList.remove('bg-green-600', 'hover:bg-green-700');
-        btn.classList.add('bg-gray-400', 'cursor-wait');
+        btn.innerHTML = '<span class="spinner"></span> Downloading';
+        btn.classList.add('is-busy');
     }
 });
 
@@ -89,8 +159,8 @@ document.addEventListener('submit', function(e) {
 
     function apply() {
         var isOcp = typeSel.value === 'openshift';
-        kubeadmEls.forEach(function(el) { el.style.display = isOcp ? 'none' : ''; });
-        openshiftEls.forEach(function(el) { el.style.display = isOcp ? '' : 'none'; });
+        kubeadmEls.forEach(function(el) { el.classList.toggle('hidden', isOcp); });
+        openshiftEls.forEach(function(el) { el.classList.toggle('hidden', !isOcp); });
         // A disabled control is not submitted, so the hidden image select won't
         // be sent (and won't trip its required attribute) for OpenShift.
         if (imageSel) { imageSel.disabled = isOcp; imageSel.required = !isOcp; }
@@ -112,13 +182,11 @@ document.addEventListener('submit', function(e) {
     btn.addEventListener('click', function() {
         var key = document.getElementById('api-key').textContent;
         navigator.clipboard.writeText(key).then(function() {
-            btn.textContent = 'Copied!';
-            btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-            btn.classList.add('bg-green-600');
+            btn.textContent = 'Copied';
+            btn.classList.add('is-done');
             setTimeout(function() {
                 btn.textContent = 'Copy';
-                btn.classList.remove('bg-green-600');
-                btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                btn.classList.remove('is-done');
             }, 2000);
         });
     });

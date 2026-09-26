@@ -3,40 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - VMM Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <title>Sign in · vmm</title>
+    <link rel="preload" href="/static/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/azeret-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/style.css">
 </head>
-<body class="bg-gray-50 min-h-screen flex items-center justify-center">
-    <div class="max-w-md w-full">
-        <div class="text-center mb-8">
-            <h1 class="text-3xl font-bold text-gray-900">VMM Dashboard</h1>
-            <p class="mt-2 text-gray-600">Bare Metal MicroVM Manager</p>
+<body>
+<div class="auth">
+    <div class="auth-form">
+        <div class="brand">
+            <span class="brand-glyph">&gt;_</span>
+            <span>
+                <span class="brand-name">vmm</span>
+                <span class="brand-sub">microvm console</span>
+            </span>
         </div>
 
-        <div class="bg-white rounded-lg shadow-md p-8">
-            {{if .Error}}
-            <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 text-sm">
-                {{.Error}}
+        <h1>Every VM is a line<br>you can <em>read back.</em></h1>
+        <p class="lede">Bare-metal Firecracker microVMs and clusters, managed from one console.</p>
+
+        <section class="panel auth-card">
+            <div class="panel-head">
+                <div><span class="hw">auth / session</span><h2>Sign in</h2></div>
             </div>
-            {{end}}
-
-            <form method="POST" action="/login">
-                <div class="mb-4">
-                    <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                    <input type="text" id="username" name="username" value="admin" readonly
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500">
+            <form method="POST" action="/login" class="panel-body">
+                {{if .Error}}
+                <div class="notice notice-error"><span>{{.Error}}</span></div>
+                {{end}}
+                <div class="field">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" value="admin" readonly class="input">
                 </div>
-                <div class="mb-6">
-                    <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                    <input type="password" id="password" name="password" autofocus required
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <div class="field">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" autofocus required class="input">
                 </div>
-                <button type="submit"
-                    class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 font-medium">
-                    Sign In
-                </button>
+                <button type="submit" class="btn btn-primary btn-block">Sign in</button>
             </form>
-        </div>
+        </section>
+
+        <p class="auth-foot">vmm-web · bare metal microvm manager</p>
     </div>
+    <div class="auth-art" role="img" aria-label="Illustration of a bare-metal server with a stack of microVMs rising from it"></div>
+</div>
 </body>
 </html>

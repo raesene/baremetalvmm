@@ -1,215 +1,190 @@
 {{template "layout.html" .}}
 {{define "content"}}
-<div class="flex items-center justify-between mb-6">
+<header class="page-head">
     <div>
-        <div class="flex items-center space-x-3">
-            <h1 class="text-2xl font-bold text-gray-900">{{.VM.Name}}</h1>
-            <span class="badge badge-{{.VM.State}}">{{.VM.State}}</span>
+        <div class="eyebrow"><a href="/vms">Virtual machines</a> / {{.VM.Name}}</div>
+        <div class="page-title" data-vm="{{.VM.Name}}">
+            <h1>{{.VM.Name}}</h1>
+            <span class="chip chip-{{.VM.State}}" data-state><span class="dot"></span><span data-state-label>{{.VM.State}}</span></span>
         </div>
-        <p class="text-gray-500 mt-1">ID: {{.VM.ID}}</p>
+        <p class="lede mono small">{{.VM.ID}}</p>
     </div>
-    <div class="flex items-center space-x-3">
+    <div class="actions">
         {{if eq (printf "%s" .VM.State) "running"}}
-        <a href="/vms/{{.VM.Name}}/terminal" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 font-medium text-sm inline-block">Terminal</a>
+        <a href="/vms/{{.VM.Name}}/terminal" class="btn btn-primary">Terminal</a>
         <form method="POST" action="/vms/{{.VM.Name}}/stop">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-            <button type="submit" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600 font-medium text-sm">Stop</button>
+            <button type="submit" class="btn">Stop</button>
         </form>
         {{else if or (eq (printf "%s" .VM.State) "stopped") (eq (printf "%s" .VM.State) "created")}}
         <form method="POST" action="/vms/{{.VM.Name}}/start">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 font-medium text-sm">Start</button>
+            <button type="submit" class="btn btn-success">Start</button>
         </form>
         {{end}}
         <form method="POST" action="/vms/{{.VM.Name}}/delete">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <input type="hidden" name="_method" value="DELETE">
-            <button type="submit" data-confirm="Delete VM {{.VM.Name}}? This also deletes its snapshots." class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 font-medium text-sm">Delete</button>
+            <button type="submit" data-confirm="Delete VM {{.VM.Name}}? This also deletes its snapshots." class="btn btn-danger">Delete</button>
         </form>
     </div>
+</header>
+
+<div class="cmdline mb-5"><span class="prompt">$</span><span><span class="tok-cmd">vmm ssh</span> <span class="tok-data">{{.VM.Name}}</span></span>{{if .VM.IPAddress}}<span class="tok-flag"># {{.VM.IPAddress}}</span>{{end}}</div>
+
+<div class="grid grid-3">
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="hw">spec / machine</span><h2>Configuration</h2></div>
+        </div>
+        <div class="panel-body">
+            <dl class="kv">
+                <div><dt>vCPUs</dt><dd>{{.VM.CPUs}}</dd></div>
+                <div><dt>Memory</dt><dd>{{.VM.MemoryMB}} MB</dd></div>
+                <div><dt>Disk</dt><dd>{{.VM.DiskSizeMB}} MB</dd></div>
+                {{if .VM.Image}}<div><dt>Image</dt><dd>{{.VM.Image}}</dd></div>{{end}}
+                {{if .VM.Kernel}}<div><dt>Kernel</dt><dd>{{.VM.Kernel}}</dd></div>{{end}}
+                <div><dt>SSH key</dt><dd>{{if .VM.SSHPublicKey}}configured{{else}}<span class="muted">managed key only</span>{{end}}</dd></div>
+            </dl>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="hw">net / tap</span><h2>Network</h2></div>
+        </div>
+        <div class="panel-body">
+            <dl class="kv">
+                <div><dt>IP address</dt><dd class="data">{{if .VM.IPAddress}}{{.VM.IPAddress}}{{else}}<span class="muted">—</span>{{end}}</dd></div>
+                <div><dt>MAC address</dt><dd>{{.VM.MacAddress}}</dd></div>
+                <div><dt>TAP device</dt><dd>{{.VM.TapDevice}}</dd></div>
+                {{if .VM.DNSServers}}
+                <div><dt>DNS servers</dt><dd class="data">{{range $i, $dns := .VM.DNSServers}}{{if $i}}, {{end}}{{$dns}}{{end}}</dd></div>
+                {{end}}
+            </dl>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="hw">proc / firecracker</span><h2>Runtime</h2></div>
+        </div>
+        <div class="panel-body">
+            <dl class="kv">
+                <div><dt>PID</dt><dd>{{if .VM.PID}}{{.VM.PID}}{{else}}<span class="muted">—</span>{{end}}</dd></div>
+                <div><dt>Socket</dt><dd class="xsmall">{{.VM.SocketPath}}</dd></div>
+                <div><dt>Created</dt><dd>{{.VM.CreatedAt.Format "2006-01-02 15:04:05"}}</dd></div>
+                {{if not .VM.StartedAt.IsZero}}
+                <div><dt>Started</dt><dd>{{.VM.StartedAt.Format "2006-01-02 15:04:05"}}</dd></div>
+                {{end}}
+            </dl>
+        </div>
+    </section>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">Configuration</h2>
-        <dl class="space-y-3">
-            <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">vCPUs</dt>
-                <dd class="text-sm font-medium text-gray-900">{{.VM.CPUs}}</dd>
-            </div>
-            <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">Memory</dt>
-                <dd class="text-sm font-medium text-gray-900">{{.VM.MemoryMB}} MB</dd>
-            </div>
-            <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">Disk</dt>
-                <dd class="text-sm font-medium text-gray-900">{{.VM.DiskSizeMB}} MB</dd>
-            </div>
-            {{if .VM.Image}}
-            <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">Image</dt>
-                <dd class="text-sm font-medium text-gray-900">{{.VM.Image}}</dd>
-            </div>
-            {{end}}
-            {{if .VM.Kernel}}
-            <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">Kernel</dt>
-                <dd class="text-sm font-medium text-gray-900">{{.VM.Kernel}}</dd>
-            </div>
-            {{end}}
-            <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">SSH Key</dt>
-                <dd class="text-sm font-medium text-gray-900">{{if .VM.SSHPublicKey}}Configured{{else}}Not set{{end}}</dd>
-            </div>
-        </dl>
-    </div>
-
-    <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">Network</h2>
-        <dl class="space-y-3">
-            <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">IP Address</dt>
-                <dd class="text-sm font-medium text-gray-900">{{if .VM.IPAddress}}{{.VM.IPAddress}}{{else}}-{{end}}</dd>
-            </div>
-            <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">MAC Address</dt>
-                <dd class="text-sm font-medium text-gray-900 font-mono">{{.VM.MacAddress}}</dd>
-            </div>
-            <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">TAP Device</dt>
-                <dd class="text-sm font-medium text-gray-900 font-mono">{{.VM.TapDevice}}</dd>
-            </div>
-            {{if .VM.DNSServers}}
-            <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">DNS Servers</dt>
-                <dd class="text-sm font-medium text-gray-900">{{range $i, $dns := .VM.DNSServers}}{{if $i}}, {{end}}{{$dns}}{{end}}</dd>
-            </div>
-            {{end}}
-        </dl>
-    </div>
-
-    <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">Runtime</h2>
-        <dl class="space-y-3">
-            <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">PID</dt>
-                <dd class="text-sm font-medium text-gray-900">{{if .VM.PID}}{{.VM.PID}}{{else}}-{{end}}</dd>
-            </div>
-            <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">Socket</dt>
-                <dd class="text-sm font-medium text-gray-900 font-mono text-xs">{{.VM.SocketPath}}</dd>
-            </div>
-            <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">Created</dt>
-                <dd class="text-sm font-medium text-gray-900">{{.VM.CreatedAt.Format "2006-01-02 15:04:05"}}</dd>
-            </div>
-            {{if not .VM.StartedAt.IsZero}}
-            <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">Started</dt>
-                <dd class="text-sm font-medium text-gray-900">{{.VM.StartedAt.Format "2006-01-02 15:04:05"}}</dd>
-            </div>
-            {{end}}
-        </dl>
-    </div>
-
+{{if or .VM.PortForwards .VM.Mounts}}
+<div class="grid grid-2 mt-5">
     {{if .VM.PortForwards}}
-    <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">Port Forwards</h2>
-        <table class="min-w-full">
-            <thead>
-                <tr class="text-left text-xs font-medium text-gray-500 uppercase">
-                    <th class="pb-2">Host Port</th>
-                    <th class="pb-2">Guest Port</th>
-                    <th class="pb-2">Protocol</th>
-                </tr>
-            </thead>
-            <tbody class="text-sm text-gray-700">
-                {{range .VM.PortForwards}}
-                <tr>
-                    <td class="py-1">{{.HostPort}}</td>
-                    <td class="py-1">{{.GuestPort}}</td>
-                    <td class="py-1">{{.Protocol}}</td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-    </div>
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="hw">net / iptables dnat</span><h2>Port forwards</h2></div>
+        </div>
+        <div class="table-wrap">
+            <table class="ledger">
+                <thead><tr><th>Host port</th><th></th><th>Guest port</th><th>Protocol</th></tr></thead>
+                <tbody>
+                    {{range .VM.PortForwards}}
+                    <tr>
+                        <td class="data">{{.HostPort}}</td>
+                        <td class="muted">→</td>
+                        <td class="data">{{.GuestPort}}</td>
+                        <td>{{.Protocol}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </section>
     {{end}}
 
     {{if .VM.Mounts}}
-    <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">Mounts</h2>
-        <table class="min-w-full">
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="hw">fs / block devices</span><h2>Mounts</h2></div>
+        </div>
+        <div class="table-wrap">
+            <table class="ledger">
+                <thead><tr><th>Host path</th><th>Guest mount</th><th>Mode</th></tr></thead>
+                <tbody>
+                    {{range .VM.Mounts}}
+                    <tr>
+                        <td>{{.HostPath}}</td>
+                        <td class="data">/mnt/{{.GuestTag}}</td>
+                        <td>{{if .ReadOnly}}ro{{else}}rw{{end}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {{end}}
+</div>
+{{end}}
+
+<section class="panel mt-5">
+    <div class="panel-head">
+        <div><span class="hw">state / memory + disk</span><h2>Snapshots</h2></div>
+        {{if eq (printf "%s" .VM.State) "running"}}
+        <form method="POST" action="/vms/{{.VM.Name}}/snapshots" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <input type="text" name="snapshot_name" required placeholder="snapshot name" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" title="Letters, digits, dots, hyphens, underscores (max 64)" class="input">
+            <button type="submit" data-confirm="Take a snapshot of {{.VM.Name}}? The VM will pause briefly." data-busy="Creating…" class="btn btn-primary">Create snapshot</button>
+        </form>
+        {{else}}
+        <span class="muted small">Start the VM to create a snapshot</span>
+        {{end}}
+    </div>
+    {{if .Snapshots}}
+    <div class="table-wrap">
+        <table class="ledger">
             <thead>
-                <tr class="text-left text-xs font-medium text-gray-500 uppercase">
-                    <th class="pb-2">Host Path</th>
-                    <th class="pb-2">Guest Mount</th>
-                    <th class="pb-2">Mode</th>
+                <tr>
+                    <th>Name</th>
+                    <th>Created</th>
+                    <th class="num">Size</th>
+                    <th class="num">Memory</th>
+                    <th class="right">Actions</th>
                 </tr>
             </thead>
-            <tbody class="text-sm text-gray-700">
-                {{range .VM.Mounts}}
+            <tbody>
+                {{range .Snapshots}}
                 <tr>
-                    <td class="py-1 font-mono text-xs">{{.HostPath}}</td>
-                    <td class="py-1 font-mono text-xs">/mnt/{{.GuestTag}}</td>
-                    <td class="py-1">{{if .ReadOnly}}read-only{{else}}read-write{{end}}</td>
+                    <td><span class="id-name">{{.Name}}</span></td>
+                    <td class="muted">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+                    <td class="num">{{printf "%.1f" (divFloat .SizeBytes 1048576)}}<span class="muted"> MB</span></td>
+                    <td class="num">{{.MemoryMB}}<span class="muted"> MB</span></td>
+                    <td class="right">
+                        <span class="row-actions">
+                            <form method="POST" action="/vms/{{.VMName}}/snapshots/{{.Name}}/restore">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" data-confirm="Restore {{.VMName}} to snapshot '{{.Name}}'? The running VM will be stopped and rolled back." data-busy="restoring…" class="act">restore</button>
+                            </form>
+                            <form method="POST" action="/vms/{{.VMName}}/snapshots/{{.Name}}/delete">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" data-confirm="Delete snapshot '{{.Name}}'?" class="act act-danger">delete</button>
+                            </form>
+                        </span>
+                    </td>
                 </tr>
                 {{end}}
             </tbody>
         </table>
     </div>
-    {{end}}
-</div>
-
-<div class="bg-white rounded-lg shadow p-6 mt-6">
-    <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-gray-900">Snapshots</h2>
-        {{if eq (printf "%s" .VM.State) "running"}}
-        <form method="POST" action="/vms/{{.VM.Name}}/snapshots" class="flex items-center space-x-2">
-            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-            <input type="text" name="snapshot_name" required placeholder="snapshot name" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" title="Letters, digits, dots, hyphens, underscores (max 64)" class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
-            <button type="submit" data-confirm="Take a snapshot of {{.VM.Name}}? The VM will pause briefly." data-busy="Creating…" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 font-medium text-sm whitespace-nowrap">Create Snapshot</button>
-        </form>
-        {{else}}
-        <span class="text-sm text-gray-400">Start the VM to create a snapshot</span>
-        {{end}}
-    </div>
-    {{if .Snapshots}}
-    <table class="min-w-full">
-        <thead>
-            <tr class="text-left text-xs font-medium text-gray-500 uppercase">
-                <th class="pb-2">Name</th>
-                <th class="pb-2">Created</th>
-                <th class="pb-2">Size</th>
-                <th class="pb-2">Memory</th>
-                <th class="pb-2 text-right">Actions</th>
-            </tr>
-        </thead>
-        <tbody class="text-sm text-gray-700">
-            {{range .Snapshots}}
-            <tr class="border-t border-gray-100">
-                <td class="py-2 font-medium text-gray-900">{{.Name}}</td>
-                <td class="py-2">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
-                <td class="py-2">{{printf "%.1f" (divFloat .SizeBytes 1048576)}} MB</td>
-                <td class="py-2">{{.MemoryMB}} MB</td>
-                <td class="py-2">
-                    <div class="flex items-center justify-end space-x-2">
-                        <form method="POST" action="/vms/{{.VMName}}/snapshots/{{.Name}}/restore">
-                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <button type="submit" data-confirm="Restore {{.VMName}} to snapshot '{{.Name}}'? The running VM will be stopped and rolled back." data-busy="Restoring…" class="bg-yellow-500 text-white px-3 py-1 rounded-md hover:bg-yellow-600 font-medium text-xs">Restore</button>
-                        </form>
-                        <form method="POST" action="/vms/{{.VMName}}/snapshots/{{.Name}}/delete">
-                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <button type="submit" data-confirm="Delete snapshot '{{.Name}}'?" class="bg-red-600 text-white px-3 py-1 rounded-md hover:bg-red-700 font-medium text-xs">Delete</button>
-                        </form>
-                    </div>
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
     {{else}}
-    <p class="text-sm text-gray-500">No snapshots yet. A snapshot captures the VM's full state (memory + disk) so you can roll back to this point.</p>
+    <div class="empty">
+        <span class="empty-cmd"><span class="prompt">$</span> vmm snapshot list {{.VM.Name}} → 0 rows</span>
+        No snapshots yet. A snapshot captures the VM's full state (memory + disk) so you can roll back to this point.
+    </div>
     {{end}}
-</div>
+</section>
 {{end}}

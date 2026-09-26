@@ -70,6 +70,11 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	ch := s.sseBroker.Subscribe()
 	defer s.sseBroker.Unsubscribe(ch)
 
+	// Flush a comment straight away so the client sees the stream open
+	// rather than waiting for the first state change.
+	fmt.Fprint(w, ": connected\n\n")
+	flusher.Flush()
+
 	ctx := r.Context()
 	for {
 		select {

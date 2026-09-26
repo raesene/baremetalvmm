@@ -1,51 +1,55 @@
 {{template "layout.html" .}}
 {{define "content"}}
-<div class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-900">API Access</h1>
-    <p class="text-gray-600 mt-1">Use this key to authenticate with the JSON API</p>
-</div>
-
-<div class="bg-white rounded-lg shadow p-6 max-w-2xl">
-    <div class="mb-6">
-        <label class="block text-sm font-medium text-gray-700 mb-2">API Key</label>
-        <div class="flex items-center space-x-2">
-            <code id="api-key" class="flex-1 px-4 py-3 bg-gray-50 border border-gray-300 rounded-md font-mono text-sm break-all select-all">{{.APIKey}}</code>
-            <button id="copy-btn"
-                class="px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium text-sm whitespace-nowrap">
-                Copy
-            </button>
-        </div>
-        <p class="text-xs text-gray-500 mt-2">This key is generated when the server starts and remains valid until the server is restarted.</p>
+<header class="page-head">
+    <div>
+        <div class="eyebrow">System</div>
+        <h1>API access</h1>
+        <p class="lede">Authenticate to the JSON API with a Bearer token.</p>
     </div>
+    <div class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">GET</span> <span class="tok-data">/api/v1/vms</span></span></div>
+</header>
 
-    <div class="border-t border-gray-200 pt-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-3">Usage Examples</h2>
-
-        <div class="mb-4">
-            <h3 class="text-sm font-medium text-gray-700 mb-1">List VMs</h3>
-            <pre class="px-4 py-3 bg-gray-900 text-green-400 rounded-md text-sm overflow-x-auto"><code>curl -H "Authorization: Bearer {{.APIKey}}" \
-  http://{{.ListenAddr}}/api/v1/vms</code></pre>
+<div class="grid grid-main-side">
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="hw">api / examples</span><h2>Usage</h2></div>
         </div>
-
-        <div class="mb-4">
-            <h3 class="text-sm font-medium text-gray-700 mb-1">Create a VM</h3>
-            <pre class="px-4 py-3 bg-gray-900 text-green-400 rounded-md text-sm overflow-x-auto"><code>curl -X POST -H "Authorization: Bearer {{.APIKey}}" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"my-vm","cpus":2,"memory_mb":1024}' \
-  http://{{.ListenAddr}}/api/v1/vms</code></pre>
+        <div class="panel-body">
+            <div>
+                <div class="label">List VMs</div>
+                <pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">curl</span> <span class="tok-flag">-H</span> <span class="tok-data">"Authorization: Bearer {{.APIKey}}"</span> \
+    <span class="tok-data">http://{{.ListenAddr}}/api/v1/vms</span></code></pre>
+            </div>
+            <div>
+                <div class="label">Create a VM</div>
+                <pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">curl</span> <span class="tok-flag">-X POST -H</span> <span class="tok-data">"Authorization: Bearer {{.APIKey}}"</span> \
+    <span class="tok-flag">-H</span> <span class="tok-data">"Content-Type: application/json"</span> \
+    <span class="tok-flag">-d</span> <span class="tok-data">'{"name":"my-vm","cpus":2,"memory_mb":1024}'</span> \
+    <span class="tok-data">http://{{.ListenAddr}}/api/v1/vms</span></code></pre>
+            </div>
+            <div>
+                <div class="label">Start a VM</div>
+                <pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">curl</span> <span class="tok-flag">-X POST -H</span> <span class="tok-data">"Authorization: Bearer {{.APIKey}}"</span> \
+    <span class="tok-data">http://{{.ListenAddr}}/api/v1/vms/my-vm/start</span></code></pre>
+            </div>
+            <div>
+                <div class="label">Health check <span class="label-opt">no auth required</span></div>
+                <pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">curl</span> <span class="tok-data">http://{{.ListenAddr}}/api/v1/health</span></code></pre>
+            </div>
         </div>
+    </section>
 
-        <div class="mb-4">
-            <h3 class="text-sm font-medium text-gray-700 mb-1">Start a VM</h3>
-            <pre class="px-4 py-3 bg-gray-900 text-green-400 rounded-md text-sm overflow-x-auto"><code>curl -X POST -H "Authorization: Bearer {{.APIKey}}" \
-  http://{{.ListenAddr}}/api/v1/vms/my-vm/start</code></pre>
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="hw">auth / bearer</span><h2>API key</h2></div>
         </div>
-
-        <div>
-            <h3 class="text-sm font-medium text-gray-700 mb-1">Health Check (no auth required)</h3>
-            <pre class="px-4 py-3 bg-gray-900 text-green-400 rounded-md text-sm overflow-x-auto"><code>curl http://{{.ListenAddr}}/api/v1/health</code></pre>
+        <div class="panel-body">
+            <div class="row">
+                <code id="api-key" class="secret">{{.APIKey}}</code>
+                <button id="copy-btn" class="btn">Copy</button>
+            </div>
+            <p class="hint">Generated when the server starts; valid until vmm-web restarts.</p>
         </div>
-    </div>
+    </section>
 </div>
-
 {{end}}

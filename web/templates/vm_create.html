@@ -1,106 +1,102 @@
 {{template "layout.html" .}}
 {{define "content"}}
-<div class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-900">Create Virtual Machine</h1>
-    <p class="text-gray-600 mt-1">Configure and create a new Firecracker microVM</p>
-</div>
+<header class="page-head">
+    <div>
+        <div class="eyebrow"><a href="/vms">Virtual machines</a> / new</div>
+        <h1>Create virtual machine</h1>
+        <p class="lede">Configure and create a new Firecracker microVM.</p>
+    </div>
+    <div class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">vmm create</span> <span class="tok-data">&lt;name&gt;</span> <span class="tok-flag">--cpus --memory --disk</span></span></div>
+</header>
 
-<div class="bg-white rounded-lg shadow p-6 max-w-2xl">
-    <form method="POST" action="/vms">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+<section class="panel narrow">
+    <div class="panel-head">
+        <div><span class="hw">spec / new machine</span><h2>Machine spec</h2></div>
+    </div>
+    <div class="panel-body">
+        <form method="POST" action="/vms" class="form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 
-        <div class="mb-4">
-            <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-            <input type="text" id="name" name="name" required pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*"
-                placeholder="my-vm"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <p class="text-xs text-gray-500 mt-1">Alphanumeric characters, dots, dashes, and underscores.</p>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div>
-                <label for="cpus" class="block text-sm font-medium text-gray-700 mb-1">vCPUs</label>
-                <input type="number" id="cpus" name="cpus" value="{{.Defaults.CPUs}}" min="1" max="32"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <div class="field">
+                <label for="name">Name</label>
+                <input type="text" id="name" name="name" required pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*"
+                    placeholder="my-vm" class="input">
+                <p class="hint">Letters, digits, dots, dashes and underscores.</p>
             </div>
-            <div>
-                <label for="memory" class="block text-sm font-medium text-gray-700 mb-1">Memory (MB)</label>
-                <input type="number" id="memory" name="memory" value="{{.Defaults.MemoryMB}}" min="128" step="128"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-            <div>
-                <label for="disk" class="block text-sm font-medium text-gray-700 mb-1">Disk (MB)</label>
-                <input type="number" id="disk" name="disk" value="{{.Defaults.DiskSizeMB}}" min="256" step="256"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-        </div>
 
-        <div class="mb-4">
-            <label for="ssh_key" class="block text-sm font-medium text-gray-700 mb-1">SSH Public Key (optional)</label>
-            <textarea id="ssh_key" name="ssh_key" rows="3" placeholder="ssh-ed25519 AAAA..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm">{{.Defaults.SSHKey}}</textarea>
-        </div>
-
-        {{if .Kernels}}
-        <div class="mb-4">
-            <label for="kernel" class="block text-sm font-medium text-gray-700 mb-1">Kernel</label>
-            <select id="kernel" name="kernel"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Default</option>
-                {{range .Kernels}}
-                <option value="{{.Name}}" {{if eq .Name $.Defaults.Kernel}}selected{{end}}>{{.Name}} — {{.Description}}</option>
-                {{end}}
-            </select>
-        </div>
-        {{end}}
-
-        {{if .Images}}
-        <div class="mb-4">
-            <label for="image" class="block text-sm font-medium text-gray-700 mb-1">Root Filesystem</label>
-            <select id="image" name="image"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Default</option>
-                {{range .Images}}
-                <option value="{{.Name}}" {{if eq .Name $.Defaults.Image}}selected{{end}}>{{.Name}} — {{.Description}}</option>
-                {{end}}
-            </select>
-        </div>
-        {{end}}
-
-        <div class="mb-4">
-            <label for="dns" class="block text-sm font-medium text-gray-700 mb-1">DNS Servers (comma-separated, optional)</label>
-            <input type="text" id="dns" name="dns" placeholder="8.8.8.8, 8.8.4.4"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-
-        <div class="mb-6">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Port Forwards (optional)</label>
-            <div id="port-forwards">
-                <div class="flex items-center space-x-2 mb-2">
-                    <input type="number" name="host_port" min="1" max="65535" placeholder="Host port"
-                        class="w-1/3 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
-                    <span class="text-gray-400">:</span>
-                    <input type="number" name="guest_port" min="1" max="65535" placeholder="Guest port"
-                        class="w-1/3 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
-                    <select name="protocol"
-                        class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
-                        <option value="tcp">TCP</option>
-                        <option value="udp">UDP</option>
-                    </select>
-                    <button type="button" class="remove-port-forward text-red-500 hover:text-red-700 text-sm px-2" title="Remove">✕</button>
+            <div class="grid grid-3 grid-tight">
+                <div class="field">
+                    <label for="cpus">vCPUs</label>
+                    <input type="number" id="cpus" name="cpus" value="{{.Defaults.CPUs}}" min="1" max="32" class="input">
+                </div>
+                <div class="field">
+                    <label for="memory">Memory <span class="label-opt">MB</span></label>
+                    <input type="number" id="memory" name="memory" value="{{.Defaults.MemoryMB}}" min="128" step="128" class="input">
+                </div>
+                <div class="field">
+                    <label for="disk">Disk <span class="label-opt">MB</span></label>
+                    <input type="number" id="disk" name="disk" value="{{.Defaults.DiskSizeMB}}" min="256" step="256" class="input">
                 </div>
             </div>
-            <button type="button" id="add-port-forward" class="text-blue-600 hover:text-blue-800 text-sm font-medium">+ Add port forward</button>
-            <p class="text-xs text-gray-500 mt-1">Forward ports from the host to this VM (e.g., host 8080 to guest 80).</p>
-        </div>
 
-        <div class="flex items-center space-x-3">
-            <button type="submit"
-                class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 font-medium text-sm">
-                Create VM
-            </button>
-            <a href="/vms" class="text-gray-600 hover:text-gray-800 text-sm">Cancel</a>
-        </div>
-    </form>
-</div>
+            {{if .Kernels}}
+            <div class="field">
+                <label for="kernel">Kernel</label>
+                <select id="kernel" name="kernel" class="input">
+                    <option value="">Default</option>
+                    {{range .Kernels}}
+                    <option value="{{.Name}}" {{if eq .Name $.Defaults.Kernel}}selected{{end}}>{{.Name}} — {{.Description}}</option>
+                    {{end}}
+                </select>
+            </div>
+            {{end}}
+
+            {{if .Images}}
+            <div class="field">
+                <label for="image">Root filesystem</label>
+                <select id="image" name="image" class="input">
+                    <option value="">Default</option>
+                    {{range .Images}}
+                    <option value="{{.Name}}" {{if eq .Name $.Defaults.Image}}selected{{end}}>{{.Name}} — {{.Description}}</option>
+                    {{end}}
+                </select>
+            </div>
+            {{end}}
+
+            <div class="field">
+                <label for="ssh_key">SSH public key <span class="label-opt">optional</span></label>
+                <textarea id="ssh_key" name="ssh_key" rows="3" placeholder="ssh-ed25519 AAAA..." class="input">{{.Defaults.SSHKey}}</textarea>
+                <p class="hint">The vmm-managed key is always injected; this key is added alongside it.</p>
+            </div>
+
+            <div class="field">
+                <label for="dns">DNS servers <span class="label-opt">comma-separated, optional</span></label>
+                <input type="text" id="dns" name="dns" placeholder="8.8.8.8, 8.8.4.4" class="input">
+            </div>
+
+            <div class="field">
+                <span class="label">Port forwards <span class="label-opt">optional</span></span>
+                <div id="port-forwards">
+                    <div class="pf-row">
+                        <input type="number" name="host_port" min="1" max="65535" placeholder="host port" class="input">
+                        <span class="pf-sep">→</span>
+                        <input type="number" name="guest_port" min="1" max="65535" placeholder="guest port" class="input">
+                        <select name="protocol" class="input">
+                            <option value="tcp">tcp</option>
+                            <option value="udp">udp</option>
+                        </select>
+                        <button type="button" class="pf-remove" title="Remove">✕</button>
+                    </div>
+                </div>
+                <button type="button" id="add-port-forward" class="act">+ add port forward</button>
+                <p class="hint">Forward ports from the host to this VM (e.g. host 8080 → guest 80).</p>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Create VM</button>
+                <a href="/vms" class="btn btn-ghost">Cancel</a>
+            </div>
+        </form>
+    </div>
+</section>
 {{end}}

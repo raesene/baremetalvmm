@@ -1,7 +1,12 @@
 document.addEventListener("DOMContentLoaded", function () {
     var container = document.getElementById("terminal-container");
-    if (container && container.dataset.vmName) {
-        initTerminal(container.dataset.vmName);
+    if (!container || !container.dataset.vmName) return;
+    // xterm measures glyph cells when it opens, so wait for the webfont.
+    var start = function () { initTerminal(container.dataset.vmName); };
+    if (document.fonts && document.fonts.load) {
+        document.fonts.load('14px "Azeret Mono"').then(start, start);
+    } else {
+        start();
     }
 });
 
@@ -12,12 +17,29 @@ function initTerminal(vmName) {
     var term = new Terminal({
         cursorBlink: true,
         fontSize: 14,
-        fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Menlo, monospace",
+        fontFamily: "'Azeret Mono', ui-monospace, Menlo, monospace",
         theme: {
-            background: "#1a1a2e",
-            foreground: "#e6e6e6",
-            cursor: "#e6e6e6",
-            selectionBackground: "#3d3d5c"
+            background: "#101318",
+            foreground: "#E7E1D4",
+            cursor: "#E7A84B",
+            cursorAccent: "#101318",
+            selectionBackground: "rgba(155, 140, 255, 0.35)",
+            black: "#1F2630",
+            red: "#EF6F6C",
+            green: "#79D18B",
+            yellow: "#F0C35B",
+            blue: "#6BC7F1",
+            magenta: "#9B8CFF",
+            cyan: "#5BC8D6",
+            white: "#E7E1D4",
+            brightBlack: "#8D96A3",
+            brightRed: "#F59B99",
+            brightGreen: "#9FE0AC",
+            brightYellow: "#F5D488",
+            brightBlue: "#9AD8F5",
+            brightMagenta: "#BDB3FF",
+            brightCyan: "#8AD9E3",
+            brightWhite: "#FFFFFF"
         },
         scrollback: 5000
     });
@@ -39,7 +61,7 @@ function initTerminal(vmName) {
 
     ws.addEventListener("open", function () {
         statusEl.className = "terminal-status status-connected";
-        statusText.textContent = "Connected to " + vmName;
+        statusText.textContent = "connected";
 
         ws.send(JSON.stringify({
             type: "resize",
@@ -60,13 +82,13 @@ function initTerminal(vmName) {
 
     ws.addEventListener("close", function () {
         statusEl.className = "terminal-status status-disconnected";
-        statusText.textContent = "Disconnected from " + vmName;
+        statusText.textContent = "disconnected";
         term.write("\r\n\x1b[31mConnection closed.\x1b[0m\r\n");
     });
 
     ws.addEventListener("error", function () {
         statusEl.className = "terminal-status status-disconnected";
-        statusText.textContent = "Connection error";
+        statusText.textContent = "connection error";
     });
 
     term.onData(function (data) {

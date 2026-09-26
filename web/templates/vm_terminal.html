@@ -3,27 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.VM.Name}} - Terminal</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <title>{{.VM.Name}} · terminal · vmm</title>
+    <link rel="preload" href="/static/fonts/azeret-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css" rel="stylesheet">
-    <style>
-        body { margin: 0; overflow: hidden; background: #1a1a2e; }
-        #terminal-container { width: 100vw; height: calc(100vh - 48px); }
-        #terminal-container .xterm { height: 100%; padding: 4px; }
-        .terminal-bar { height: 48px; background: #111827; display: flex; align-items: center; padding: 0 16px; }
-        .terminal-bar a, .terminal-bar span { color: #d1d5db; font-size: 14px; text-decoration: none; }
-        .terminal-bar a:hover { color: #fff; }
-        .terminal-status { width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
-        .status-connecting { background: #fbbf24; }
-        .status-connected { background: #34d399; }
-        .status-disconnected { background: #f87171; }
-    </style>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
-    <div class="terminal-bar">
-        <a href="/vms/{{.VM.Name}}" style="margin-right: 16px;">&larr; Back</a>
-        <span id="terminal-status" class="terminal-status status-connecting"></span>
-        <span id="terminal-status-text">Connecting to {{.VM.Name}} ({{.VM.IPAddress}})...</span>
+<body class="term-page">
+    <div class="term-bar">
+        <a href="/vms/{{.VM.Name}}">← {{.VM.Name}}</a>
+        <span class="sep"></span>
+        <span class="term-target"><span class="tok-cmd">vmm ssh</span> <span class="tok-data">{{.VM.Name}}</span> <span class="muted"># {{.VM.IPAddress}}</span></span>
+        <span class="term-state">
+            <span id="terminal-status" class="terminal-status status-connecting"></span>
+            <span id="terminal-status-text">connecting…</span>
+        </span>
     </div>
     <div id="terminal-container" data-vm-name="{{.VM.Name}}"></div>
 

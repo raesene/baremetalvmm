@@ -11,7 +11,7 @@ VMM (Bare Metal MicroVM Manager) is a Go-based CLI tool for managing Firecracker
 - **Language**: Go 1.25+
 - **VMM Engine**: Firecracker v1.16.0 (via firecracker-go-sdk)
 - **CLI Framework**: Cobra (github.com/spf13/cobra)
-- **Web UI**: Chi router, html/template, HTMX, Tailwind CSS via CDN
+- **Web UI**: Chi router, html/template, HTMX, hand-written CSS in the Katagami "Caret Ledger" design language (`web/static/style.css`, self-hosted Sora + Azeret Mono fonts)
 - **Networking**: Linux TAP devices, bridges, iptables
 - **Storage**: JSON-based VM/cluster configs, ext4 rootfs images
 - **CI/CD**: GitHub Actions (CI checks on push/PR, GoReleaser for binary releases, kernel/rootfs build workflows, Dependabot for dependency updates)
@@ -172,6 +172,8 @@ Requirements: root access, KVM (`/dev/kvm`), Firecracker in PATH.
 
 ## Web UI Constraints
 
+- **Design system**: "Caret Ledger" from katagami.ai — graphite panels with clipped corners, semantic colour only (amber `--color-accent-command` = commands/actions, cyan `--color-accent-data` = data values, violet `--color-accent` = selection). All styling lives in `web/static/style.css` (no Tailwind); reuse its classes (`panel`, `ledger`, `chip chip-<state>`, `btn`, `input`, `kv`, `cmdline`) rather than adding one-off styles. Fonts are self-hosted in `web/static/fonts/` because the CSP has no `font-src`.
+- **Live state**: `app.js` opens an `EventSource` on `/events` and updates any `[data-vm]` element's `[data-state]` chip; the dashboard also appends to the activity log.
 - **CSP**: `script-src 'self' https://cdn.jsdelivr.net` — no inline `<script>` tags or inline event handlers (`onclick`, etc.). All JS must go in `web/static/` files using `addEventListener`/event delegation. Use `data-` attributes to pass server data to JS.
 - Auth via `VMM_WEB_PASSWORD` env var, session cookies, or Bearer token for API.
 - Templates use `{{template "layout.html" .}}` with `{{define "content"}}` blocks.

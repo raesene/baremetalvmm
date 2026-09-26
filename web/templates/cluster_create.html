@@ -1,139 +1,146 @@
 {{template "layout.html" .}}
 {{define "content"}}
-<div class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-900">Create Cluster</h1>
-    <p class="text-gray-600 mt-1">Create a new Kubernetes or OpenShift cluster using Firecracker VMs</p>
-</div>
+<header class="page-head">
+    <div>
+        <div class="eyebrow"><a href="/clusters">Clusters</a> / new</div>
+        <h1>Create cluster</h1>
+        <p class="lede">A Kubernetes or OpenShift cluster built from Firecracker VMs.</p>
+    </div>
+    <div class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">vmm cluster create</span> <span class="tok-data">&lt;name&gt;</span> <span class="tok-flag">--type --cni --workers</span></span></div>
+</header>
 
-<div class="bg-white rounded-lg shadow p-6 max-w-2xl">
-    <form method="POST" action="/clusters">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+<form method="POST" action="/clusters" class="grid grid-main-side">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 
-        <div class="mb-4">
-            <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Cluster Name</label>
-            <input type="text" id="name" name="name" required pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*"
-                placeholder="my-cluster"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-
-        <div class="mb-4">
-            <label for="cluster_type" class="block text-sm font-medium text-gray-700 mb-1">Cluster Type</label>
-            <select id="cluster_type" name="type"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="kubeadm">Kubernetes (kubeadm)</option>
-                <option value="openshift">OpenShift (MicroShift, single-node)</option>
-            </select>
-            <p class="text-xs text-gray-500 mt-1">OpenShift uses upstream MicroShift on a single node (headless, no web console).</p>
-        </div>
-
-        <div class="mb-4 kubeadm-only">
-            <label for="cni" class="block text-sm font-medium text-gray-700 mb-1">CNI Plugin</label>
-            <select id="cni" name="cni"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="cilium">Cilium (eBPF-based, replaces kube-proxy)</option>
-                <option value="calico">Calico (Tigera operator, VXLAN)</option>
-            </select>
-        </div>
-
-        <div class="mb-4 kubeadm-only">
-            <label for="workers" class="block text-sm font-medium text-gray-700 mb-1">Worker Nodes</label>
-            <input type="number" id="workers" name="workers" value="0" min="0" max="10"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-
-        <div class="mb-4 openshift-only" style="display:none">
-            <label for="openshift_version" class="block text-sm font-medium text-gray-700 mb-1">OpenShift Version</label>
-            <input type="text" id="openshift_version" name="openshift_version" value="4.20" pattern="[0-9]+\.[0-9]{1,2}"
-                placeholder="4.20"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <p class="text-xs text-gray-500 mt-1">MicroShift major.minor version (e.g. 4.20), resolved from microshift-io releases.</p>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div>
-                <label for="cpus" class="block text-sm font-medium text-gray-700 mb-1">vCPUs per Node</label>
-                <input type="number" id="cpus" name="cpus" value="2" min="1" max="32"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+    <div class="stack">
+        <section class="panel">
+            <div class="panel-head">
+                <div><span class="hw">spec / topology</span><h2>Cluster</h2></div>
             </div>
-            <div>
-                <label for="memory" class="block text-sm font-medium text-gray-700 mb-1">Memory per Node (MB)</label>
-                <input type="number" id="memory" name="memory" value="4096" min="1024" step="512"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-            <div>
-                <label for="disk" class="block text-sm font-medium text-gray-700 mb-1">Disk per Node (MB)</label>
-                <input type="number" id="disk" name="disk" value="10240" min="4096" step="1024"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-        </div>
+            <div class="panel-body form">
+                <div class="field">
+                    <label for="name">Cluster name</label>
+                    <input type="text" id="name" name="name" required pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*"
+                        placeholder="my-cluster" class="input">
+                </div>
 
-        <div class="mb-4">
-            <label for="ssh_key" class="block text-sm font-medium text-gray-700 mb-1">SSH Public Key (Optional)</label>
-            <textarea id="ssh_key" name="ssh_key" rows="3" placeholder="ssh-ed25519 AAAA..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm">{{.Defaults.SSHKey}}</textarea>
-            <p class="text-xs text-gray-500 mt-1">Optional additional SSH key. A vmm-managed key is always included for cluster provisioning.</p>
-        </div>
+                <div class="field">
+                    <label for="cluster_type">Cluster type</label>
+                    <select id="cluster_type" name="type" class="input">
+                        <option value="kubeadm">Kubernetes (kubeadm)</option>
+                        <option value="openshift">OpenShift (MicroShift, single-node)</option>
+                    </select>
+                    <p class="hint">OpenShift uses upstream MicroShift on a single node (headless, no web console).</p>
+                </div>
 
-        <div class="mb-4">
-            <label for="ssh_key_path" class="block text-sm font-medium text-gray-700 mb-1">SSH Private Key Path (Optional)</label>
-            <input type="text" id="ssh_key_path" name="ssh_key_path"
-                value="{{.Defaults.SSHKeyPath}}" placeholder="~/.ssh/id_ed25519"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <p class="text-xs text-gray-500 mt-1">Optional path to your SSH private key. If empty, the vmm-managed key is used for provisioning.</p>
-        </div>
+                <div class="grid grid-2 grid-tight kubeadm-only">
+                    <div class="field">
+                        <label for="cni">CNI plugin</label>
+                        <select id="cni" name="cni" class="input">
+                            <option value="cilium">Cilium (eBPF, replaces kube-proxy)</option>
+                            <option value="calico">Calico (Tigera operator, VXLAN)</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="workers">Worker nodes</label>
+                        <input type="number" id="workers" name="workers" value="0" min="0" max="10" class="input">
+                    </div>
+                </div>
 
-        {{if .Kernels}}
-        <div class="mb-4">
-            <label for="kernel" class="block text-sm font-medium text-gray-700 mb-1">Kernel</label>
-            <select id="kernel" name="kernel"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Default</option>
-                {{range .Kernels}}
-                <option value="{{.Name}}" {{if eq .Name "k8s-kernel"}}selected{{end}}>{{.Name}} — {{.Description}}</option>
+                <div class="field openshift-only hidden">
+                    <label for="openshift_version">OpenShift version</label>
+                    <input type="text" id="openshift_version" name="openshift_version" value="4.20" pattern="[0-9]+\.[0-9]{1,2}"
+                        placeholder="4.20" class="input">
+                    <p class="hint">MicroShift major.minor version (e.g. 4.20), resolved from microshift-io releases.</p>
+                </div>
+
+                {{if .K8sImages}}
+                <div class="field kubeadm-only">
+                    <label for="image">Kubernetes version</label>
+                    <select id="image" name="image" required class="input">
+                        {{range .K8sImages}}
+                        <option value="{{.Name}}">{{.Name}} — {{.Description}}</option>
+                        {{end}}
+                    </select>
+                    <p class="hint">Select a Kubernetes rootfs image. The Kubernetes version is determined by the image.</p>
+                </div>
                 {{end}}
-            </select>
-            <p class="text-xs text-gray-500 mt-1">Clusters require a kernel 6.6+ with BPF and VXLAN support. Look for "Kubernetes cluster kernel" above.</p>
-        </div>
-        {{end}}
 
-        {{if .K8sImages}}
-        <div class="mb-4 kubeadm-only">
-            <label for="image" class="block text-sm font-medium text-gray-700 mb-1">Kubernetes Version</label>
-            <select id="image" name="image" required
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                {{range .K8sImages}}
-                <option value="{{.Name}}">{{.Name}} — {{.Description}}</option>
+                {{if .Kernels}}
+                <div class="field">
+                    <label for="kernel">Kernel</label>
+                    <select id="kernel" name="kernel" class="input">
+                        <option value="">Default</option>
+                        {{range .Kernels}}
+                        <option value="{{.Name}}" {{if eq .Name "k8s-kernel"}}selected{{end}}>{{.Name}} — {{.Description}}</option>
+                        {{end}}
+                    </select>
+                    <p class="hint">Clusters need a 6.6+ kernel with BPF and VXLAN support — look for "Kubernetes cluster kernel".</p>
+                </div>
                 {{end}}
-            </select>
-            <p class="text-xs text-gray-500 mt-1">Select a Kubernetes rootfs image. The Kubernetes version is determined by the image.</p>
-        </div>
-        {{end}}
+            </div>
+        </section>
 
-        {{if .HasSecurityImage}}
-        <div class="mb-4">
-            <label class="flex items-center space-x-3">
-                <input type="checkbox" name="admin_workstation" id="admin_workstation"
-                    class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                <span class="text-sm font-medium text-gray-700">Create Admin Workstation</span>
-            </label>
-            <p class="text-xs text-gray-500 mt-1 ml-7">Adds a security tooling VM (2 vCPUs, 4 GB RAM, 20 GB disk) with the cluster kubeconfig pre-configured at /root/.kube/config.</p>
-        </div>
-        {{end}}
+        <section class="panel">
+            <div class="panel-head">
+                <div><span class="hw">spec / per node</span><h2>Node resources</h2></div>
+            </div>
+            <div class="panel-body">
+                <div class="grid grid-3 grid-tight">
+                    <div class="field">
+                        <label for="cpus">vCPUs</label>
+                        <input type="number" id="cpus" name="cpus" value="2" min="1" max="32" class="input">
+                    </div>
+                    <div class="field">
+                        <label for="memory">Memory <span class="label-opt">MB</span></label>
+                        <input type="number" id="memory" name="memory" value="4096" min="1024" step="512" class="input">
+                    </div>
+                    <div class="field">
+                        <label for="disk">Disk <span class="label-opt">MB</span></label>
+                        <input type="number" id="disk" name="disk" value="10240" min="4096" step="1024" class="input">
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
 
-        <div class="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-6">
-            <p class="text-sm text-yellow-800">
-                <strong>Note:</strong> Cluster creation takes several minutes. The process will run in the background.
-                Each node uses {{.DefaultCPUs}} vCPUs and {{.DefaultMemory}} MB memory by default.
-            </p>
+    <div class="stack">
+        <section class="panel">
+            <div class="panel-head">
+                <div><span class="hw">auth / provisioning</span><h2>Access</h2></div>
+            </div>
+            <div class="panel-body form">
+                <div class="field">
+                    <label for="ssh_key">SSH public key <span class="label-opt">optional</span></label>
+                    <textarea id="ssh_key" name="ssh_key" rows="3" placeholder="ssh-ed25519 AAAA..." class="input">{{.Defaults.SSHKey}}</textarea>
+                    <p class="hint">A vmm-managed key is always included for provisioning.</p>
+                </div>
+                <div class="field">
+                    <label for="ssh_key_path">SSH private key path <span class="label-opt">optional</span></label>
+                    <input type="text" id="ssh_key_path" name="ssh_key_path"
+                        value="{{.Defaults.SSHKeyPath}}" placeholder="~/.ssh/id_ed25519" class="input">
+                    <p class="hint">If empty, the vmm-managed key is used for provisioning.</p>
+                </div>
+                {{if .HasSecurityImage}}
+                <label class="check">
+                    <input type="checkbox" name="admin_workstation" id="admin_workstation">
+                    <span>
+                        <span class="label">Create admin workstation</span>
+                        <span class="hint block">Adds a security tooling VM (2 vCPUs, 4 GB RAM, 20 GB disk) with the cluster kubeconfig at /root/.kube/config.</span>
+                    </span>
+                </label>
+                {{end}}
+            </div>
+        </section>
+
+        <div class="notice notice-warn">
+            <span>Cluster creation takes several minutes and runs in the background. Each node uses {{.DefaultCPUs}} vCPUs and {{.DefaultMemory}} MB memory by default.</span>
         </div>
 
-        <div class="flex items-center space-x-3">
-            <button type="submit"
-                class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 font-medium text-sm">
-                Create Cluster
-            </button>
-            <a href="/clusters" class="text-gray-600 hover:text-gray-800 text-sm">Cancel</a>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Create cluster</button>
+            <a href="/clusters" class="btn btn-ghost">Cancel</a>
         </div>
-    </form>
-</div>
+    </div>
+</form>
 {{end}}

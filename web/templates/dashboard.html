@@ -1,100 +1,145 @@
 {{template "layout.html" .}}
 {{define "content"}}
-<div class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
-    <p class="text-gray-600 mt-1">System overview</p>
+<header class="page-head">
+    <div>
+        <div class="eyebrow">Host overview</div>
+        <h1>Overview</h1>
+        <p class="lede">Firecracker microVMs and clusters on this host.</p>
+    </div>
+    <div class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">vmm list</span> <span class="tok-flag">-a</span></span></div>
+</header>
+
+<div class="grid grid-4 grid-tight mb-5">
+    <section class="panel stat">
+        <div class="stat-label">vm.total</div>
+        <div class="stat-value">{{.Stats.TotalVMs}}</div>
+        <div class="stat-note">defined on host</div>
+    </section>
+    <section class="panel stat">
+        <div class="stat-label">vm.running</div>
+        <div class="stat-value is-success">{{.Stats.RunningVMs}}</div>
+        <div class="stat-note">firecracker processes live</div>
+    </section>
+    <section class="panel stat">
+        <div class="stat-label">vm.stopped</div>
+        <div class="stat-value is-muted">{{.Stats.StoppedVMs}}</div>
+        <div class="stat-note">created or stopped</div>
+    </section>
+    <section class="panel stat">
+        <div class="stat-label">cluster.total</div>
+        <div class="stat-value">{{.Stats.TotalClusters}}</div>
+        <div class="stat-note">kubeadm / openshift</div>
+    </section>
 </div>
 
-<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-    <div class="bg-white rounded-lg shadow p-6">
-        <div class="text-sm font-medium text-gray-500">Total VMs</div>
-        <div class="mt-1 text-3xl font-bold text-gray-900">{{.Stats.TotalVMs}}</div>
-    </div>
-    <div class="bg-white rounded-lg shadow p-6">
-        <div class="text-sm font-medium text-gray-500">Running</div>
-        <div class="mt-1 text-3xl font-bold text-green-600">{{.Stats.RunningVMs}}</div>
-    </div>
-    <div class="bg-white rounded-lg shadow p-6">
-        <div class="text-sm font-medium text-gray-500">Stopped</div>
-        <div class="mt-1 text-3xl font-bold text-gray-500">{{.Stats.StoppedVMs}}</div>
-    </div>
-    <div class="bg-white rounded-lg shadow p-6">
-        <div class="text-sm font-medium text-gray-500">Clusters</div>
-        <div class="mt-1 text-3xl font-bold text-gray-900">{{.Stats.TotalClusters}}</div>
-    </div>
-</div>
-
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <div class="bg-white rounded-lg shadow">
-        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900">Virtual Machines</h2>
-            <a href="/vms/new" class="text-sm text-blue-600 hover:text-blue-800 font-medium">Create New</a>
-        </div>
-        <div id="vm-list" hx-ext="sse" sse-connect="/events" sse-swap="vm-update">
-            {{if .VMs}}
-            <div class="divide-y divide-gray-200">
-                {{range .VMs}}
-                <div class="px-6 py-3 flex items-center justify-between" id="vm-row-{{.Name}}">
-                    <div>
-                        <a href="/vms/{{.Name}}" class="font-medium text-blue-600 hover:text-blue-800">{{.Name}}</a>
-                        <div class="text-sm text-gray-500">{{.CPUs}} vCPU, {{.MemoryMB}} MB{{if .IPAddress}} &middot; {{.IPAddress}}{{end}}</div>
-                    </div>
-                    <span class="badge badge-{{.State}}">{{.State}}</span>
-                </div>
-                {{end}}
+<div class="grid grid-main-side">
+    <section class="panel">
+        <div class="panel-head">
+            <div>
+                <span class="hw">ledger / vms</span>
+                <h2>Virtual machines</h2>
             </div>
-            {{else}}
-            <div class="px-6 py-8 text-center text-gray-500">
-                No VMs found. <a href="/vms/new" class="text-blue-600 hover:text-blue-800">Create one</a>.
-            </div>
-            {{end}}
+            <a href="/vms/new" class="link-cmd">vmm create</a>
         </div>
-    </div>
-
-    <div class="bg-white rounded-lg shadow">
-        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900">Clusters</h2>
-            <a href="/clusters/new" class="text-sm text-blue-600 hover:text-blue-800 font-medium">Create New</a>
-        </div>
-        {{if .Clusters}}
-        <div class="divide-y divide-gray-200">
-            {{range .Clusters}}
-            <div class="px-6 py-3 flex items-center justify-between">
-                <div>
-                    <a href="/clusters" class="font-medium text-blue-600 hover:text-blue-800">{{.Name}}</a>
-                    <div class="text-sm text-gray-500">{{len .WorkerVMs}} workers</div>
-                </div>
-                <span class="badge badge-{{.State}}">{{.State}}</span>
-            </div>
-            {{end}}
+        {{if .VMs}}
+        <div class="table-wrap">
+            <table class="ledger">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>State</th>
+                        <th class="num">vCPU</th>
+                        <th class="num">Mem</th>
+                        <th>Address</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .VMs}}
+                    <tr data-vm="{{.Name}}">
+                        <td><a href="/vms/{{.Name}}" class="id-name">{{.Name}}</a></td>
+                        <td><span class="chip chip-{{.State}}" data-state><span class="dot"></span><span data-state-label>{{.State}}</span></span></td>
+                        <td class="num">{{.CPUs}}</td>
+                        <td class="num">{{.MemoryMB}}<span class="muted"> MB</span></td>
+                        <td class="data">{{if .IPAddress}}{{.IPAddress}}{{else}}<span class="muted">—</span>{{end}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
         </div>
         {{else}}
-        <div class="px-6 py-8 text-center text-gray-500">
-            No clusters found. <a href="/clusters/new" class="text-blue-600 hover:text-blue-800">Create one</a>.
+        <div class="empty">
+            <span class="empty-cmd"><span class="prompt">$</span> vmm list → 0 rows</span>
+            No VMs on this host yet.
+            <div><a href="/vms/new" class="btn btn-primary">Create a VM</a></div>
         </div>
         {{end}}
+    </section>
+
+    <div class="stack">
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <span class="hw">stream / events</span>
+                    <h2>Activity</h2>
+                </div>
+                <span class="chip" id="log-chip"><span class="dot"></span>live</span>
+            </div>
+            <ol class="log" id="event-log" aria-live="polite">
+                <li class="log-empty"><span class="log-idle">waiting for state changes</span></li>
+            </ol>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <span class="hw">ledger / clusters</span>
+                    <h2>Clusters</h2>
+                </div>
+                <a href="/clusters/new" class="link-cmd">cluster create</a>
+            </div>
+            {{if .Clusters}}
+            <ul class="list">
+                {{range .Clusters}}
+                <li class="list-row">
+                    <div>
+                        <a href="/clusters" class="id-name">{{.Name}}</a>
+                        <div class="list-meta">{{if eq .Distro "openshift"}}openshift{{else}}kubeadm{{end}} · {{len .WorkerVMs}} workers</div>
+                    </div>
+                    <span class="chip chip-{{.State}}"><span class="dot"></span>{{.State}}</span>
+                </li>
+                {{end}}
+            </ul>
+            {{else}}
+            <div class="empty">
+                <span class="empty-cmd"><span class="prompt">$</span> vmm cluster list → 0 rows</span>
+                No clusters yet.
+            </div>
+            {{end}}
+        </section>
     </div>
 </div>
 
-<div class="mt-6 bg-white rounded-lg shadow">
-    <div class="px-6 py-4 border-b border-gray-200">
-        <h2 class="text-lg font-semibold text-gray-900">Resource Usage</h2>
+<section class="panel mt-5">
+    <div class="panel-head">
+        <div>
+            <span class="hw">alloc / resources</span>
+            <h2>Allocated resources</h2>
+        </div>
+        <span class="muted xsmall mono">sum across all defined VMs</span>
     </div>
-    <div class="px-6 py-4">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-                <div class="text-sm font-medium text-gray-500 mb-1">Total vCPUs Allocated</div>
-                <div class="text-xl font-bold text-gray-900">{{.Stats.TotalCPUs}}</div>
-            </div>
-            <div>
-                <div class="text-sm font-medium text-gray-500 mb-1">Total Memory Allocated</div>
-                <div class="text-xl font-bold text-gray-900">{{.Stats.TotalMemoryMB}} MB</div>
-            </div>
-            <div>
-                <div class="text-sm font-medium text-gray-500 mb-1">Total Disk Allocated</div>
-                <div class="text-xl font-bold text-gray-900">{{.Stats.TotalDiskMB}} MB</div>
-            </div>
+    <div class="grid grid-3 grid-tight">
+        <div class="stat">
+            <div class="stat-label">vcpu.allocated</div>
+            <div class="stat-value">{{.Stats.TotalCPUs}}<span class="stat-unit">vCPU</span></div>
+        </div>
+        <div class="stat">
+            <div class="stat-label">memory.allocated</div>
+            <div class="stat-value">{{.Stats.TotalMemoryMB}}<span class="stat-unit">MB</span></div>
+        </div>
+        <div class="stat">
+            <div class="stat-label">disk.allocated</div>
+            <div class="stat-value">{{.Stats.TotalDiskMB}}<span class="stat-unit">MB</span></div>
         </div>
     </div>
-</div>
+</section>
 {{end}}

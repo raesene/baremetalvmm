@@ -95,7 +95,8 @@ func (s *Server) loadTemplates() error {
 	}
 
 	for _, page := range pages {
-		t, err := template.New("").Funcs(funcMap).ParseFS(tmplFS, "layout.html", page)
+		// vm_row.html is shared so full-page renders and HTMX row swaps match.
+		t, err := template.New("").Funcs(funcMap).ParseFS(tmplFS, "layout.html", "vm_row.html", page)
 		if err != nil {
 			return fmt.Errorf("parsing %s: %w", page, err)
 		}

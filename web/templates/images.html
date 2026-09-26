@@ -1,199 +1,182 @@
 {{template "layout.html" .}}
 {{define "content"}}
-<div class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-900">Images</h1>
-    <p class="text-gray-600 mt-1">Manage kernels and rootfs images</p>
+<header class="page-head">
+    <div>
+        <div class="eyebrow">Artifacts</div>
+        <h1>Images &amp; kernels</h1>
+        <p class="lede">Local kernels and rootfs images, plus releases available from GitHub.</p>
+    </div>
+    <div class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">vmm image list</span> <span class="tok-flag">--remote</span></span></div>
+</header>
+
+<div class="stack">
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="hw">local / kernels</span><h2>Kernels</h2></div>
+            <span class="muted xsmall mono">{{len .Kernels}} installed</span>
+        </div>
+        {{if .Kernels}}
+        <div class="table-wrap">
+            <table class="ledger">
+                <thead><tr><th>Name</th><th class="num">Size</th><th>Modified</th><th class="right"></th></tr></thead>
+                <tbody>
+                    {{range .Kernels}}
+                    <tr>
+                        <td class="wrap">
+                            <span class="id-name">{{.Name}}</span>{{if .IsDefault}}<span class="tag">default</span>{{end}}
+                            <span class="id-sub">{{.Description}}</span>
+                        </td>
+                        <td class="num">{{printf "%.1f" (divFloat .Size 1048576)}}<span class="muted"> MB</span></td>
+                        <td class="muted">{{.ModTime.Format "2006-01-02 15:04"}}</td>
+                        <td class="right">
+                            {{if not .IsDefault}}
+                            <form method="POST" action="/images/kernels/delete" class="row-actions">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <input type="hidden" name="name" value="{{.Name}}">
+                                <button type="submit" class="act act-danger"
+                                    data-confirm="Are you sure you want to delete kernel '{{.Name}}'?">delete</button>
+                            </form>
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <div class="empty">
+            <span class="empty-cmd"><span class="prompt">$</span> vmm kernel list → 0 rows</span>
+            No kernels installed. Download one from the releases below.
+        </div>
+        {{end}}
+    </section>
+
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="hw">local / rootfs</span><h2>Root filesystems</h2></div>
+            <span class="muted xsmall mono">{{len .Rootfs}} installed</span>
+        </div>
+        {{if .Rootfs}}
+        <div class="table-wrap">
+            <table class="ledger">
+                <thead><tr><th>Name</th><th class="num">Size</th><th>Modified</th><th class="right"></th></tr></thead>
+                <tbody>
+                    {{range .Rootfs}}
+                    <tr>
+                        <td class="wrap">
+                            <span class="id-name">{{.Name}}</span>{{if .IsDefault}}<span class="tag">default</span>{{end}}
+                            <span class="id-sub">{{.Description}}</span>
+                        </td>
+                        <td class="num">{{printf "%.1f" (divFloat .Size 1048576)}}<span class="muted"> MB</span></td>
+                        <td class="muted">{{.ModTime.Format "2006-01-02 15:04"}}</td>
+                        <td class="right">
+                            {{if not .IsDefault}}
+                            <form method="POST" action="/images/rootfs/delete" class="row-actions">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <input type="hidden" name="name" value="{{.Name}}">
+                                <button type="submit" class="act act-danger"
+                                    data-confirm="Are you sure you want to delete rootfs '{{.Name}}'?">delete</button>
+                            </form>
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <div class="empty">
+            <span class="empty-cmd"><span class="prompt">$</span> vmm image list → 0 rows</span>
+            No rootfs images installed. Download one from the releases below.
+        </div>
+        {{end}}
+    </section>
 </div>
 
-<!-- Local Kernels -->
-<div class="mb-8">
-    <h2 class="text-lg font-semibold text-gray-900 mb-3">Local Kernels</h2>
-    {{if .Kernels}}
-    <div class="bg-white rounded-lg shadow overflow-hidden">
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Modified</th>
-                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                {{range .Kernels}}
-                <tr>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="font-medium text-gray-900">{{.Name}}</span>
-                        {{if .IsDefault}}<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">default</span>{{end}}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{{.Description}}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{printf "%.1f" (divFloat .Size 1048576)}} MB</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{.ModTime.Format "2006-01-02 15:04"}}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
-                        {{if not .IsDefault}}
-                        <form method="POST" action="/images/kernels/delete" style="display:inline">
-                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <input type="hidden" name="name" value="{{.Name}}">
-                            <button type="submit" class="text-red-600 hover:text-red-800 font-medium"
-                                data-confirm="Are you sure you want to delete kernel '{{.Name}}'?">Delete</button>
-                        </form>
-                        {{end}}
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-    </div>
-    {{else}}
-    <div class="bg-white rounded-lg shadow px-6 py-8 text-center">
-        <p class="text-gray-500">No kernels installed. Download one from the available releases below.</p>
-    </div>
-    {{end}}
+<div class="section-title mt-5">
+    <h2>Available from GitHub</h2>
+    <span class="count">raesene/baremetalvmm releases</span>
 </div>
 
-<!-- Local Rootfs -->
-<div class="mb-8">
-    <h2 class="text-lg font-semibold text-gray-900 mb-3">Local Rootfs Images</h2>
-    {{if .Rootfs}}
-    <div class="bg-white rounded-lg shadow overflow-hidden">
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Modified</th>
-                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                {{range .Rootfs}}
-                <tr>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="font-medium text-gray-900">{{.Name}}</span>
-                        {{if .IsDefault}}<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">default</span>{{end}}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{{.Description}}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{printf "%.1f" (divFloat .Size 1048576)}} MB</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{.ModTime.Format "2006-01-02 15:04"}}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
-                        {{if not .IsDefault}}
-                        <form method="POST" action="/images/rootfs/delete" style="display:inline">
-                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <input type="hidden" name="name" value="{{.Name}}">
-                            <button type="submit" class="text-red-600 hover:text-red-800 font-medium"
-                                data-confirm="Are you sure you want to delete rootfs '{{.Name}}'?">Delete</button>
-                        </form>
-                        {{end}}
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-    </div>
-    {{else}}
-    <div class="bg-white rounded-lg shadow px-6 py-8 text-center">
-        <p class="text-gray-500">No rootfs images installed. Download one from the available releases below.</p>
-    </div>
-    {{end}}
-</div>
-
-<!-- Available from GitHub -->
-<div class="mb-8">
-    <h2 class="text-lg font-semibold text-gray-900 mb-3">Available from GitHub</h2>
-    {{if .GithubError}}
-    <div class="bg-yellow-50 border border-yellow-200 rounded-lg px-6 py-4">
-        <p class="text-yellow-800">Could not fetch releases from GitHub. Check your network connection.</p>
-    </div>
-    {{else}}
-
-    <!-- Available Kernels -->
+{{if .GithubError}}
+<div class="notice notice-error"><span>Could not fetch releases from GitHub. Check the host's network connection.</span></div>
+{{else}}
+<div class="stack">
     {{if .AvailableKernels}}
-    <h3 class="text-sm font-medium text-gray-700 mb-2 mt-4">Kernels</h3>
-    <div class="bg-white rounded-lg shadow overflow-hidden mb-4">
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Release</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Saves As</th>
-                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                {{range .AvailableKernels}}
-                <tr>
-                    <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{{.Tag}}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{{.Description}}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{.LocalName}}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
-                        {{if .Downloaded}}
-                        <span class="text-green-600 font-medium">Installed</span>
-                        {{else}}
-                        <form method="POST" action="/images/kernels/download" class="download-form" style="display:inline">
-                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <input type="hidden" name="local_name" value="{{.LocalName}}">
-                            <input type="hidden" name="tag" value="{{.Tag}}">
-                            <button type="submit" class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 font-medium download-btn">
-                                Download
-                            </button>
-                        </form>
-                        {{end}}
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-    </div>
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="hw">remote / kernels</span><h2>Kernel releases</h2></div>
+            <span class="muted xsmall mono">vmm kernel pull</span>
+        </div>
+        <div class="table-wrap">
+            <table class="ledger">
+                <thead><tr><th>Release</th><th>Description</th><th>Saves as</th><th class="right">Actions</th></tr></thead>
+                <tbody>
+                    {{range .AvailableKernels}}
+                    <tr>
+                        <td class="data">{{.Tag}}</td>
+                        <td class="muted wrap">{{.Description}}</td>
+                        <td>{{.LocalName}}</td>
+                        <td class="right">
+                            {{if .Downloaded}}
+                            <span class="chip chip-running"><span class="dot"></span>installed</span>
+                            {{else}}
+                            <form method="POST" action="/images/kernels/download" class="download-form row-actions">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <input type="hidden" name="local_name" value="{{.LocalName}}">
+                                <input type="hidden" name="tag" value="{{.Tag}}">
+                                <button type="submit" class="btn btn-sm download-btn">Download</button>
+                            </form>
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </section>
     {{end}}
 
-    <!-- Available Rootfs -->
     {{if .AvailableRootfs}}
-    <h3 class="text-sm font-medium text-gray-700 mb-2 mt-4">Rootfs Images</h3>
-    <div class="bg-white rounded-lg shadow overflow-hidden">
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Release</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Saves As</th>
-                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                {{range .AvailableRootfs}}
-                <tr>
-                    <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{{.Tag}}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{{.Description}}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{.LocalName}}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
-                        {{if .Downloaded}}
-                        <span class="text-green-600 font-medium">Installed</span>
-                        {{else}}
-                        <form method="POST" action="/images/rootfs/download" class="download-form" style="display:inline">
-                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <input type="hidden" name="local_name" value="{{.LocalName}}">
-                            <input type="hidden" name="tag" value="{{.Tag}}">
-                            <button type="submit" class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 font-medium download-btn">
-                                Download
-                            </button>
-                        </form>
-                        {{end}}
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-    </div>
+    <section class="panel">
+        <div class="panel-head">
+            <div><span class="hw">remote / rootfs</span><h2>Rootfs releases</h2></div>
+            <span class="muted xsmall mono">vmm image pull</span>
+        </div>
+        <div class="table-wrap">
+            <table class="ledger">
+                <thead><tr><th>Release</th><th>Description</th><th>Saves as</th><th class="right">Actions</th></tr></thead>
+                <tbody>
+                    {{range .AvailableRootfs}}
+                    <tr>
+                        <td class="data">{{.Tag}}</td>
+                        <td class="muted wrap">{{.Description}}</td>
+                        <td>{{.LocalName}}</td>
+                        <td class="right">
+                            {{if .Downloaded}}
+                            <span class="chip chip-running"><span class="dot"></span>installed</span>
+                            {{else}}
+                            <form method="POST" action="/images/rootfs/download" class="download-form row-actions">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <input type="hidden" name="local_name" value="{{.LocalName}}">
+                                <input type="hidden" name="tag" value="{{.Tag}}">
+                                <button type="submit" class="btn btn-sm download-btn">Download</button>
+                            </form>
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </section>
     {{end}}
 
     {{if and (not .AvailableKernels) (not .AvailableRootfs)}}
-    <div class="bg-white rounded-lg shadow px-6 py-8 text-center">
-        <p class="text-gray-500">No releases found on GitHub.</p>
-    </div>
-    {{end}}
-
+    <section class="panel">
+        <div class="empty">No releases found on GitHub.</div>
+    </section>
     {{end}}
 </div>
+{{end}}
 {{end}}
