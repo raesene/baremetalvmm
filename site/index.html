@@ -157,6 +157,24 @@ root@vmm-guest:~# <span class="caret"></span></code></pre>
                     <p>An optional browser console for VMs, clusters and images, with live state updates, an in-browser SSH terminal and a Bearer-token REST API.</p>
                     <span class="cmdline"><span class="prompt">$</span><span><span class="tok-flag">VMM_WEB_PASSWORD=…</span> <span class="tok-cmd">sudo -E vmm-web</span></span></span>
                 </article>
+
+                <article class="panel feature is-full">
+                    <div class="feature-split">
+                        <div>
+                            <span class="hw">lifecycle / vmm upgrade</span>
+                            <h3>Upgrades without downtime</h3>
+                            <p>One command moves the host to the latest release. <code class="mono">vmm upgrade</code> checks the download against the release checksums, swaps <code class="mono">vmm</code> and <code class="mono">vmm-web</code> in place and upgrades Firecracker when a release needs it. It then restarts only the web console. Running VMs keep running, the previous binaries are kept for <code class="mono">--rollback</code>, and the web console tells you when a new version is out.</p>
+                        </div>
+<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">vmm upgrade</span> <span class="tok-flag">--check</span>
+<span class="tok-flag">installed: 0.14.0</span>
+<span class="tok-flag">latest:    </span><span class="tok-data">0.15.0</span>
+<span class="prompt">$ </span><span class="tok-cmd">sudo vmm upgrade</span>
+  <span class="tok-sel">[ok]</span> vmm <span class="tok-data">0.15.0</span>
+  <span class="tok-sel">[ok]</span> vmm-web <span class="tok-data">0.15.0</span>
+  <span class="tok-sel">[ok]</span> vmm-web.service restarted
+<span class="tok-comment"># running VMs were not stopped</span></code></pre>
+                    </div>
+                </article>
             </div>
         </div>
     </section>
@@ -196,7 +214,7 @@ root@vmm-guest:~# <span class="caret"></span></code></pre>
                 </div>
                 <div class="bullet">
                     <h3>Runs as a service</h3>
-                    <p>A systemd unit reads its password from <code class="mono">/etc/vmm-web/environment</code>, so the console is available as soon as the host boots.</p>
+                    <p>A systemd unit reads its password from <code class="mono">/etc/vmm-web/environment</code>, so the console is available as soon as the host boots. It also flags new releases, which <code class="mono">sudo vmm upgrade</code> installs.</p>
                 </div>
             </div>
         </div>
@@ -235,6 +253,7 @@ root@vmm-guest:~# <span class="caret"></span></code></pre>
                     <li><span class="k">Isolation</span><span>Every VM gets its own guest kernel inside a KVM-backed Firecracker process. It is much stronger isolation than a shared-kernel container.</span></li>
                     <li><span class="k">Lifecycle</span><span>Stop escalates from Ctrl+Alt+Del to SIGTERM to SIGKILL and waits for the process to exit. Failed starts roll back their TAP device, IP and socket.</span></li>
                     <li><span class="k">Networking</span><span>VMs share a bridge with NAT out through the host interface. Only the ports you forward are exposed beyond the host.</span></li>
+                    <li><span class="k">Upgrades</span><span><code class="mono">vmm upgrade</code> verifies a release against its checksums, then swaps binaries by atomic rename, keeping <code class="mono">.prev</code> copies. Firecracker processes that are already running are untouched, so VMs keep running through an upgrade.</span></li>
                     <li><span class="k">Downloads</span><span>Kernels and rootfs images come from GitHub releases and are checked against SHA256 checksums when they are published.</span></li>
                 </ul>
             </div>

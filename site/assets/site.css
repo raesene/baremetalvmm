@@ -341,8 +341,14 @@ section.block { padding: var(--space-9) 0 0; }
 .feature p { margin-top: var(--space-2); font-size: 0.88rem; color: var(--color-muted); flex: 1; }
 .feature .cmdline { margin-top: var(--space-4); align-self: flex-start; font-size: 0.7rem; }
 .feature.is-wide { grid-column: span 2; }
+.feature.is-full { grid-column: 1 / -1; }
+.feature-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-6); align-items: center; }
+.feature-split .code { font-size: 0.74rem; line-height: 1.7; }
 @media (max-width: 980px) {
     .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+    .feature-split { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
 }
 @media (max-width: 640px) {
     .features { grid-template-columns: minmax(0, 1fr); }
