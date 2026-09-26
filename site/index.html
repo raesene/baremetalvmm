@@ -71,7 +71,7 @@ root@vmm-guest:~# <span class="caret"></span></code></pre>
                 <div class="spec"><span class="hw">engine</span><div class="spec-value">Firecracker<small>v1.16.0</small></div></div>
                 <div class="spec"><span class="hw">scale</span><div class="spec-value">10–50<small>concurrent VMs</small></div></div>
                 <div class="spec"><span class="hw">host</span><div class="spec-value">Ubuntu<small>24.04 + KVM</small></div></div>
-                <div class="spec"><span class="hw">binaries</span><div class="spec-value">amd64<small>/ arm64</small></div></div>
+                <div class="spec"><span class="hw">arch</span><div class="spec-value">amd64<small>x86_64 only</small></div></div>
             </div>
 
             <p class="caveat"><span><strong>Personal software.</strong> vmm was built, mostly with Claude Code, to scratch its author's own itch. It is tested on Ubuntu 24.04 and works well there, but there are no guarantees on other setups. Caveat user.</span></p>
@@ -258,7 +258,7 @@ root@vmm-guest:~# <span class="caret"></span></code></pre>
                         <li><span>Ubuntu 24.04 (the only tested distro)</span></li>
                         <li><span>KVM support: <code>/dev/kvm</code> must exist</span></li>
                         <li><span>Root access for networking and the VM lifecycle</span></li>
-                        <li><span>amd64 or arm64 CPU</span></li>
+                        <li><span>An x86_64 (amd64) CPU. Binaries, kernels and images are amd64 only</span></li>
                         <li><span><code>curl</code> or <code>wget</code>, plus <code>git</code></span></li>
                         <li><span>Go 1.25+ <em class="muted">(only if building from source)</em></span></li>
                     </ul>

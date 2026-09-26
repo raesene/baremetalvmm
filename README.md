@@ -13,6 +13,7 @@ Pretty much all of the coding has been done with [Claude code](https://github.co
 ## Requirements
 
 - Ubuntu 24.04 (or compatible Linux distribution). All testing has been done on Ubuntu 24.04, so it's likely only to work with that distro.
+- An x86_64 (amd64) host. Pre-built binaries, kernels and rootfs images are published for amd64 only
 - KVM support (`/dev/kvm` must be accessible)
 - Root access (for networking setup)
 - Go 1.25+ (only if building from source)
@@ -31,7 +32,7 @@ sudo ./scripts/install.sh
 ```
 
 The install script will:
-- Download the pre-built `vmm` and `vmm-web` binaries from GitHub releases (amd64/arm64)
+- Download the pre-built `vmm` and `vmm-web` binaries from GitHub releases (linux/amd64)
 - Fall back to building from source if download fails
 - Install the binaries to `/usr/local/bin`
 - Download Firecracker v1.16.0

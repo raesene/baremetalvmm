@@ -170,7 +170,7 @@ sudo vmm kernel import /path/to/vmlinux --name my-kernel --force
 
 The kernel must be:
 - An uncompressed vmlinux ELF binary (not bzImage or zImage)
-- Built for the same architecture as the host (x86_64 or aarch64)
+- Built for x86_64, the only architecture vmm is built and tested on
 - Configured with Firecracker-compatible options (virtio, serial console, etc.)
 
 ### Building a Kernel from Source
