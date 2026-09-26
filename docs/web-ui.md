@@ -16,6 +16,12 @@ VMM_WEB_PASSWORD=mysecretpassword sudo -E vmm-web --listen 0.0.0.0:8080
 
 Then open `http://<host>:8080` in a browser and log in with the password you set.
 
+To run it as a systemd service with a generated password, install with `--with-services` (see [Development → Systemd Services](development.md#systemd-services)).
+
+### Update notices
+
+`vmm-web` checks GitHub for a newer vmm release at startup and every 12 hours. When one is available, the sidebar shows "vX available" and the Configuration page shows the `sudo vmm upgrade` command and a link to the release notes. Set `VMM_NO_UPDATE_CHECK=1` in the service environment to turn the check off (for example on hosts without internet access).
+
 ## Features
 
 - **Dashboard** - Overview of all VMs and clusters with resource usage stats

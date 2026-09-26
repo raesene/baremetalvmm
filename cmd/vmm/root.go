@@ -39,6 +39,7 @@ func newRootCmd() *cobra.Command {
 		snapshotCmd(),
 		clusterCmd(),
 		versionCmd(),
+		upgradeCmd(),
 		autostartCmd(),
 		autostopCmd(),
 	)

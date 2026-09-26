@@ -1,442 +1,273 @@
 #!/bin/bash
-set -e
+#
+# vmm installer
+#
+#   curl -fsSL https://raesene.github.io/baremetalvmm/install.sh | sudo bash
+#   curl -fsSL https://raesene.github.io/baremetalvmm/install.sh | sudo bash -s -- --with-services
+#
+# Also works from a checkout: sudo ./scripts/install.sh [options]
+#
+# Installs the latest (or a pinned) vmm release: the vmm and vmm-web binaries,
+# helper scripts, Firecracker and the default kernels/rootfs. The release
+# tarball is verified against the release's checksums.txt. Re-running the
+# script is safe and upgrades in place; after the first install you can also
+# use 'sudo vmm upgrade'. Running VMs are never stopped.
 
-# VMM Installation Script
-# This script installs the VMM binary and Firecracker
+set -euo pipefail
 
-INSTALL_DIR="/usr/local/bin"
-DATA_DIR="/var/lib/vmm"
+# Everything runs inside main so a partially downloaded script never executes.
+main() {
+
 GITHUB_REPO="raesene/baremetalvmm"
-
-# Create a secure temp directory and ensure cleanup on exit
-TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
-
-# Get the latest binary release version from GitHub API, fallback to default.
-# Only considers v*-tagged releases (skips kernel-*, rootfs-*, etc.).
-get_latest_version() {
-    local version=""
-    local api_url="https://api.github.com/repos/${GITHUB_REPO}/releases"
-    local releases_json=""
-
-    if command -v curl &> /dev/null; then
-        releases_json=$(curl -fsSL "$api_url" 2>/dev/null)
-    elif command -v wget &> /dev/null; then
-        releases_json=$(wget -qO- "$api_url" 2>/dev/null)
-    fi
-
-    if [ -n "$releases_json" ]; then
-        if command -v jq &> /dev/null; then
-            version=$(echo "$releases_json" | jq -r '[.[] | select(.tag_name | startswith("v"))] | first | .tag_name // empty' 2>/dev/null | sed 's/^v//')
-        else
-            version=$(echo "$releases_json" | grep '"tag_name": "v' | head -1 | sed -E 's/.*"v([^"]+)".*/\1/')
-        fi
-    fi
-
-    if [ -z "$version" ]; then
-        echo "0.1.0"
-    else
-        echo "$version"
-    fi
-}
-
-# Allow override via environment variable, otherwise fetch from GitHub
-VMM_VERSION="${VMM_VERSION:-$(get_latest_version)}"
-
-echo "VMM Installer"
-echo "============="
-
-# Check for root
-if [ "$EUID" -ne 0 ]; then
-    echo "Please run as root (sudo)"
-    exit 1
-fi
-
-# Check for KVM
-if [ ! -e /dev/kvm ]; then
-    echo "Warning: /dev/kvm not found. KVM support is required."
-    echo "Ensure your CPU supports virtualization and it's enabled in BIOS."
-fi
-
-# Download helper - tries curl first, falls back to wget
-download_file() {
-    local url="$1"
-    local output="$2"
-
-    if command -v curl &> /dev/null; then
-        curl -fsSL -o "$output" "$url"
-    elif command -v wget &> /dev/null; then
-        wget -q -O "$output" "$url"
-    else
-        echo "Error: Neither curl nor wget is installed. Please install one of them."
-        return 1
-    fi
-}
-
-# Detect architecture
-detect_arch() {
-    local arch=$(uname -m)
-    case "$arch" in
-        x86_64)
-            echo "amd64"
-            ;;
-        aarch64|arm64)
-            echo "arm64"
-            ;;
-        *)
-            echo ""
-            ;;
-    esac
-}
-
-# Download pre-built binary from GitHub releases
-download_prebuilt() {
-    local arch=$(detect_arch)
-    if [ -z "$arch" ]; then
-        echo "Unsupported architecture: $(uname -m)"
-        return 1
-    fi
-
-    local url="https://github.com/${GITHUB_REPO}/releases/download/v${VMM_VERSION}/vmm_${VMM_VERSION}_linux_${arch}.tar.gz"
-    echo "Downloading VMM v${VMM_VERSION} for linux/${arch}..."
-
-    if download_file "$url" "$TMPDIR/vmm.tar.gz"; then
-        echo "Extracting..."
-        tar -xzf "$TMPDIR/vmm.tar.gz" -C "$TMPDIR" vmm vmm-web 2>/dev/null || tar -xzf "$TMPDIR/vmm.tar.gz" -C "$TMPDIR" vmm
-        cp "$TMPDIR/vmm" "$INSTALL_DIR/vmm"
-        chmod +x "$INSTALL_DIR/vmm"
-        if [ -f "$TMPDIR/vmm-web" ]; then
-            cp "$TMPDIR/vmm-web" "$INSTALL_DIR/vmm-web"
-            chmod +x "$INSTALL_DIR/vmm-web"
-            echo "VMM Web UI installed to $INSTALL_DIR/vmm-web"
-        fi
-        echo "VMM installed to $INSTALL_DIR/vmm"
-        return 0
-    else
-        echo "Failed to download pre-built binary"
-        return 1
-    fi
-}
-
-# Build from source
-build_from_source() {
-    echo "Building VMM from source..."
-    if command -v go &> /dev/null; then
-        go build -o vmm ./cmd/vmm/
-        cp vmm "$INSTALL_DIR/vmm"
-        chmod +x "$INSTALL_DIR/vmm"
-        echo "VMM installed to $INSTALL_DIR/vmm"
-
-        echo "Building VMM Web UI from source..."
-        go build -o vmm-web ./cmd/vmm-web/
-        cp vmm-web "$INSTALL_DIR/vmm-web"
-        chmod +x "$INSTALL_DIR/vmm-web"
-        echo "VMM Web UI installed to $INSTALL_DIR/vmm-web"
-        return 0
-    else
-        echo "Error: Go is not installed. Cannot build from source."
-        return 1
-    fi
-}
-
-# Install VMM binary
-# Priority: 1. Pre-built binary from GitHub, 2. Build from source
-install_vmm() {
-    # Check if --build-from-source flag is provided
-    if [ "$BUILD_FROM_SOURCE" = "1" ]; then
-        echo "Building from source (--build-from-source specified)..."
-        build_from_source
-        return $?
-    fi
-
-    # Try to download pre-built binary first
-    if download_prebuilt; then
-        return 0
-    fi
-
-    # Fall back to building from source
-    echo "Falling back to building from source..."
-    build_from_source
-}
-
-# Parse command line arguments
-BUILD_FROM_SOURCE=0
-for arg in "$@"; do
-    case "$arg" in
-        --build-from-source)
-            BUILD_FROM_SOURCE=1
-            ;;
-    esac
-done
-
-# Install VMM
-install_vmm
-
-# Create data directories
-echo "Creating data directories..."
-mkdir -p "$DATA_DIR"/{config,vms,images/kernels,images/rootfs,mounts,sockets,logs,state}
-
-# Install build-kernel.sh script
-SCRIPT_DIR="/usr/local/share/vmm"
-mkdir -p "$SCRIPT_DIR"
-if [ -f "scripts/build-kernel.sh" ]; then
-    cp scripts/build-kernel.sh "$SCRIPT_DIR/build-kernel.sh"
-    chmod +x "$SCRIPT_DIR/build-kernel.sh"
-    echo "Installed build-kernel.sh to $SCRIPT_DIR"
-elif [ -f "$(dirname "$0")/build-kernel.sh" ]; then
-    cp "$(dirname "$0")/build-kernel.sh" "$SCRIPT_DIR/build-kernel.sh"
-    chmod +x "$SCRIPT_DIR/build-kernel.sh"
-    echo "Installed build-kernel.sh to $SCRIPT_DIR"
-fi
-
-if [ -f "scripts/build-rootfs.sh" ]; then
-    cp scripts/build-rootfs.sh "$SCRIPT_DIR/build-rootfs.sh"
-    chmod +x "$SCRIPT_DIR/build-rootfs.sh"
-    echo "Installed build-rootfs.sh to $SCRIPT_DIR"
-elif [ -f "$(dirname "$0")/build-rootfs.sh" ]; then
-    cp "$(dirname "$0")/build-rootfs.sh" "$SCRIPT_DIR/build-rootfs.sh"
-    chmod +x "$SCRIPT_DIR/build-rootfs.sh"
-    echo "Installed build-rootfs.sh to $SCRIPT_DIR"
-fi
-
-# Download Firecracker if not present or outdated
+INSTALL_DIR="/usr/local/bin"
+SHARE_DIR="/usr/local/share/vmm"
+DATA_DIR="/var/lib/vmm"
+SYSTEMD_DIR="/etc/systemd/system"
+WEB_ENV="/etc/vmm-web/environment"
 FC_VERSION="v1.16.0"
-FC_BIN="/usr/local/bin/firecracker"
-CURRENT_FC_VERSION=""
-if [ -f "$FC_BIN" ]; then
-    CURRENT_FC_VERSION=$("$FC_BIN" --version 2>/dev/null | head -1 | awk '{print $2}')
+
+VERSION="${VMM_VERSION:-}"
+WITH_SERVICES=0
+NO_IMAGES=0
+BUILD_FROM_SOURCE=0
+
+usage() {
+    cat <<EOF
+Usage: install.sh [options]
+
+Options:
+  --version X          Install vmm version X (default: latest release; or set VMM_VERSION)
+  --with-services      Install and enable the vmm and vmm-web systemd services
+  --no-images          Skip downloading kernels and rootfs images
+  --build-from-source  Build vmm from this checkout instead of downloading a release
+  -h, --help           Show this help
+EOF
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --version) VERSION="${2:-}"; shift ;;
+        --version=*) VERSION="${1#*=}" ;;
+        --with-services) WITH_SERVICES=1 ;;
+        --no-images) NO_IMAGES=1 ;;
+        --build-from-source) BUILD_FROM_SOURCE=1 ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+    esac
+    shift
+done
+VERSION="${VERSION#v}"
+
+say()  { printf '%s\n' "$*"; }
+ok()   { printf '  [ok] %s\n' "$*"; }
+warn() { printf '  [warn] %s\n' "$*" >&2; }
+die()  { printf 'Error: %s\n' "$*" >&2; exit 1; }
+
+say "vmm installer"
+say "============="
+
+[ "$(id -u)" -eq 0 ] || die "please run as root (sudo)"
+[ -e /dev/kvm ] || warn "/dev/kvm not found: enable virtualisation (VT-x/AMD-V) in firmware before running VMs"
+
+case "$(uname -m)" in
+    x86_64) ARCH="amd64"; FC_ARCH="x86_64" ;;
+    *) die "unsupported architecture $(uname -m): vmm releases, kernels and images are published for x86_64 (amd64) only" ;;
+esac
+
+for tool in tar sha256sum; do
+    command -v "$tool" >/dev/null 2>&1 || die "$tool is required"
+done
+if command -v curl >/dev/null 2>&1; then
+    fetch() { curl -fsSL --retry 3 -o "$2" "$1"; }
+    fetch_stdout() { curl -fsSL --retry 3 "$1"; }
+elif command -v wget >/dev/null 2>&1; then
+    fetch() { wget -q -O "$2" "$1"; }
+    fetch_stdout() { wget -q -O - "$1"; }
+else
+    die "curl or wget is required"
 fi
-if [ ! -f "$FC_BIN" ] || [ "$CURRENT_FC_VERSION" != "$FC_VERSION" ]; then
-    echo "Downloading Firecracker $FC_VERSION..."
-    ARCH=$(uname -m)
-    FC_URL="https://github.com/firecracker-microvm/firecracker/releases/download/${FC_VERSION}/firecracker-${FC_VERSION}-${ARCH}.tgz"
-    if ! download_file "$FC_URL" "$TMPDIR/firecracker.tgz"; then
-        echo "Error: Failed to download Firecracker"
-        exit 1
+
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+# install_bin SRC DST: swap a binary in atomically, keeping the old one as
+# DST.prev. A running vmm-web or firecracker keeps its old inode, so nothing
+# has to be stopped first.
+install_bin() {
+    local src="$1" dst="$2" tmp
+    tmp="$(dirname "$dst")/.$(basename "$dst").new.$$"
+    install -m 0755 "$src" "$tmp"
+    if [ -f "$dst" ]; then
+        ln -f "$dst" "$dst.prev" 2>/dev/null || cp -p "$dst" "$dst.prev"
     fi
-    tar -xzf "$TMPDIR/firecracker.tgz" -C "$TMPDIR"
-    cp "$TMPDIR/release-${FC_VERSION}-${ARCH}/firecracker-${FC_VERSION}-${ARCH}" "$FC_BIN"
-    chmod +x "$FC_BIN"
-    echo "Firecracker installed to $FC_BIN"
+    mv -f "$tmp" "$dst"
+}
+
+installed_version() {
+    [ -x "$INSTALL_DIR/vmm" ] || return 0
+    "$INSTALL_DIR/vmm" version --json </dev/null 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p'
+}
+
+PREV_VERSION="$(installed_version || true)"
+
+# ---------- vmm binaries ----------
+
+if [ "$BUILD_FROM_SOURCE" = 1 ]; then
+    [ -f go.mod ] && grep -q "module github.com/$GITHUB_REPO" go.mod \
+        || die "--build-from-source must be run from the root of a baremetalvmm checkout"
+    command -v go >/dev/null 2>&1 || die "Go is required to build from source"
+    say "Building vmm from source..."
+    VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
+    VERSION="${VERSION#v}"
+    LDFLAGS="-s -w -X main.version=$VERSION -X main.commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    CGO_ENABLED=0 go build -ldflags "$LDFLAGS" -o "$TMP/vmm" ./cmd/vmm
+    CGO_ENABLED=0 go build -ldflags "$LDFLAGS" -o "$TMP/vmm-web" ./cmd/vmm-web
+    mkdir -p "$TMP/scripts"
+    cp scripts/*.sh scripts/*.service "$TMP/scripts/"
+else
+    if [ -z "$VERSION" ]; then
+        say "Finding the latest release..."
+        VERSION=$(fetch_stdout "https://api.github.com/repos/$GITHUB_REPO/releases?per_page=100" \
+            | grep -o '"tag_name": *"v[0-9][0-9.]*"' | head -1 | sed -E 's/.*"v([^"]+)"/\1/') || true
+        [ -n "$VERSION" ] || die "could not determine the latest release (GitHub API unreachable or rate limited?); pass --version"
+    fi
+    TARBALL="vmm_${VERSION}_linux_${ARCH}.tar.gz"
+    BASE="https://github.com/$GITHUB_REPO/releases/download/v$VERSION"
+
+    say "Downloading vmm $VERSION..."
+    fetch "$BASE/$TARBALL" "$TMP/$TARBALL" || die "download failed: $BASE/$TARBALL"
+    fetch "$BASE/checksums.txt" "$TMP/checksums.txt" || die "download failed: $BASE/checksums.txt"
+    grep " $TARBALL\$" "$TMP/checksums.txt" > "$TMP/expected.sha256" || die "checksums.txt has no entry for $TARBALL"
+    (cd "$TMP" && sha256sum -c --status expected.sha256) || die "checksum verification failed for $TARBALL"
+    ok "checksum verified"
+    tar -xzf "$TMP/$TARBALL" -C "$TMP" vmm vmm-web scripts
 fi
 
-# Download kernel from GitHub releases if not present
-KERNEL_PATH="$DATA_DIR/images/kernels/vmlinux.bin"
-if [ ! -f "$KERNEL_PATH" ]; then
-    echo "Downloading pre-built kernel from GitHub releases..."
-    KERNEL_URL=""
+install_bin "$TMP/vmm" "$INSTALL_DIR/vmm"
+install_bin "$TMP/vmm-web" "$INSTALL_DIR/vmm-web"
+ok "vmm and vmm-web $VERSION installed to $INSTALL_DIR"
 
-    # Query GitHub API for latest kernel-* release
-    API_URL="https://api.github.com/repos/${GITHUB_REPO}/releases"
-    RELEASES_JSON=""
-    if command -v curl &> /dev/null; then
-        RELEASES_JSON=$(curl -fsSL "$API_URL" 2>/dev/null)
-    elif command -v wget &> /dev/null; then
-        RELEASES_JSON=$(wget -qO- "$API_URL" 2>/dev/null)
-    fi
+# Helper scripts (kernel/rootfs builders, uninstaller) and reference units.
+mkdir -p "$SHARE_DIR/systemd"
+for f in "$TMP"/scripts/*.sh; do
+    [ -f "$f" ] && install -m 0755 "$f" "$SHARE_DIR/$(basename "$f")"
+done
+for f in "$TMP"/scripts/*.service; do
+    [ -f "$f" ] && install -m 0644 "$f" "$SHARE_DIR/systemd/$(basename "$f")"
+done
+ok "helper scripts installed to $SHARE_DIR"
 
-    if [ -n "$RELEASES_JSON" ]; then
-        # Find the latest release with a kernel-* tag and extract the vmlinux.bin asset URL
-        if command -v jq &> /dev/null; then
-            KERNEL_URL=$(echo "$RELEASES_JSON" | jq -r '
-                [.[] | select(.tag_name | startswith("kernel-"))] |
-                first |
-                .assets[] | select(.name == "vmlinux.bin") |
-                .browser_download_url' 2>/dev/null)
-        else
-            # Fallback: parse JSON with grep/sed (works without jq)
-            KERNEL_URL=$(echo "$RELEASES_JSON" | \
-                grep -A 50 '"tag_name": "kernel-' | \
-                grep '"browser_download_url".*vmlinux.bin' | \
-                head -1 | \
-                sed -E 's/.*"browser_download_url": "([^"]+)".*/\1/')
-        fi
-    fi
+mkdir -p "$DATA_DIR"/{config,vms,images/kernels,images/rootfs,mounts,sockets,logs,state}
+chmod 0700 "$DATA_DIR"
 
-    if [ -n "$KERNEL_URL" ] && [ "$KERNEL_URL" != "null" ]; then
-        if download_file "$KERNEL_URL" "$KERNEL_PATH"; then
-            echo "Kernel downloaded to $KERNEL_PATH"
-        else
-            echo "Warning: Failed to download kernel. Run 'sudo vmm image pull' later to download it."
-        fi
+# ---------- Firecracker ----------
+
+FC_BIN="$INSTALL_DIR/firecracker"
+FC_CURRENT=""
+[ -x "$FC_BIN" ] && FC_CURRENT=$("$FC_BIN" --version 2>/dev/null | head -1 | awk '{print $NF}') || true
+if [ "$FC_CURRENT" != "$FC_VERSION" ]; then
+    say "Installing Firecracker $FC_VERSION..."
+    FC_TGZ="firecracker-${FC_VERSION}-${FC_ARCH}.tgz"
+    FC_BASE="https://github.com/firecracker-microvm/firecracker/releases/download/$FC_VERSION"
+    fetch "$FC_BASE/$FC_TGZ" "$TMP/$FC_TGZ" || die "Firecracker download failed"
+    fetch "$FC_BASE/$FC_TGZ.sha256.txt" "$TMP/$FC_TGZ.sha256.txt" || die "Firecracker checksum download failed"
+    (cd "$TMP" && sha256sum -c --status "$FC_TGZ.sha256.txt") || die "Firecracker checksum verification failed"
+    tar -xzf "$TMP/$FC_TGZ" -C "$TMP"
+    install_bin "$TMP/release-${FC_VERSION}-${FC_ARCH}/firecracker-${FC_VERSION}-${FC_ARCH}" "$FC_BIN"
+    if [ -n "$FC_CURRENT" ]; then
+        ok "firecracker $FC_CURRENT -> $FC_VERSION (running VMs keep the old version until restarted)"
     else
-        echo "Warning: Could not find kernel release. Run 'sudo vmm image pull' later to download it."
+        ok "firecracker $FC_VERSION installed"
     fi
 else
-    echo "Kernel already exists at $KERNEL_PATH"
+    ok "firecracker $FC_VERSION already installed"
 fi
 
-# Download Kubernetes-compatible kernel from GitHub releases if not present
-K8S_KERNEL_PATH="$DATA_DIR/images/kernels/k8s-kernel"
-if [ ! -f "$K8S_KERNEL_PATH" ]; then
-    echo "Downloading pre-built Kubernetes kernel from GitHub releases..."
-    K8S_KERNEL_URL=""
+# ---------- Images ----------
 
-    # Reuse RELEASES_JSON from above if available, otherwise fetch it
-    if [ -z "$RELEASES_JSON" ]; then
-        API_URL="https://api.github.com/repos/${GITHUB_REPO}/releases"
-        if command -v curl &> /dev/null; then
-            RELEASES_JSON=$(curl -fsSL "$API_URL" 2>/dev/null)
-        elif command -v wget &> /dev/null; then
-            RELEASES_JSON=$(wget -qO- "$API_URL" 2>/dev/null)
-        fi
-    fi
-
-    if [ -n "$RELEASES_JSON" ]; then
-        if command -v jq &> /dev/null; then
-            K8S_KERNEL_URL=$(echo "$RELEASES_JSON" | jq -r '
-                [.[] | select(.tag_name | startswith("k8s-kernel-"))] |
-                first |
-                .assets[] | select(.name == "k8s-vmlinux.bin") |
-                .browser_download_url' 2>/dev/null)
-        else
-            K8S_KERNEL_URL=$(echo "$RELEASES_JSON" | \
-                grep -A 50 '"tag_name": "k8s-kernel-' | \
-                grep '"browser_download_url".*k8s-vmlinux.bin' | \
-                head -1 | \
-                sed -E 's/.*"browser_download_url": "([^"]+)".*/\1/')
-        fi
-    fi
-
-    if [ -n "$K8S_KERNEL_URL" ] && [ "$K8S_KERNEL_URL" != "null" ]; then
-        if download_file "$K8S_KERNEL_URL" "$K8S_KERNEL_PATH"; then
-            echo "Kubernetes kernel downloaded to $K8S_KERNEL_PATH"
-        else
-            echo "Warning: Failed to download Kubernetes kernel. Build one with: sudo vmm kernel build --version 6.6 --name k8s-kernel"
-        fi
+if [ "$NO_IMAGES" = 0 ]; then
+    say "Downloading default images (skipped if already present)..."
+    if "$INSTALL_DIR/vmm" image pull </dev/null >"$TMP/pull.log" 2>&1; then
+        ok "default kernel and Ubuntu 24.04 rootfs"
     else
-        echo "No Kubernetes kernel release found. Build one with: sudo vmm kernel build --version 6.6 --name k8s-kernel"
+        warn "default images: $(tail -1 "$TMP/pull.log"); run 'sudo vmm image pull' later"
     fi
-else
-    echo "Kubernetes kernel already exists at $K8S_KERNEL_PATH"
+    for kernel in k8s-kernel security-kernel; do
+        if "$INSTALL_DIR/vmm" kernel pull "$kernel" </dev/null >"$TMP/pull.log" 2>&1; then
+            ok "$kernel"
+        elif grep -q "already exists" "$TMP/pull.log"; then
+            ok "$kernel already present"
+        else
+            warn "$kernel: $(tail -1 "$TMP/pull.log"); run 'sudo vmm kernel pull $kernel' later"
+        fi
+    done
 fi
 
-# Download security testing kernel from GitHub releases if not present
-SEC_KERNEL_PATH="$DATA_DIR/images/kernels/security-kernel"
-if [ ! -f "$SEC_KERNEL_PATH" ]; then
-    echo "Downloading pre-built security testing kernel from GitHub releases..."
-    SEC_KERNEL_URL=""
+# ---------- systemd services ----------
 
-    # Reuse RELEASES_JSON from above if available, otherwise fetch it
-    if [ -z "$RELEASES_JSON" ]; then
-        API_URL="https://api.github.com/repos/${GITHUB_REPO}/releases"
-        if command -v curl &> /dev/null; then
-            RELEASES_JSON=$(curl -fsSL "$API_URL" 2>/dev/null)
-        elif command -v wget &> /dev/null; then
-            RELEASES_JSON=$(wget -qO- "$API_URL" 2>/dev/null)
+WEB_PASSWORD=""
+gen_password() { head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24; }
+
+if [ "$WITH_SERVICES" = 1 ]; then
+    command -v systemctl >/dev/null 2>&1 || die "--with-services needs systemd"
+    say "Installing systemd services..."
+    for unit in vmm.service vmm-web.service; do
+        if [ ! -f "$SYSTEMD_DIR/$unit" ]; then
+            install -m 0644 "$SHARE_DIR/systemd/$unit" "$SYSTEMD_DIR/$unit"
+            ok "$unit installed"
+        elif ! cmp -s "$SHARE_DIR/systemd/$unit" "$SYSTEMD_DIR/$unit"; then
+            say "  [note] keeping your existing $unit (differs from $SHARE_DIR/systemd/$unit)"
         fi
+    done
+    mkdir -p "$(dirname "$WEB_ENV")"
+    # Older installers wrote a placeholder password that vmm-web accepts;
+    # replace it so the web UI is never exposed with a published password.
+    if [ ! -s "$WEB_ENV" ] || grep -q "please-set-a-real-password" "$WEB_ENV"; then
+        WEB_PASSWORD="$(gen_password)"
+        ( umask 077; printf 'VMM_WEB_PASSWORD=%s\n' "$WEB_PASSWORD" > "$WEB_ENV" )
+        ok "generated a vmm-web password in $WEB_ENV"
     fi
-
-    if [ -n "$RELEASES_JSON" ]; then
-        if command -v jq &> /dev/null; then
-            SEC_KERNEL_URL=$(echo "$RELEASES_JSON" | jq -r '
-                [.[] | select(.tag_name | startswith("security-kernel-"))] |
-                first |
-                .assets[] | select(.name == "security-vmlinux.bin") |
-                .browser_download_url' 2>/dev/null)
-        else
-            SEC_KERNEL_URL=$(echo "$RELEASES_JSON" | \
-                grep -A 50 '"tag_name": "security-kernel-' | \
-                grep '"browser_download_url".*security-vmlinux.bin' | \
-                head -1 | \
-                sed -E 's/.*"browser_download_url": "([^"]+)".*/\1/')
-        fi
-    fi
-
-    if [ -n "$SEC_KERNEL_URL" ] && [ "$SEC_KERNEL_URL" != "null" ]; then
-        if download_file "$SEC_KERNEL_URL" "$SEC_KERNEL_PATH"; then
-            echo "Security testing kernel downloaded to $SEC_KERNEL_PATH"
-        else
-            echo "Warning: Failed to download security testing kernel. Build one with: sudo vmm kernel build --version 6.12 --name security-kernel"
-        fi
+    chmod 600 "$WEB_ENV"
+    systemctl daemon-reload
+    systemctl enable --quiet vmm.service
+    ok "vmm.service enabled (starts VMs marked for auto-start at boot)"
+    systemctl enable --quiet vmm-web.service
+    if systemctl is-active --quiet vmm-web.service; then
+        systemctl restart vmm-web.service && ok "vmm-web.service restarted"
     else
-        echo "No security testing kernel release found. Build one with: sudo vmm kernel build --version 6.12 --name security-kernel"
+        systemctl start vmm-web.service && ok "vmm-web.service started"
     fi
+elif command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet vmm-web.service; then
+    # Upgrading an existing install: only the web UI needs a restart. vmm.service
+    # is deliberately left alone, since stopping it stops every running VM.
+    systemctl restart vmm-web.service && ok "vmm-web.service restarted"
+fi
+
+# ---------- Summary ----------
+
+say ""
+if [ -n "$PREV_VERSION" ] && [ "$PREV_VERSION" != "$VERSION" ]; then
+    say "vmm upgraded: $PREV_VERSION -> $VERSION. Running VMs were not touched."
 else
-    echo "Security testing kernel already exists at $SEC_KERNEL_PATH"
+    say "vmm $VERSION is installed."
 fi
-
-# Download rootfs from GitHub releases if not present
-ROOTFS_PATH="$DATA_DIR/images/rootfs/rootfs.ext4"
-if [ ! -f "$ROOTFS_PATH" ]; then
-    echo "Downloading pre-built rootfs from GitHub releases..."
-    ROOTFS_URL=""
-
-    # Reuse RELEASES_JSON from the kernel section if available, otherwise fetch it
-    if [ -z "$RELEASES_JSON" ]; then
-        API_URL="https://api.github.com/repos/${GITHUB_REPO}/releases"
-        if command -v curl &> /dev/null; then
-            RELEASES_JSON=$(curl -fsSL "$API_URL" 2>/dev/null)
-        elif command -v wget &> /dev/null; then
-            RELEASES_JSON=$(wget -qO- "$API_URL" 2>/dev/null)
-        fi
-    fi
-
-    if [ -n "$RELEASES_JSON" ]; then
-        # Find the latest release with a rootfs-* tag and extract the rootfs.ext4.gz asset URL
-        if command -v jq &> /dev/null; then
-            ROOTFS_URL=$(echo "$RELEASES_JSON" | jq -r '
-                [.[] | select(.tag_name | startswith("rootfs-"))] |
-                first |
-                .assets[] | select(.name == "rootfs.ext4.gz") |
-                .browser_download_url' 2>/dev/null)
-        else
-            # Fallback: parse JSON with grep/sed (works without jq)
-            ROOTFS_URL=$(echo "$RELEASES_JSON" | \
-                grep -A 50 '"tag_name": "rootfs-' | \
-                grep '"browser_download_url".*rootfs.ext4.gz' | \
-                head -1 | \
-                sed -E 's/.*"browser_download_url": "([^"]+)".*/\1/')
-        fi
-    fi
-
-    if [ -n "$ROOTFS_URL" ] && [ "$ROOTFS_URL" != "null" ]; then
-        echo "  Found rootfs in GitHub releases, downloading..."
-        if download_file "$ROOTFS_URL" "$ROOTFS_PATH.gz"; then
-            echo "  Decompressing rootfs..."
-            gunzip -f "$ROOTFS_PATH.gz"
-            echo "Rootfs downloaded to $ROOTFS_PATH"
-        else
-            rm -f "$ROOTFS_PATH.gz"
-            echo "  GitHub download failed, trying fallback URL..."
-            FALLBACK_URL="https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/x86_64/rootfs/bionic.rootfs.ext4"
-            if download_file "$FALLBACK_URL" "$ROOTFS_PATH"; then
-                echo "Rootfs downloaded to $ROOTFS_PATH (fallback)"
-            else
-                echo "Warning: Failed to download rootfs. Run 'sudo vmm image pull' later to download it."
-            fi
-        fi
-    else
-        echo "  No rootfs release found, trying fallback URL..."
-        FALLBACK_URL="https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/x86_64/rootfs/bionic.rootfs.ext4"
-        if download_file "$FALLBACK_URL" "$ROOTFS_PATH"; then
-            echo "Rootfs downloaded to $ROOTFS_PATH (fallback)"
-        else
-            echo "Warning: Failed to download rootfs. Run 'sudo vmm image pull' later to download it."
-        fi
-    fi
-else
-    echo "Rootfs already exists at $ROOTFS_PATH"
+say ""
+if [ -z "$PREV_VERSION" ]; then
+    say "Next steps:"
+    say "  vmm config init                              # optional: write ~/.config/vmm/config.json"
+    say "  sudo vmm create myvm --cpus 2 --memory 1024"
+    say "  sudo vmm start myvm && vmm ssh myvm"
+    say ""
 fi
-
-echo ""
-echo "Installation complete!"
-echo ""
-echo "Next steps:"
-echo "  1. Initialize VMM:     vmm config init"
-echo "  2. Pull images:        sudo vmm image pull"
-echo "  3. Create a VM:        sudo vmm create myvm --ssh-key ~/.ssh/id_ed25519.pub"
-echo "  4. Start the VM:       sudo vmm start myvm"
-echo "  5. SSH into the VM:    vmm ssh myvm"
-echo ""
-echo "For Kubernetes clusters:"
-echo "  sudo vmm cluster create mycluster --ssh-key ~/.ssh/id_ed25519.pub --kernel k8s-kernel"
-echo ""
-if [ -f "$INSTALL_DIR/vmm-web" ]; then
-echo "Web UI (optional):"
-echo "  VMM_WEB_PASSWORD=<password> sudo -E vmm-web --listen 0.0.0.0:8080"
-echo ""
+if [ -n "$WEB_PASSWORD" ]; then
+    say "Web console: http://127.0.0.1:8080  (user: admin, password: $WEB_PASSWORD)"
+    say "  The password is stored in $WEB_ENV. From another machine: ssh -L 8080:127.0.0.1:8080 <this-host>"
+    say ""
+elif [ "$WITH_SERVICES" = 0 ] && [ ! -f "$SYSTEMD_DIR/vmm-web.service" ]; then
+    say "Optional: install the auto-start and web console services by re-running with --with-services"
+    say ""
 fi
-echo "Optional - To enable auto-start on boot, run:"
-echo "  sudo ./scripts/install-service.sh"
-echo ""
+say "Upgrade later with: sudo vmm upgrade   (check first with: vmm upgrade --check)"
+}
+
+main "$@"

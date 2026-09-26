@@ -39,6 +39,7 @@ type Server struct {
 	sseBroker    *SSEBroker
 	apiKey       string
 	version      VersionInfo
+	updates      *updateChecker
 }
 
 func NewServer(cfg *config.Config, configPath, password, listenAddr string, ver VersionInfo) (*Server, error) {
@@ -57,6 +58,7 @@ func NewServer(cfg *config.Config, configPath, password, listenAddr string, ver 
 		sseBroker:    NewSSEBroker(),
 		apiKey:       hex.EncodeToString(b),
 		version:      ver,
+		updates:      newUpdateChecker(ver.Version),
 	}
 
 	if err := s.loadTemplates(); err != nil {
@@ -235,6 +237,7 @@ func (s *Server) handleAPIKeyPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) Run() error {
 	go s.sseBroker.Start(s.cfg)
+	go s.updates.run()
 
 	srv := &http.Server{
 		Addr:              s.listenAddr,
@@ -281,6 +284,9 @@ func (s *Server) renderTemplate(w http.ResponseWriter, name string, data map[str
 
 func (s *Server) renderPage(w http.ResponseWriter, r *http.Request, name string, active string, data map[string]interface{}) {
 	data["Active"] = active
+	if u := s.updates.available(); u != nil {
+		data["Update"] = u
+	}
 
 	if cookie, err := r.Cookie("vmm_session"); err == nil {
 		data["CSRFToken"] = s.sessions.csrfToken(cookie.Value)

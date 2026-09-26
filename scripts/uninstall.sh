@@ -271,21 +271,23 @@ else
     echo "  /usr/local/bin/firecracker not found"
 fi
 
-if [ -f /usr/local/share/vmm/build-kernel.sh ]; then
-    rm -f /usr/local/share/vmm/build-kernel.sh
-    echo -e "  ${GREEN}Removed /usr/local/share/vmm/build-kernel.sh${NC}"
-else
-    echo "  /usr/local/share/vmm/build-kernel.sh not found"
-fi
+# Backups kept by 'vmm upgrade' and install.sh
+for prev in /usr/local/bin/vmm.prev /usr/local/bin/vmm-web.prev /usr/local/bin/firecracker.prev \
+            /etc/systemd/system/vmm.service.prev /etc/systemd/system/vmm-web.service.prev; do
+    if [ -f "$prev" ]; then
+        rm -f "$prev"
+        echo -e "  ${GREEN}Removed $prev${NC}"
+    fi
+done
 
-if [ -f /usr/local/share/vmm/build-rootfs.sh ]; then
-    rm -f /usr/local/share/vmm/build-rootfs.sh
-    echo -e "  ${GREEN}Removed /usr/local/share/vmm/build-rootfs.sh${NC}"
+# Helper scripts and reference systemd units (this script may live here too;
+# bash keeps it open, so removing it mid-run is safe)
+if [ -d /usr/local/share/vmm ]; then
+    rm -rf /usr/local/share/vmm
+    echo -e "  ${GREEN}Removed /usr/local/share/vmm${NC}"
 else
-    echo "  /usr/local/share/vmm/build-rootfs.sh not found"
+    echo "  /usr/local/share/vmm not found"
 fi
-
-rmdir /usr/local/share/vmm 2>/dev/null || true
 
 echo ""
 echo -e "${GREEN}VMM uninstalled successfully!${NC}"

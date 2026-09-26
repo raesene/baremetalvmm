@@ -130,6 +130,19 @@ sudo vmm port-forward remove myvm 8080:80
 
 See [Kubernetes Clusters](kubernetes.md) for full cluster create options.
 
+## Upgrading
+
+```bash
+vmm upgrade --check                 # Compare the installed version with the latest release
+sudo vmm upgrade                    # Upgrade to the latest release (asks for confirmation)
+sudo vmm upgrade -y                 # ...without asking
+sudo vmm upgrade --version 0.14.0   # Install a specific release (--force to downgrade or reinstall)
+sudo vmm upgrade --rollback         # Restore the binaries saved by the last upgrade
+sudo vmm upgrade --update-units     # Also overwrite installed systemd units that differ from the release's
+```
+
+Running VMs are not stopped. `vmm-web.service` is restarted if it is running. Firecracker is upgraded when the release requires a newer version; running VMs keep their current Firecracker until they are restarted.
+
 ## Configuration
 
 | Command | Description |

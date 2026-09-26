@@ -22,32 +22,45 @@ Pretty much all of the coding has been done with [Claude code](https://github.co
 
 ### Installation
 
-```bash
-# Clone the repository
-git clone https://github.com/raesene/baremetalvmm.git
-cd baremetalvmm
+No clone needed:
 
-# Install (requires root)
-sudo ./scripts/install.sh
+```bash
+curl -fsSL https://raesene.github.io/baremetalvmm/install.sh | sudo bash
+
+# Or also install and start the systemd services (VM auto-start + web console)
+curl -fsSL https://raesene.github.io/baremetalvmm/install.sh | sudo bash -s -- --with-services
 ```
 
-The install script will:
-- Download the pre-built `vmm` and `vmm-web` binaries from GitHub releases (linux/amd64)
-- Fall back to building from source if download fails
-- Install the binaries to `/usr/local/bin`
-- Download Firecracker v1.16.0
-- Download pre-built kernels and an Ubuntu 24.04 rootfs from GitHub releases
-- Create data directories in `/var/lib/vmm`
+The installer:
+- Downloads the latest `vmm` and `vmm-web` release (linux/amd64) and verifies it against the release's `checksums.txt`
+- Installs the binaries to `/usr/local/bin` and helper scripts to `/usr/local/share/vmm`
+- Installs Firecracker v1.16.0 (verified against its published SHA256)
+- Downloads the default kernel, Kubernetes and security kernels, and an Ubuntu 24.04 rootfs
+- With `--with-services`: installs `vmm.service` and `vmm-web.service`, generates a random web console password in `/etc/vmm-web/environment` and starts the console on `127.0.0.1:8080`
+
+Other options: `--version X` to pin a release, `--no-images` to skip image downloads, and `--build-from-source` (run from a checkout as `sudo ./scripts/install.sh --build-from-source`). Re-running the installer is safe.
+
+### Upgrading
+
+```bash
+vmm upgrade --check      # is a newer release available?
+sudo vmm upgrade         # upgrade vmm, vmm-web (and Firecracker if the release needs it)
+sudo vmm upgrade --rollback   # restore the previous binaries
+```
+
+Upgrades are verified against the release checksums and swap the binaries in place, so **you don't need to stop anything first**: running VMs keep running and only `vmm-web.service` is restarted. Don't stop `vmm.service` to upgrade, because stopping it stops every running VM. The web console shows when a new release is available. (`vmm upgrade` is available from v0.14.0; to upgrade an older install, re-run the installer.)
 
 ### Uninstallation
 
 ```bash
-sudo ./scripts/uninstall.sh
+sudo /usr/local/share/vmm/uninstall.sh
 ```
 
 Use `--yes` or `-y` to skip the confirmation prompt. The script is idempotent and safe to run multiple times.
 
-### One-time Setup
+### One-time Setup (optional)
+
+The installer already downloads the default images. To write a config file or keep VM data somewhere else:
 
 ```bash
 # Initialize config
@@ -56,7 +69,7 @@ vmm config init
 # (Optional) store VM data somewhere other than the default /var/lib/vmm
 sudo vmm config init --data-dir /srv/vmm-data
 
-# Pull the default kernel and rootfs images
+# Pull the default kernel and rootfs images (if you used --no-images or changed data_dir)
 sudo vmm image pull
 ```
 

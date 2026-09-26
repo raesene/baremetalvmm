@@ -245,9 +245,9 @@ root@vmm-guest:~# <span class="caret"></span></code></pre>
     <section class="block" id="install">
         <div class="wrap">
             <div class="section-head">
-                <div class="eyebrow"><span class="idx">04</span> Install</div>
-                <h2>From bare metal to first VM in a few minutes.</h2>
-                <p>The installer downloads the pre-built binaries, Firecracker and default images. Then pull images and create a VM.</p>
+                <div class="eyebrow"><span class="idx">04</span> Install &amp; upgrade</div>
+                <h2>One command to install. One command to upgrade.</h2>
+                <p>No clone and no build step. The installer fetches a verified release, Firecracker and the default images. After that, <code class="mono">vmm upgrade</code> keeps the host current without stopping your VMs.</p>
             </div>
 
             <div class="install">
@@ -259,41 +259,28 @@ root@vmm-guest:~# <span class="caret"></span></code></pre>
                         <li><span>KVM support: <code>/dev/kvm</code> must exist</span></li>
                         <li><span>Root access for networking and the VM lifecycle</span></li>
                         <li><span>An x86_64 (amd64) CPU. Binaries, kernels and images are amd64 only</span></li>
-                        <li><span><code>curl</code> or <code>wget</code>, plus <code>git</code></span></li>
-                        <li><span>Go 1.25+ <em class="muted">(only if building from source)</em></span></li>
+                        <li><span><code>curl</code> or <code>wget</code></span></li>
                     </ul>
 
                     <span class="hw mt-5">install.sh / what it does</span>
                     <ul class="checklist">
-                        <li><span>Downloads the latest <code>vmm</code> and <code>vmm-web</code> release to <code>/usr/local/bin</code></span></li>
-                        <li><span>Falls back to building from source if the download fails</span></li>
-                        <li><span>Installs Firecracker v1.16.0</span></li>
+                        <li><span>Downloads the latest <code>vmm</code> and <code>vmm-web</code> release and checks it against <code>checksums.txt</code></span></li>
+                        <li><span>Installs them to <code>/usr/local/bin</code>, with helper scripts in <code>/usr/local/share/vmm</code></span></li>
+                        <li><span>Installs Firecracker v1.16.0 after verifying its SHA256</span></li>
                         <li><span>Fetches the default, Kubernetes and security kernels, plus an Ubuntu 24.04 rootfs</span></li>
-                        <li><span>Creates the data directories under <code>/var/lib/vmm</code></span></li>
+                        <li><span>With <code>--with-services</code>: enables VM auto-start and starts the web console with a generated password</span></li>
                     </ul>
                 </aside>
 
                 <ol class="steps">
                     <li class="step">
-                        <h3>Clone and run the installer</h3>
-                        <p>Check that virtualisation is enabled first. <code>/dev/kvm</code> should exist.</p>
+                        <h3>Run the installer</h3>
+                        <p>Check that virtualisation is enabled (<code>/dev/kvm</code> should exist), then install. Add <code>--with-services</code> to also set up VM auto-start and the web console.</p>
                         <div class="code-wrap">
-<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">ls</span> <span class="tok-data">/dev/kvm</span>
-<span class="prompt">$ </span><span class="tok-cmd">git clone</span> <span class="tok-data">https://github.com/raesene/baremetalvmm.git</span>
-<span class="prompt">$ </span><span class="tok-cmd">cd</span> <span class="tok-data">baremetalvmm</span>
-<span class="prompt">$ </span><span class="tok-cmd">sudo ./scripts/install.sh</span></code></pre>
+<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">curl</span> <span class="tok-flag">-fsSL</span> <span class="tok-data">https://raesene.github.io/baremetalvmm/install.sh</span> \
+    <span class="tok-flag">|</span> <span class="tok-cmd">sudo bash</span></code></pre>
                         </div>
-                        <p class="note">Pin a version with <code>VMM_VERSION=0.13.0</code>, or pass <code>--build-from-source</code> to compile locally.</p>
-                    </li>
-
-                    <li class="step">
-                        <h3>Initialise config and pull images</h3>
-                        <p>This creates <code>~/.config/vmm/config.json</code> and downloads the default kernel and rootfs if the installer didn't already.</p>
-                        <div class="code-wrap">
-<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">vmm config init</span>
-<span class="prompt">$ </span><span class="tok-cmd">sudo vmm image pull</span></code></pre>
-                        </div>
-                        <p class="note">To keep VM data somewhere other than <code>/var/lib/vmm</code>, use <code>sudo vmm config init --data-dir /srv/vmm-data</code> instead.</p>
+                        <p class="note">Options go after <code>bash -s --</code>: <code>--with-services</code>, <code>--version 0.14.0</code>, <code>--no-images</code>. Re-running the installer is safe. You can <a class="cmd" href="install.sh">read the script</a> first.</p>
                     </li>
 
                     <li class="step">
@@ -302,10 +289,9 @@ root@vmm-guest:~# <span class="caret"></span></code></pre>
                         <div class="code-wrap">
 <pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">sudo vmm create</span> <span class="tok-data">myvm</span> <span class="tok-flag">--cpus 2 --memory 1024</span>
 <span class="prompt">$ </span><span class="tok-cmd">sudo vmm start</span> <span class="tok-data">myvm</span>
-<span class="prompt">$ </span><span class="tok-cmd">vmm ssh</span> <span class="tok-data">myvm</span>
-<span class="tok-comment"># clean up</span>
-<span class="prompt">$ </span><span class="tok-cmd">sudo vmm stop</span> <span class="tok-data">myvm</span> <span class="tok-flag">&amp;&amp;</span> <span class="tok-cmd">sudo vmm delete</span> <span class="tok-data">myvm</span></code></pre>
+<span class="prompt">$ </span><span class="tok-cmd">vmm ssh</span> <span class="tok-data">myvm</span></code></pre>
                         </div>
+                        <p class="note">Optional: <code>vmm config init</code> writes <code>~/.config/vmm/config.json</code> for VM defaults, or a different data directory with <code>--data-dir</code>.</p>
                     </li>
 
                     <li class="step">
@@ -313,26 +299,25 @@ root@vmm-guest:~# <span class="caret"></span></code></pre>
                         <p>vmm uses the Kubernetes kernel and a <code>k8s-&lt;version&gt;</code> rootfs when they are installed, and merges a <code>vmm-&lt;name&gt;</code> context into your kubeconfig.</p>
                         <div class="code-wrap">
 <pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">sudo vmm cluster create</span> <span class="tok-data">lab</span> <span class="tok-flag">--workers 2</span>
-<span class="prompt">$ </span><span class="tok-cmd">kubectl</span> <span class="tok-flag">--context</span> <span class="tok-data">vmm-lab</span> <span class="tok-cmd">get nodes</span>
-<span class="prompt">$ </span><span class="tok-cmd">vmm ssh</span> <span class="tok-data">lab-control-plane</span></code></pre>
+<span class="prompt">$ </span><span class="tok-cmd">kubectl</span> <span class="tok-flag">--context</span> <span class="tok-data">vmm-lab</span> <span class="tok-cmd">get nodes</span></code></pre>
                         </div>
                     </li>
 
                     <li class="step">
-                        <h3>Optional: the web console as a service</h3>
-                        <p>Set a strong password (8+ characters; common defaults are rejected), then enable the unit. It listens on <code>127.0.0.1:8080</code> by default.</p>
+                        <h3>Upgrade in place</h3>
+                        <p>Upgrades are checksum-verified and swap the binaries in place. Running VMs keep running, and only the web console restarts. The console also tells you when a new release is out.</p>
                         <div class="code-wrap">
-<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">sudo ./scripts/install-service.sh</span>
-<span class="prompt">$ </span><span class="tok-cmd">sudoedit</span> <span class="tok-data">/etc/vmm-web/environment</span>   <span class="tok-comment"># VMM_WEB_PASSWORD=…</span>
-<span class="prompt">$ </span><span class="tok-cmd">sudo systemctl enable --now</span> <span class="tok-data">vmm-web</span></code></pre>
+<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">vmm upgrade</span> <span class="tok-flag">--check</span>
+<span class="prompt">$ </span><span class="tok-cmd">sudo vmm upgrade</span></code></pre>
                         </div>
+                        <p class="note">Undo with <code>sudo vmm upgrade --rollback</code>. <strong>Don't stop <code>vmm.service</code> to upgrade</strong>: stopping it stops every running VM. <code>vmm upgrade</code> ships from v0.14.0; re-run the installer to upgrade older versions.</p>
                     </li>
 
                     <li class="step">
                         <h3>Uninstall any time</h3>
-                        <p>The uninstaller is idempotent and removes binaries, services and NAT rules. Add <code>--yes</code> to skip the prompt.</p>
+                        <p>The uninstaller is idempotent and removes binaries, services, data and NAT rules. Add <code>--yes</code> to skip the prompt.</p>
                         <div class="code-wrap">
-<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">sudo ./scripts/uninstall.sh</span></code></pre>
+<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">sudo /usr/local/share/vmm/uninstall.sh</span></code></pre>
                         </div>
                     </li>
                 </ol>

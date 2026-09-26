@@ -68,6 +68,7 @@ Future work (P4 — significant effort, deferred):
 - `internal/image/` — Kernel/rootfs download, Docker import, snapshots
 - `internal/mount/` — Host directory mount as ext4 block devices
 - `internal/snapshot/` — Full VM snapshots (guest memory + device state via Firecracker's snapshot API, plus a copy of the rootfs and mount images taken while the VM is paused). Restore is in-place: it rolls a VM back to one of its own snapshots, reusing the frozen IP/MAC/TAP identity. Stored under `/var/lib/vmm/snapshots/<vm>/<name>/` (`memory`, `vmstate`, `rootfs.ext4`, `snapshot.json`). Firecracker snapshot primitives (`PauseVM`, `CreateSnapshotFiles`, `ResumeVM`, `RestoreVM`) live in `internal/firecracker/client.go`.
+- `internal/upgrade/` — Release lookup, checksum-verified download/extract, atomic binary swap (`.prev` backups) and Firecracker install, used by `vmm upgrade` and the web UI's update notice (`internal/web/updates.go`)
 - `internal/sshkey/` — VMM-managed Ed25519 SSH key pair (auto-generated in `/var/lib/vmm/ssh/`)
 - `internal/cluster/` — Cluster management. `--type kubeadm` (default): multi-node Kubernetes via kubeadm with CNI selection (`--cni cilium` default, or `--cni calico` for Calico via Tigera operator). `--type openshift`: single-node OpenShift-derived cluster via upstream MicroShift (`internal/cluster/openshift.go`), installed on the base Ubuntu rootfs over SSH using OKD payload images (no Red Hat subscription). Admin workstation support for both.
 - `internal/web/` — Web UI handlers, auth, SSE, WebSocket terminal
@@ -95,6 +96,7 @@ vmm kernel list [--remote]|pull <name>|import|delete|build
 vmm cluster create <name> [--type kubeadm|openshift] [--cni cilium|calico] [--workers N] [--cpus N] [--memory MB] [--disk MB] [--k8s-version VER] [--openshift-version VER] [--ssh-key PATH] [--image NAME] [--kernel NAME] [--admin-workstation]
 vmm cluster delete|list|kubeconfig <name>
 vmm config show|init [--data-dir PATH]|set <key> <value>   # set supports: data_dir
+vmm upgrade [--check] [--version X] [-y] [--force] [--rollback] [--update-units]
 vmm version [--json]
 ```
 
@@ -144,11 +146,11 @@ Dependabot opens weekly PRs for Go module and GitHub Actions version updates. Mi
 
 ### Project Site (`.github/workflows/pages.yml`)
 
-Static GitHub Pages site in `site/` (single `index.html` + `assets/`), deployed on pushes to `main` that touch `site/**`. It shares the Caret Ledger tokens, fonts and component styles with the web UI but has its own `site/assets/site.css`. Web UI screenshots in `site/assets/img/` were taken against a demo data dir (neutral VM names) — keep real VM names off the public site. Pages source must be set to "GitHub Actions" in repo settings.
+Static GitHub Pages site in `site/` (single `index.html` + `assets/`), deployed on pushes to `main` that touch `site/**`. It shares the Caret Ledger tokens, fonts and component styles with the web UI but has its own `site/assets/site.css`. Web UI screenshots in `site/assets/img/` were taken against a demo data dir (neutral VM names) — keep real VM names off the public site. Pages source must be set to "GitHub Actions" in repo settings. The workflow also copies `scripts/install.sh` to `<site>/install.sh` (the `curl | sudo bash` installer), so installer changes redeploy the site.
 
 ### Release Workflows
 
-- `release.yaml` — GoReleaser binary release on `v*` tags
+- `release.yaml` — GoReleaser binary release on `v*` tags. Users upgrade with `sudo vmm upgrade`, which verifies against `checksums.txt`. To require a new Firecracker version, bump `FC_VERSION` in `scripts/install.sh`: both the installer and `vmm upgrade` (which reads it from the release tarball) use it.
 - `build-kernel.yml` — kernel compilation (default, k8s, security, cifs-vuln variants). The k8s job requires `dwarves` for BTF generation.
 - `build-rootfs.yml` / `build-k8s-rootfs.yml` / `build-security-rootfs.yml` — rootfs image builds
 

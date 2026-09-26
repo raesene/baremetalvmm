@@ -31,15 +31,17 @@ if command -v vmm-web &> /dev/null; then
     echo "Installing vmm-web systemd service..."
     cp "$SCRIPT_DIR/vmm-web.service" "$SERVICE_DIR/vmm-web.service"
 
-    # Create environment file directory and template if not present
-    if [ ! -f /etc/vmm-web/environment ]; then
+    # Generate a random password if none is set. Older versions wrote a fixed
+    # placeholder that vmm-web accepts, so replace that too.
+    if [ ! -s /etc/vmm-web/environment ] || grep -q "please-set-a-real-password" /etc/vmm-web/environment; then
         mkdir -p /etc/vmm-web
-        echo "VMM_WEB_PASSWORD=please-set-a-real-password" > /etc/vmm-web/environment
-        chmod 600 /etc/vmm-web/environment
+        WEB_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
+        ( umask 077; echo "VMM_WEB_PASSWORD=$WEB_PASSWORD" > /etc/vmm-web/environment )
         echo ""
-        echo "IMPORTANT: Set your vmm-web password in /etc/vmm-web/environment"
-        echo "           Password must be at least 8 characters and not a common default."
+        echo "Generated a vmm-web password (user: admin): $WEB_PASSWORD"
+        echo "It is stored in /etc/vmm-web/environment; edit that file to change it."
     fi
+    chmod 600 /etc/vmm-web/environment
 fi
 
 systemctl daemon-reload
@@ -55,9 +57,8 @@ echo "  sudo systemctl status vmm"
 if command -v vmm-web &> /dev/null; then
     echo ""
     echo "VMM Web UI:"
-    echo "  1. Edit /etc/vmm-web/environment to set VMM_WEB_PASSWORD"
-    echo "  2. sudo systemctl enable vmm-web"
-    echo "  3. sudo systemctl start vmm-web"
-    echo "  4. sudo systemctl status vmm-web"
+    echo "  sudo systemctl enable --now vmm-web"
+    echo "  sudo systemctl status vmm-web"
+    echo "  (password: /etc/vmm-web/environment)"
 fi
 echo ""

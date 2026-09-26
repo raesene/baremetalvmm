@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "site/**"
+      - "scripts/install.sh"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -26,6 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/configure-pages@v5
+      # Serve the installer at <site>/install.sh for `curl ... | sudo bash`.
+      - name: Publish installer
+        run: install -m 0644 scripts/install.sh site/install.sh
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

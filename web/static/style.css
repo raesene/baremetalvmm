@@ -214,6 +214,9 @@ code, pre, kbd, .mono { font-family: var(--font-mono); letter-spacing: 0; }
 .rail-status .dot { background: var(--color-muted); }
 .rail-status.is-live .dot { background: var(--color-success); box-shadow: 0 0 0 3px rgba(121, 209, 139, 0.14); }
 .rail-status.is-down .dot { background: var(--color-error); }
+.rail-update { font-family: var(--font-mono); font-size: 0.66rem; color: var(--color-accent-command); }
+.rail-update::before { content: "> "; opacity: 0.7; }
+.rail-update:hover { color: #f3c57f; }
 
 .main {
     min-width: 0;
@@ -706,6 +709,9 @@ select.input option { background: var(--color-surface); color: var(--color-text)
 .flash-error, .notice-error { border-color: rgba(239, 111, 108, 0.45); }
 .flash-error::before, .notice-error::before { content: "[ERR]"; color: var(--color-error); }
 .notice-warn { border-color: rgba(240, 195, 91, 0.4); }
+.notice-update { border-color: rgba(231, 168, 75, 0.45); }
+.notice-update::before { content: "[NEW]"; color: var(--color-accent-command); }
+.notice-update strong { color: var(--color-accent-command); font-weight: 600; }
 .notice-warn::before { content: "[NOTE]"; color: var(--color-warning); }
 
 /* ---------- Empty state ---------- */

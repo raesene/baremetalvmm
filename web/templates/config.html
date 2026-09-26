@@ -109,11 +109,18 @@
     </form>
 
     <div class="stack">
-        <section class="panel">
+        <section class="panel" id="version">
             <div class="panel-head">
                 <div><span class="hw">build / version</span><h2>Version</h2></div>
             </div>
             <div class="panel-body">
+                {{if .Update}}
+                <div class="notice notice-update">
+                    <span>vmm <strong>{{.Update.Version}}</strong> is available. Upgrade in place (running VMs keep running):
+                    <span class="cmdline mt-3"><span class="prompt">$</span><span class="tok-cmd">sudo vmm upgrade</span></span>
+                    {{if .Update.URL}}<a href="{{.Update.URL}}" class="link-cmd block mt-3" rel="noopener noreferrer">release notes</a>{{end}}</span>
+                </div>
+                {{end}}
                 <div class="readout">
                     <div class="readout-title">vmm</div>
                     <div class="mono small data">{{.VMMVersion.Version}}</div>

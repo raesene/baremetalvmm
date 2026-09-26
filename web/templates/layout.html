@@ -38,6 +38,7 @@
 
         <div class="rail-foot">
             <div class="rail-status" id="event-status"><span class="dot"></span><span id="event-status-text">event stream idle</span></div>
+            {{if .Update}}<a href="/config#version" class="rail-update">v{{.Update.Version}} available</a>{{end}}
             <form method="POST" action="/logout">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>

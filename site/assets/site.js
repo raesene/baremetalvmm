@@ -1,5 +1,6 @@
 // Copy buttons for code blocks: copies only the commands (lines starting
-// with the "$ " prompt), without the prompt, comments or sample output.
+// with the "$ " prompt, plus any "\" continuation lines), without the prompt,
+// comments or sample output.
 document.querySelectorAll('.code-wrap').forEach(function(wrap) {
     var pre = wrap.querySelector('pre');
     if (!pre || !navigator.clipboard) return;
@@ -9,9 +10,15 @@ document.querySelectorAll('.code-wrap').forEach(function(wrap) {
     btn.textContent = 'copy';
     btn.setAttribute('aria-label', 'Copy commands');
     btn.addEventListener('click', function() {
-        var lines = pre.innerText.split('\n')
-            .filter(function(l) { return l.indexOf('$ ') === 0; })
-            .map(function(l) { return l.slice(2).replace(/\s+#.*$/, ''); });
+        var lines = [];
+        pre.innerText.split('\n').forEach(function(l) {
+            var last = lines[lines.length - 1];
+            if (l.indexOf('$ ') === 0) {
+                lines.push(l.slice(2).replace(/\s+#.*$/, ''));
+            } else if (last !== undefined && /\\$/.test(last)) {
+                lines.push(l);
+            }
+        });
         navigator.clipboard.writeText(lines.join('\n')).then(function() {
             btn.textContent = 'copied';
             btn.classList.add('is-done');
