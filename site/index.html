@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>vmm · Bare Metal MicroVM Manager</title>
+    <meta name="description" content="vmm is a CLI and web console for running Firecracker microVMs and Kubernetes clusters on a single Ubuntu host: create, snapshot, network and SSH into lightweight VMs in seconds.">
+    <meta property="og:title" content="vmm · Bare Metal MicroVM Manager">
+    <meta property="og:description" content="Firecracker microVMs and Kubernetes clusters on one bare-metal host, from a single CLI and web console.">
+    <meta property="og:image" content="assets/img/hero.jpg">
+    <meta name="theme-color" content="#101318">
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+    <link rel="preload" href="assets/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="assets/fonts/azeret-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+    <div class="wrap">
+        <a href="#top" class="brand"><span class="brand-glyph">&gt;_</span>vmm<span class="brand-sub">bare metal microvm manager</span></a>
+        <nav class="nav" aria-label="Sections">
+            <a href="#features">Features</a>
+            <a href="#console">Web console</a>
+            <a href="#architecture">How it works</a>
+            <a href="#install">Install</a>
+            <a href="#docs">Docs</a>
+            <a href="https://github.com/raesene/baremetalvmm" class="btn btn-sm">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<main id="main">
+    <!-- Hero -->
+    <section class="hero" id="top">
+        <div class="wrap">
+            <div class="hero-grid">
+                <div>
+                    <div class="eyebrow"><span class="idx">&gt;_</span> Firecracker · Ubuntu 24.04 · Go</div>
+                    <h1>Spin up VMs like containers.<br>Keep the <em>isolation of a VM.</em></h1>
+                    <p class="lede"><strong>vmm</strong> runs lightweight <strong>Firecracker microVMs</strong> and whole <strong>Kubernetes clusters</strong> on a single bare-metal host, from one CLI and a browser console. Each VM boots in seconds with its own kernel, IP address and SSH access.</p>
+                    <div class="hero-actions">
+                        <a href="#install" class="btn btn-primary">Install vmm</a>
+                        <a href="https://github.com/raesene/baremetalvmm" class="btn btn-ghost">View source</a>
+                        <a href="https://github.com/raesene/baremetalvmm/releases" class="btn btn-ghost">Releases</a>
+                    </div>
+                </div>
+
+                <div class="panel hero-term" aria-label="Example vmm session">
+                    <div class="term-head">
+                        <span class="hw">session / quick start</span>
+                        <span class="status"><span class="dot"></span>host ready</span>
+                    </div>
+<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">sudo vmm create</span> <span class="tok-data">dev-box</span> <span class="tok-flag">--cpus 2 --memory 2048</span>
+<span class="prompt">$ </span><span class="tok-cmd">sudo vmm start</span> <span class="tok-data">dev-box</span>
+<span class="prompt">$ </span><span class="tok-cmd">vmm list</span>
+<span class="tok-flag">NAME      ID        STATE    CPUs  MEMORY   IP ADDRESS</span>
+dev-box   <span class="tok-flag">1e2e5700</span>  <span class="tok-sel">running</span>  2     2048 MB  <span class="tok-data">172.16.0.2</span>
+<span class="prompt">$ </span><span class="tok-cmd">vmm ssh</span> <span class="tok-data">dev-box</span>
+root@vmm-guest:~# <span class="caret"></span></code></pre>
+                </div>
+            </div>
+
+            <figure class="panel hero-figure">
+                <img src="assets/img/hero.jpg" width="1600" height="893" alt="Illustration of a bare-metal server with rows of microVMs rising from it, each wired back to a single bridge">
+                <figcaption><span>fig.01 — one host, many microVMs, one bridge</span><span>vmm-br0 · 172.16.0.0/16</span></figcaption>
+            </figure>
+
+            <div class="specs">
+                <div class="spec"><span class="hw">engine</span><div class="spec-value">Firecracker<small>v1.16.0</small></div></div>
+                <div class="spec"><span class="hw">scale</span><div class="spec-value">10–50<small>concurrent VMs</small></div></div>
+                <div class="spec"><span class="hw">host</span><div class="spec-value">Ubuntu<small>24.04 + KVM</small></div></div>
+                <div class="spec"><span class="hw">binaries</span><div class="spec-value">amd64<small>/ arm64</small></div></div>
+            </div>
+
+            <p class="caveat"><span><strong>Personal software.</strong> vmm was built, mostly with Claude Code, to scratch its author's own itch. It is tested on Ubuntu 24.04 and works well there, but there are no guarantees on other setups. Caveat user.</span></p>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="block" id="features">
+        <div class="wrap">
+            <div class="section-head">
+                <div class="eyebrow"><span class="idx">01</span> Features</div>
+                <h2>Everything a dev or lab VM needs, nothing it doesn't.</h2>
+                <p>Somewhere between Docker and a full hypervisor: real kernels and real isolation, with container-like speed and a command line that stays out of your way.</p>
+            </div>
+
+            <div class="features">
+                <article class="panel feature is-wide">
+                    <span class="hw">compute / firecracker</span>
+                    <h3>Firecracker microVMs in seconds</h3>
+                    <p>Each VM is a single Firecracker process with its own kernel, ext4 rootfs, TAP device and IP. Set vCPUs, memory and disk per VM, or set defaults once in <code class="mono">config.json</code>. VMs can start automatically at boot through a systemd unit, and <code class="mono">vmm console</code> shows the serial output for debugging boots and kernel panics.</p>
+                    <span class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">sudo vmm create</span> <span class="tok-data">myvm</span> <span class="tok-flag">--cpus 2 --memory 1024 --disk 4096</span></span></span>
+                </article>
+
+                <article class="panel feature">
+                    <span class="hw">access / ssh</span>
+                    <h3>SSH that just works</h3>
+                    <p>vmm generates and manages its own Ed25519 key and injects it into every VM, so <code class="mono">--ssh-key</code> is optional. Your own keys are added alongside it.</p>
+                    <span class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">vmm ssh</span> <span class="tok-data">myvm</span></span></span>
+                </article>
+
+                <article class="panel feature">
+                    <span class="hw">images / docker</span>
+                    <h3>Root filesystems from Docker images</h3>
+                    <p>Turn any Docker image into a bootable rootfs, or pull ready-made Ubuntu 24.04, Kubernetes, security and dev images from GitHub releases.</p>
+                    <span class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">sudo vmm image import</span> <span class="tok-data">ubuntu:22.04</span> <span class="tok-flag">--name base</span></span></span>
+                </article>
+
+                <article class="panel feature">
+                    <span class="hw">state / memory + disk</span>
+                    <h3>Full VM snapshots</h3>
+                    <p>Capture a running VM's memory, device state and disks, then roll it back in place later. Useful before risky upgrades, or for replaying an exploit from a known state.</p>
+                    <span class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">sudo vmm snapshot create</span> <span class="tok-data">myvm clean</span></span></span>
+                </article>
+
+                <article class="panel feature">
+                    <span class="hw">net / bridge + nat</span>
+                    <h3>Networking handled for you</h3>
+                    <p>A Linux bridge, TAP devices, IP allocation and NAT are set up automatically. VMs are reachable from the host by default. Idempotent iptables rules forward ports and custom DNS servers can be set per VM.</p>
+                    <span class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">sudo vmm port-forward add</span> <span class="tok-data">myvm 8080:80</span></span></span>
+                </article>
+
+                <article class="panel feature is-wide">
+                    <span class="hw">orchestration / kubeadm</span>
+                    <h3>Kubernetes clusters in one command</h3>
+                    <p>Build multi-node clusters from microVMs with kubeadm, using Cilium (with kube-proxy replacement) or Calico. Pick the Kubernetes version by choosing a rootfs image, add worker nodes, and optionally add an admin workstation with <code class="mono">kubectl</code> already configured. The cluster context is merged into your kubeconfig, so you can use <code class="mono">kubectl</code> from the host straight away.</p>
+                    <span class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">sudo vmm cluster create</span> <span class="tok-data">lab</span> <span class="tok-flag">--workers 2 --cni cilium --admin-workstation</span></span></span>
+                </article>
+
+                <article class="panel feature">
+                    <span class="hw">orchestration / microshift</span>
+                    <h3>Single-node OpenShift</h3>
+                    <p>Run an OpenShift-derived cluster with upstream MicroShift on OKD payload images. No Red Hat subscription is needed.</p>
+                    <span class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">sudo vmm cluster create</span> <span class="tok-data">ocp</span> <span class="tok-flag">--type openshift</span></span></span>
+                </article>
+
+                <article class="panel feature">
+                    <span class="hw">fs / block devices</span>
+                    <h3>Host directory mounts</h3>
+                    <p>Share host directories with a VM as ext4 block devices at <code class="mono">/mnt/&lt;tag&gt;</code>, read-only or read-write, and sync them back when you're done.</p>
+                    <span class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">sudo vmm create</span> <span class="tok-data">myvm</span> <span class="tok-flag">--mount ~/code:code:ro</span></span></span>
+                </article>
+
+                <article class="panel feature">
+                    <span class="hw">kernels / build profiles</span>
+                    <h3>Custom and research kernels</h3>
+                    <p>Pre-built kernels for general use, Kubernetes (BTF, eBPF, tracing), and security research across the 5.10–6.18 LTS series, including KASAN builds. You can also build your own with a profile.</p>
+                    <span class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">sudo vmm kernel pull</span> <span class="tok-data">kasan-kernel</span></span></span>
+                </article>
+
+                <article class="panel feature">
+                    <span class="hw">ui / vmm-web</span>
+                    <h3>Web console &amp; JSON API</h3>
+                    <p>An optional browser console for VMs, clusters and images, with live state updates, an in-browser SSH terminal and a Bearer-token REST API.</p>
+                    <span class="cmdline"><span class="prompt">$</span><span><span class="tok-flag">VMM_WEB_PASSWORD=…</span> <span class="tok-cmd">sudo -E vmm-web</span></span></span>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <!-- Web console -->
+    <section class="block" id="console">
+        <div class="wrap">
+            <div class="section-head">
+                <div class="eyebrow"><span class="idx">02</span> Web console</div>
+                <h2>The whole host, at a glance.</h2>
+                <p><code class="mono">vmm-web</code> is a separate, optional binary. It gives you a dashboard for every VM and cluster, live state updates, and a terminal that runs in the browser.</p>
+            </div>
+
+            <figure class="panel shot">
+                <img src="assets/img/ui-dashboard.jpg" width="1440" height="900" loading="lazy" alt="vmm-web dashboard showing VM counts, a ledger of virtual machines with state and IP addresses, a live activity stream and clusters">
+                <figcaption><span><span class="hw">screen / overview</span>Dashboard: VM ledger, live event stream, clusters and allocated resources</span></figcaption>
+            </figure>
+            <div class="screens">
+                <figure class="panel shot">
+                    <img src="assets/img/ui-vm-detail.jpg" width="1440" height="700" loading="lazy" alt="vmm-web VM detail page showing configuration, network and runtime panels plus port forwards and mounts">
+                    <figcaption><span><span class="hw">screen / vm detail</span>Spec, network, runtime, port forwards and snapshots</span></figcaption>
+                </figure>
+                <figure class="panel shot">
+                    <img src="assets/img/ui-terminal.jpg" width="1200" height="220" loading="lazy" alt="vmm-web in-browser terminal connected to a VM showing kernel version, memory and network interface">
+                    <figcaption><span><span class="hw">screen / terminal</span>WebSocket-to-SSH terminal, no client needed</span></figcaption>
+                </figure>
+            </div>
+
+            <div class="screens-bullets">
+                <div class="bullet">
+                    <h3>Secure by default</h3>
+                    <p>Binds to localhost unless you say otherwise. It enforces a password, CSRF protection, a strict CSP and rate-limited login.</p>
+                </div>
+                <div class="bullet">
+                    <h3>Scriptable</h3>
+                    <p>The JSON API under <code class="mono">/api/v1</code> can list, create, start, stop and delete VMs and clusters using a Bearer token.</p>
+                </div>
+                <div class="bullet">
+                    <h3>Runs as a service</h3>
+                    <p>A systemd unit reads its password from <code class="mono">/etc/vmm-web/environment</code>, so the console is available as soon as the host boots.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Architecture -->
+    <section class="block" id="architecture">
+        <div class="wrap">
+            <div class="section-head">
+                <div class="eyebrow"><span class="idx">03</span> How it works</div>
+                <h2>Plain Linux building blocks, stitched together.</h2>
+                <p>No daemon to babysit. vmm uses Firecracker, TAP devices, a bridge and iptables directly, and keeps its state in JSON files you can read.</p>
+            </div>
+
+            <div class="arch">
+                <div class="panel stack-diagram" aria-label="Architecture diagram">
+                    <div class="layer-row">
+                        <div class="layer is-cmd"><span class="name">vmm</span><span class="sub">CLI · create · start · ssh · cluster</span></div>
+                        <div class="layer is-cmd"><span class="name">vmm-web</span><span class="sub">dashboard · terminal · REST API</span></div>
+                    </div>
+                    <div class="arrow">▼</div>
+                    <div class="layer-row four">
+                        <div class="layer"><span class="name">config</span><span class="sub">JSON state</span></div>
+                        <div class="layer"><span class="name">network</span><span class="sub">tap · nat</span></div>
+                        <div class="layer"><span class="name">image</span><span class="sub">kernels · rootfs</span></div>
+                        <div class="layer"><span class="name">cluster</span><span class="sub">kubeadm · microshift</span></div>
+                    </div>
+                    <div class="arrow">▼</div>
+                    <div class="layer is-sel"><span class="name">firecracker</span><span class="sub">one process per microVM · KVM</span></div>
+                    <div class="arrow">▼</div>
+                    <div class="layer is-data"><span class="name">vmm-br0 · 172.16.0.1/16</span><span class="sub">bridge → iptables MASQUERADE / DNAT → host interface</span></div>
+                </div>
+
+                <ul class="facts">
+                    <li><span class="k">State</span><span>VM and cluster configs are JSON files in <code class="mono data">/var/lib/vmm</code>, written atomically. Change the location with <code class="mono">vmm config set data_dir</code>.</span></li>
+                    <li><span class="k">Isolation</span><span>Every VM gets its own guest kernel inside a KVM-backed Firecracker process. It is much stronger isolation than a shared-kernel container.</span></li>
+                    <li><span class="k">Lifecycle</span><span>Stop escalates from Ctrl+Alt+Del to SIGTERM to SIGKILL and waits for the process to exit. Failed starts roll back their TAP device, IP and socket.</span></li>
+                    <li><span class="k">Networking</span><span>VMs share a bridge with NAT out through the host interface. Only the ports you forward are exposed beyond the host.</span></li>
+                    <li><span class="k">Downloads</span><span>Kernels and rootfs images come from GitHub releases and are checked against SHA256 checksums when they are published.</span></li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Install -->
+    <section class="block" id="install">
+        <div class="wrap">
+            <div class="section-head">
+                <div class="eyebrow"><span class="idx">04</span> Install</div>
+                <h2>From bare metal to first VM in a few minutes.</h2>
+                <p>The installer downloads the pre-built binaries, Firecracker and default images. Then pull images and create a VM.</p>
+            </div>
+
+            <div class="install">
+                <aside class="panel reqs">
+                    <span class="hw">preflight / requirements</span>
+                    <h3>You'll need</h3>
+                    <ul class="checklist is-plain">
+                        <li><span>Ubuntu 24.04 (the only tested distro)</span></li>
+                        <li><span>KVM support: <code>/dev/kvm</code> must exist</span></li>
+                        <li><span>Root access for networking and the VM lifecycle</span></li>
+                        <li><span>amd64 or arm64 CPU</span></li>
+                        <li><span><code>curl</code> or <code>wget</code>, plus <code>git</code></span></li>
+                        <li><span>Go 1.25+ <em class="muted">(only if building from source)</em></span></li>
+                    </ul>
+
+                    <span class="hw mt-5">install.sh / what it does</span>
+                    <ul class="checklist">
+                        <li><span>Downloads the latest <code>vmm</code> and <code>vmm-web</code> release to <code>/usr/local/bin</code></span></li>
+                        <li><span>Falls back to building from source if the download fails</span></li>
+                        <li><span>Installs Firecracker v1.16.0</span></li>
+                        <li><span>Fetches the default, Kubernetes and security kernels, plus an Ubuntu 24.04 rootfs</span></li>
+                        <li><span>Creates the data directories under <code>/var/lib/vmm</code></span></li>
+                    </ul>
+                </aside>
+
+                <ol class="steps">
+                    <li class="step">
+                        <h3>Clone and run the installer</h3>
+                        <p>Check that virtualisation is enabled first. <code>/dev/kvm</code> should exist.</p>
+                        <div class="code-wrap">
+<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">ls</span> <span class="tok-data">/dev/kvm</span>
+<span class="prompt">$ </span><span class="tok-cmd">git clone</span> <span class="tok-data">https://github.com/raesene/baremetalvmm.git</span>
+<span class="prompt">$ </span><span class="tok-cmd">cd</span> <span class="tok-data">baremetalvmm</span>
+<span class="prompt">$ </span><span class="tok-cmd">sudo ./scripts/install.sh</span></code></pre>
+                        </div>
+                        <p class="note">Pin a version with <code>VMM_VERSION=0.13.0</code>, or pass <code>--build-from-source</code> to compile locally.</p>
+                    </li>
+
+                    <li class="step">
+                        <h3>Initialise config and pull images</h3>
+                        <p>This creates <code>~/.config/vmm/config.json</code> and downloads the default kernel and rootfs if the installer didn't already.</p>
+                        <div class="code-wrap">
+<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">vmm config init</span>
+<span class="prompt">$ </span><span class="tok-cmd">sudo vmm image pull</span></code></pre>
+                        </div>
+                        <p class="note">To keep VM data somewhere other than <code>/var/lib/vmm</code>, use <code>sudo vmm config init --data-dir /srv/vmm-data</code> instead.</p>
+                    </li>
+
+                    <li class="step">
+                        <h3>Create, start and SSH into a VM</h3>
+                        <p>VMs are reachable from the host straight away. Use <code>vmm port-forward</code> to expose services elsewhere.</p>
+                        <div class="code-wrap">
+<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">sudo vmm create</span> <span class="tok-data">myvm</span> <span class="tok-flag">--cpus 2 --memory 1024</span>
+<span class="prompt">$ </span><span class="tok-cmd">sudo vmm start</span> <span class="tok-data">myvm</span>
+<span class="prompt">$ </span><span class="tok-cmd">vmm ssh</span> <span class="tok-data">myvm</span>
+<span class="tok-comment"># clean up</span>
+<span class="prompt">$ </span><span class="tok-cmd">sudo vmm stop</span> <span class="tok-data">myvm</span> <span class="tok-flag">&amp;&amp;</span> <span class="tok-cmd">sudo vmm delete</span> <span class="tok-data">myvm</span></code></pre>
+                        </div>
+                    </li>
+
+                    <li class="step">
+                        <h3>Optional: a Kubernetes cluster</h3>
+                        <p>vmm uses the Kubernetes kernel and a <code>k8s-&lt;version&gt;</code> rootfs when they are installed, and merges a <code>vmm-&lt;name&gt;</code> context into your kubeconfig.</p>
+                        <div class="code-wrap">
+<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">sudo vmm cluster create</span> <span class="tok-data">lab</span> <span class="tok-flag">--workers 2</span>
+<span class="prompt">$ </span><span class="tok-cmd">kubectl</span> <span class="tok-flag">--context</span> <span class="tok-data">vmm-lab</span> <span class="tok-cmd">get nodes</span>
+<span class="prompt">$ </span><span class="tok-cmd">vmm ssh</span> <span class="tok-data">lab-control-plane</span></code></pre>
+                        </div>
+                    </li>
+
+                    <li class="step">
+                        <h3>Optional: the web console as a service</h3>
+                        <p>Set a strong password (8+ characters; common defaults are rejected), then enable the unit. It listens on <code>127.0.0.1:8080</code> by default.</p>
+                        <div class="code-wrap">
+<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">sudo ./scripts/install-service.sh</span>
+<span class="prompt">$ </span><span class="tok-cmd">sudoedit</span> <span class="tok-data">/etc/vmm-web/environment</span>   <span class="tok-comment"># VMM_WEB_PASSWORD=…</span>
+<span class="prompt">$ </span><span class="tok-cmd">sudo systemctl enable --now</span> <span class="tok-data">vmm-web</span></code></pre>
+                        </div>
+                    </li>
+
+                    <li class="step">
+                        <h3>Uninstall any time</h3>
+                        <p>The uninstaller is idempotent and removes binaries, services and NAT rules. Add <code>--yes</code> to skip the prompt.</p>
+                        <div class="code-wrap">
+<pre class="code"><code><span class="prompt">$ </span><span class="tok-cmd">sudo ./scripts/uninstall.sh</span></code></pre>
+                        </div>
+                    </li>
+                </ol>
+            </div>
+        </div>
+    </section>
+
+    <!-- Docs -->
+    <section class="block" id="docs">
+        <div class="wrap">
+            <div class="section-head">
+                <div class="eyebrow"><span class="idx">05</span> Documentation</div>
+                <h2>Go deeper.</h2>
+                <p>The full guides live in the repository alongside the code.</p>
+            </div>
+
+            <div class="panel table-wrap">
+                <table class="ledger">
+                    <thead><tr><th>Guide</th><th>Covers</th><th>File</th></tr></thead>
+                    <tbody>
+                        <tr><td><a href="https://github.com/raesene/baremetalvmm/blob/main/docs/commands.md">CLI reference</a></td><td class="desc">Every command, flag and option</td><td>docs/commands.md</td></tr>
+                        <tr><td><a href="https://github.com/raesene/baremetalvmm/blob/main/docs/configuration.md">Configuration</a></td><td class="desc">Config file, VM defaults, data directory, shell completion</td><td>docs/configuration.md</td></tr>
+                        <tr><td><a href="https://github.com/raesene/baremetalvmm/blob/main/docs/images-and-kernels.md">Images &amp; kernels</a></td><td class="desc">Available images, Docker import, custom kernels, snapshots</td><td>docs/images-and-kernels.md</td></tr>
+                        <tr><td><a href="https://github.com/raesene/baremetalvmm/blob/main/docs/networking.md">Networking &amp; mounts</a></td><td class="desc">Network layout, port forwarding, DNS, SSH keys, host mounts</td><td>docs/networking.md</td></tr>
+                        <tr><td><a href="https://github.com/raesene/baremetalvmm/blob/main/docs/kubernetes.md">Kubernetes clusters</a></td><td class="desc">kubeadm with Cilium or Calico, workers, admin workstation</td><td>docs/kubernetes.md</td></tr>
+                        <tr><td><a href="https://github.com/raesene/baremetalvmm/blob/main/docs/openshift.md">OpenShift clusters</a></td><td class="desc">Single-node MicroShift on OKD payload images</td><td>docs/openshift.md</td></tr>
+                        <tr><td><a href="https://github.com/raesene/baremetalvmm/blob/main/docs/web-ui.md">Web UI</a></td><td class="desc">Dashboard, web terminal and JSON API</td><td>docs/web-ui.md</td></tr>
+                        <tr><td><a href="https://github.com/raesene/baremetalvmm/blob/main/docs/security-testing.md">Security testing</a></td><td class="desc">Security and KASAN kernels for vulnerability research</td><td>docs/security-testing.md</td></tr>
+                        <tr><td><a href="https://github.com/raesene/baremetalvmm/blob/main/docs/development.md">Development</a></td><td class="desc">Building from source, project layout, systemd services</td><td>docs/development.md</td></tr>
+                        <tr><td><a href="https://github.com/raesene/baremetalvmm/blob/main/docs/troubleshooting.md">Troubleshooting</a></td><td class="desc">Common problems and how to debug them</td><td>docs/troubleshooting.md</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
+
+<footer class="footer">
+    <div class="wrap">
+        <div>
+            <a href="#top" class="brand"><span class="brand-glyph">&gt;_</span>vmm</a>
+            <p class="mt-3">MIT licensed. Built on <a href="https://github.com/firecracker-microvm/firecracker">Firecracker</a>, <a href="https://github.com/firecracker-microvm/firecracker-go-sdk">firecracker-go-sdk</a> and <a href="https://github.com/spf13/cobra">Cobra</a>. Visual design uses the Caret Ledger language from <a href="https://katagami.ai">Katagami</a>.</p>
+        </div>
+        <div class="footer-links">
+            <a href="https://github.com/raesene/baremetalvmm">github</a>
+            <a href="https://github.com/raesene/baremetalvmm/releases">releases</a>
+            <a href="https://github.com/raesene/baremetalvmm/issues">issues</a>
+        </div>
+    </div>
+</footer>
+
+<script src="assets/site.js"></script>
+</body>
+</html>

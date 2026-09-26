@@ -142,6 +142,10 @@ Runs on push to `main` and all PRs. Three parallel jobs:
 
 Dependabot opens weekly PRs for Go module and GitHub Actions version updates. Minor/patch Go updates are grouped into a single PR.
 
+### Project Site (`.github/workflows/pages.yml`)
+
+Static GitHub Pages site in `site/` (single `index.html` + `assets/`), deployed on pushes to `main` that touch `site/**`. It shares the Caret Ledger tokens, fonts and component styles with the web UI but has its own `site/assets/site.css`. Web UI screenshots in `site/assets/img/` were taken against a demo data dir (neutral VM names) — keep real VM names off the public site. Pages source must be set to "GitHub Actions" in repo settings.
+
 ### Release Workflows
 
 - `release.yaml` — GoReleaser binary release on `v*` tags

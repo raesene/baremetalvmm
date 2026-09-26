@@ -1,5 +1,7 @@
 # VMM - Bare Metal MicroVM Manager
 
+**Project site:** https://raesene.github.io/baremetalvmm/
+
 **WARNING** This is a vibe-coded piece of software allow for creation of microVMs conveniently. It has been designed as "Personal Software" which basically means it works for me, but I have no idea how well it'll work in any other environment, caveat user !
 
 The goal of the project is to allow for small development VMs to be spun up based on [firecracker](https://github.com/firecracker-microvm/firecracker), so they're lightweight. It can build VM images from a Docker image, allowing for custom VMs.
