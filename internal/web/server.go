@@ -74,7 +74,8 @@ func (s *Server) loadTemplates() error {
 	}
 
 	funcMap := template.FuncMap{
-		"join": strings.Join,
+		"join":  strings.Join,
+		"upper": strings.ToUpper,
 		"divFloat": func(a int64, b int64) float64 {
 			return float64(a) / float64(b)
 		},

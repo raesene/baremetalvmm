@@ -224,6 +224,7 @@ func (s *Server) handleVMCreate(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	s.recordVMCreated(newVM, requestSource(r))
 
 	http.Redirect(w, r, "/vms", http.StatusSeeOther)
 }
@@ -406,7 +407,7 @@ func (s *Server) handleVMStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.startVM(existingVM); err != nil {
+	if err := s.startVMTracked(existingVM, requestSource(r)); err != nil {
 		httpError(w, r, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -440,8 +441,13 @@ func (s *Server) handleVMStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	source := requestSource(r)
+	release := s.sseBroker.Hold(kindVM, name)
+	defer release()
+
 	existingVM.State = vm.StateStopping
 	existingVM.Save(paths.VMs)
+	s.sseBroker.Record(kindVM, name, string(vm.StateStopping), source, "")
 
 	ctx := context.Background()
 	if err := fcClient.Terminate(ctx, existingVM); err != nil {
@@ -449,6 +455,7 @@ func (s *Server) handleVMStop(w http.ResponseWriter, r *http.Request) {
 		if saveErr := existingVM.Save(paths.VMs); saveErr != nil {
 			log.Printf("failed to save state for VM %s: %v", name, saveErr)
 		}
+		s.sseBroker.Record(kindVM, name, string(vm.StateError), source, "stop: "+err.Error())
 		httpError(w, r, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -467,6 +474,7 @@ func (s *Server) handleVMStop(w http.ResponseWriter, r *http.Request) {
 	// Terminate already cleared the PID and removed the socket
 	existingVM.State = vm.StateStopped
 	existingVM.Save(paths.VMs)
+	s.sseBroker.Record(kindVM, name, string(vm.StateStopped), source, "")
 
 	if isHTMXRequest(r) {
 		s.renderVMRow(w, existingVM)
@@ -500,6 +508,10 @@ func (s *Server) deleteVM(w http.ResponseWriter, r *http.Request) {
 	fcClient := firecracker.NewClient()
 	fcClient.UpdateVMState(existingVM)
 
+	source := requestSource(r)
+	release := s.sseBroker.Hold(kindVM, name)
+	defer release()
+
 	if existingVM.State == vm.StateRunning {
 		ctx := context.Background()
 		// Never remove the VM record while its process survives
@@ -508,6 +520,7 @@ func (s *Server) deleteVM(w http.ResponseWriter, r *http.Request) {
 			if saveErr := existingVM.Save(paths.VMs); saveErr != nil {
 				log.Printf("failed to save state for VM %s: %v", name, saveErr)
 			}
+			s.sseBroker.Note(kindVM, name, "failed", source, "delete: "+err.Error())
 			httpError(w, r, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -529,6 +542,7 @@ func (s *Server) deleteVM(w http.ResponseWriter, r *http.Request) {
 	snapshot.NewManager(paths.Snapshots).DeleteAllForVM(name)
 	os.Remove(existingVM.SocketPath)
 	vm.Delete(paths.VMs, name)
+	s.sseBroker.Record(kindVM, name, stateDeleted, source, "")
 
 	if isHTMXRequest(r) {
 		w.WriteHeader(http.StatusOK)
@@ -536,6 +550,24 @@ func (s *Server) deleteVM(w http.ResponseWriter, r *http.Request) {
 	} else {
 		http.Redirect(w, r, "/vms", http.StatusSeeOther)
 	}
+}
+
+// recordVMCreated logs a newly defined VM in the activity stream.
+func (s *Server) recordVMCreated(v *vm.VM, source string) {
+	s.sseBroker.Record(kindVM, v.Name, string(v.State), source, fmt.Sprintf("%d vCPU · %d MB", v.CPUs, v.MemoryMB))
+}
+
+// startVMTracked starts a VM and logs the transition as a console action.
+func (s *Server) startVMTracked(v *vm.VM, source string) error {
+	release := s.sseBroker.Hold(kindVM, v.Name)
+	defer release()
+	s.sseBroker.Record(kindVM, v.Name, string(vm.StateStarting), source, "")
+	if err := s.startVM(v); err != nil {
+		s.sseBroker.Note(kindVM, v.Name, "failed", source, "start: "+err.Error())
+		return err
+	}
+	s.sseBroker.Record(kindVM, v.Name, string(v.State), source, v.IPAddress)
+	return nil
 }
 
 func (s *Server) renderVMRow(w http.ResponseWriter, v *vm.VM) {
@@ -661,6 +693,7 @@ func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "Failed to create VM: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.recordVMCreated(newVM, requestSource(r))
 
 	w.WriteHeader(http.StatusCreated)
 	jsonResponse(w, newVM)
@@ -691,6 +724,10 @@ func (s *Server) handleAPIVMDelete(w http.ResponseWriter, r *http.Request) {
 	fcClient := firecracker.NewClient()
 	fcClient.UpdateVMState(existingVM)
 
+	source := requestSource(r)
+	release := s.sseBroker.Hold(kindVM, name)
+	defer release()
+
 	if existingVM.State == vm.StateRunning {
 		ctx := context.Background()
 		// Never remove the VM record while its process survives
@@ -699,6 +736,7 @@ func (s *Server) handleAPIVMDelete(w http.ResponseWriter, r *http.Request) {
 			if saveErr := existingVM.Save(paths.VMs); saveErr != nil {
 				log.Printf("failed to save state for VM %s: %v", name, saveErr)
 			}
+			s.sseBroker.Note(kindVM, name, "failed", source, "delete: "+err.Error())
 			jsonError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -720,6 +758,7 @@ func (s *Server) handleAPIVMDelete(w http.ResponseWriter, r *http.Request) {
 	snapshot.NewManager(paths.Snapshots).DeleteAllForVM(name)
 	os.Remove(existingVM.SocketPath)
 	vm.Delete(paths.VMs, name)
+	s.sseBroker.Record(kindVM, name, stateDeleted, source, "")
 
 	jsonResponse(w, map[string]string{"status": "deleted"})
 }

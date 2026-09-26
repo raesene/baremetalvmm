@@ -740,10 +740,16 @@ select.input option { background: var(--color-surface); color: var(--color-text)
 }
 .log li {
     display: grid;
-    grid-template-columns: auto auto 1fr;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
     gap: var(--space-3);
     padding: 3px var(--space-4);
 }
+.log .kind { color: var(--color-muted); }
+.log .obj { overflow-wrap: anywhere; }
+/* Detail sits on its own line under the entry, aligned with the object. */
+.log .detail { grid-column: 3 / -1; margin-top: -2px; color: var(--color-muted); overflow-wrap: anywhere; }
+.log .src { color: var(--color-muted); opacity: 0.8; }
+.log .src::before { content: "· "; }
 .log li.is-new { animation: log-in 400ms var(--motion) both; }
 .log .ts { color: var(--color-muted); }
 .log .lvl-ok { color: var(--color-success); }

@@ -253,6 +253,8 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	source := requestSource(r)
+	s.recordClusterCreated(cl, source)
 
 	// Create VMs for the cluster
 	allVMs := cl.AllVMs()
@@ -280,26 +282,39 @@ func (s *Server) handleClusterCreate(w http.ResponseWriter, r *http.Request) {
 		if err := newVM.Save(paths.VMs); err != nil {
 			cl.State = cluster.StateError
 			cl.Save(paths.Clusters)
+			s.sseBroker.Record(kindCluster, cl.Name, string(cluster.StateError), source, fmt.Sprintf("creating VM %s: %v", vmName, err))
 			s.renderPage(w, r, "cluster_create.html", "clusters", map[string]interface{}{
 				"Flash":     fmt.Sprintf("Failed to create VM '%s': %s", vmName, err.Error()),
 				"FlashType": "error",
 			})
 			return
 		}
+		s.recordVMCreated(newVM, source)
 	}
 
-	go s.provisionClusterInBackground(name)
+	go s.provisionClusterInBackground(name, source)
 
 	http.Redirect(w, r, "/clusters", http.StatusSeeOther)
 }
 
-func (s *Server) provisionClusterInBackground(clusterName string) {
+func (s *Server) provisionClusterInBackground(clusterName, source string) {
 	paths := s.cfg.GetPaths()
+
+	// Provisioning outcomes are logged here rather than picked up by the poller.
+	release := s.sseBroker.Hold(kindCluster, clusterName)
+	defer release()
 
 	cl, err := cluster.Load(paths.Clusters, clusterName)
 	if err != nil {
 		log.Printf("cluster %s: failed to load config: %v", clusterName, err)
+		s.sseBroker.Record(kindCluster, clusterName, string(cluster.StateError), source, "loading config: "+err.Error())
 		return
+	}
+
+	fail := func(msg string) {
+		cl.SetError(msg)
+		cl.Save(paths.Clusters)
+		s.sseBroker.Record(kindCluster, clusterName, string(cluster.StateError), source, msg)
 	}
 
 	sshKeyPath := expandHomePath(cl.SSHKeyPath)
@@ -312,8 +327,7 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 		existingVM, err := vm.Load(paths.VMs, vmName)
 		if err != nil {
 			log.Printf("cluster %s: failed to load VM %s: %v", clusterName, vmName, err)
-			cl.SetError(fmt.Sprintf("failed to load VM %s: %v", vmName, err))
-			cl.Save(paths.Clusters)
+			fail(fmt.Sprintf("failed to load VM %s: %v", vmName, err))
 			return
 		}
 
@@ -328,10 +342,9 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 			continue
 		}
 
-		if err := s.startVM(existingVM); err != nil {
+		if err := s.startVMTracked(existingVM, source); err != nil {
 			log.Printf("cluster %s: failed to start VM %s: %v", clusterName, vmName, err)
-			cl.SetError(fmt.Sprintf("failed to start VM %s: %v", vmName, err))
-			cl.Save(paths.Clusters)
+			fail(fmt.Sprintf("failed to start VM %s: %v", vmName, err))
 			return
 		}
 		log.Printf("cluster %s: started VM %s (%s)", clusterName, vmName, existingVM.IPAddress)
@@ -346,8 +359,7 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 	log.Printf("cluster %s: provisioning Kubernetes...", clusterName)
 	if err := cluster.ProvisionCluster(cl, sshKeyPath, nodeInfos); err != nil {
 		log.Printf("cluster %s: provisioning failed: %v", clusterName, err)
-		cl.SetError(fmt.Sprintf("provisioning failed: %v", err))
-		cl.Save(paths.Clusters)
+		fail(fmt.Sprintf("provisioning failed: %v", err))
 		return
 	}
 
@@ -356,8 +368,7 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 	cpClient, err := cluster.WaitForSSH(cl.ControlPlaneIP, sshKeyPath, 30*time.Second)
 	if err != nil {
 		log.Printf("cluster %s: failed to connect for kubeconfig: %v", clusterName, err)
-		cl.SetError(fmt.Sprintf("failed to connect for kubeconfig: %v", err))
-		cl.Save(paths.Clusters)
+		fail(fmt.Sprintf("failed to connect for kubeconfig: %v", err))
 		return
 	}
 	defer cpClient.Close()
@@ -370,15 +381,13 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 	}
 	if err != nil {
 		log.Printf("cluster %s: failed to extract kubeconfig: %v", clusterName, err)
-		cl.SetError(fmt.Sprintf("failed to extract kubeconfig: %v", err))
-		cl.Save(paths.Clusters)
+		fail(fmt.Sprintf("failed to extract kubeconfig: %v", err))
 		return
 	}
 
 	if err := cluster.MergeKubeconfig(clusterName, kubeconfigYAML); err != nil {
 		log.Printf("cluster %s: failed to merge kubeconfig: %v", clusterName, err)
-		cl.SetError(fmt.Sprintf("failed to merge kubeconfig: %v", err))
-		cl.Save(paths.Clusters)
+		fail(fmt.Sprintf("failed to merge kubeconfig: %v", err))
 		return
 	}
 
@@ -395,7 +404,17 @@ func (s *Server) provisionClusterInBackground(clusterName string) {
 	cl.State = cluster.StateRunning
 	cl.StatusMessage = ""
 	cl.Save(paths.Clusters)
+	s.sseBroker.Record(kindCluster, clusterName, string(cluster.StateRunning), source, fmt.Sprintf("%d nodes ready", len(nodeInfos)))
 	log.Printf("cluster %s: provisioning complete, cluster is running", clusterName)
+}
+
+// recordClusterCreated logs a newly defined cluster in the activity stream.
+func (s *Server) recordClusterCreated(cl *cluster.Cluster, source string) {
+	distro := "kubeadm"
+	if cl.Distro == cluster.DistroOpenShift {
+		distro = "openshift"
+	}
+	s.sseBroker.Record(kindCluster, cl.Name, string(cl.State), source, fmt.Sprintf("%s · %d workers", distro, len(cl.WorkerVMs)))
 }
 
 func (s *Server) handleClusterDelete(w http.ResponseWriter, r *http.Request) {
@@ -419,6 +438,10 @@ func (s *Server) deleteCluster(w http.ResponseWriter, r *http.Request) {
 		httpError(w, r, "Cluster not found", http.StatusNotFound)
 		return
 	}
+
+	source := requestSource(r)
+	release := s.sseBroker.Hold(kindCluster, name)
+	defer release()
 
 	fcClient := firecracker.NewClient()
 	netMgr := network.NewManager(s.cfg.BridgeName, s.cfg.Subnet, s.cfg.Gateway, s.cfg.HostInterface)
@@ -452,14 +475,17 @@ func (s *Server) deleteCluster(w http.ResponseWriter, r *http.Request) {
 		imgMgr.DeleteVMRootfs(vmName, paths.VMs)
 		os.Remove(existingVM.SocketPath)
 		vm.Delete(paths.VMs, vmName)
+		s.sseBroker.Record(kindVM, vmName, stateDeleted, source, "cluster "+name)
 	}
 
 	if len(stopFailures) > 0 {
+		s.sseBroker.Note(kindCluster, name, "failed", source, fmt.Sprintf("delete: could not stop VMs %v", stopFailures))
 		httpError(w, r, fmt.Sprintf("could not stop VMs %v; cluster not deleted", stopFailures), http.StatusInternalServerError)
 		return
 	}
 
 	cluster.Delete(paths.Clusters, name)
+	s.sseBroker.Record(kindCluster, name, stateDeleted, source, "")
 
 	if isHTMXRequest(r) {
 		w.WriteHeader(http.StatusOK)
@@ -647,6 +673,8 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, "Failed to save cluster: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	source := requestSource(r)
+	s.recordClusterCreated(cl, source)
 
 	for _, vmName := range cl.AllVMs() {
 		newVM := vm.NewVM(vmName)
@@ -672,12 +700,14 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		if err := newVM.Save(paths.VMs); err != nil {
 			cl.State = cluster.StateError
 			cl.Save(paths.Clusters)
+			s.sseBroker.Record(kindCluster, cl.Name, string(cluster.StateError), source, fmt.Sprintf("creating VM %s: %v", vmName, err))
 			jsonError(w, fmt.Sprintf("Failed to create VM '%s': %s", vmName, err.Error()), http.StatusInternalServerError)
 			return
 		}
+		s.recordVMCreated(newVM, source)
 	}
 
-	go s.provisionClusterInBackground(req.Name)
+	go s.provisionClusterInBackground(req.Name, source)
 
 	w.WriteHeader(http.StatusCreated)
 	jsonResponse(w, cl)
@@ -696,6 +726,10 @@ func (s *Server) handleAPIClusterDelete(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, "Cluster not found", http.StatusNotFound)
 		return
 	}
+
+	source := requestSource(r)
+	release := s.sseBroker.Hold(kindCluster, name)
+	defer release()
 
 	fcClient := firecracker.NewClient()
 	netMgr := network.NewManager(s.cfg.BridgeName, s.cfg.Subnet, s.cfg.Gateway, s.cfg.HostInterface)
@@ -728,13 +762,16 @@ func (s *Server) handleAPIClusterDelete(w http.ResponseWriter, r *http.Request) 
 		imgMgr.DeleteVMRootfs(vmName, paths.VMs)
 		os.Remove(existingVM.SocketPath)
 		vm.Delete(paths.VMs, vmName)
+		s.sseBroker.Record(kindVM, vmName, stateDeleted, source, "cluster "+name)
 	}
 
 	if len(stopFailures) > 0 {
+		s.sseBroker.Note(kindCluster, name, "failed", source, fmt.Sprintf("delete: could not stop VMs %v", stopFailures))
 		jsonError(w, fmt.Sprintf("could not stop VMs %v; cluster not deleted", stopFailures), http.StatusInternalServerError)
 		return
 	}
 
 	cluster.Delete(paths.Clusters, name)
+	s.sseBroker.Record(kindCluster, name, stateDeleted, source, "")
 	jsonResponse(w, map[string]string{"status": "deleted"})
 }

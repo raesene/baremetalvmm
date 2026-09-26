@@ -20,7 +20,7 @@
             <div class="panel-body form">
                 <div class="field">
                     <label for="name">Cluster name</label>
-                    <input type="text" id="name" name="name" required pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*"
+                    <input type="text" id="name" name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}" title="Letters, digits, dots, hyphens, underscores (max 64)"
                         placeholder="my-cluster" class="input">
                 </div>
 

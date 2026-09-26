@@ -137,7 +137,7 @@
         {{if eq (printf "%s" .VM.State) "running"}}
         <form method="POST" action="/vms/{{.VM.Name}}/snapshots" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-            <input type="text" name="snapshot_name" required placeholder="snapshot name" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" title="Letters, digits, dots, hyphens, underscores (max 64)" class="input">
+            <input type="text" name="snapshot_name" required placeholder="snapshot name" pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}" title="Letters, digits, dots, hyphens, underscores (max 64)" class="input">
             <button type="submit" data-confirm="Take a snapshot of {{.VM.Name}}? The VM will pause briefly." data-busy="Creating…" class="btn btn-primary">Create snapshot</button>
         </form>
         {{else}}

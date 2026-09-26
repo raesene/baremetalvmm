@@ -85,7 +85,17 @@
                 <span class="chip" id="log-chip"><span class="dot"></span>live</span>
             </div>
             <ol class="log" id="event-log" aria-live="polite">
-                <li class="log-empty"><span class="log-idle">waiting for state changes</span></li>
+                {{range .Events}}
+                <li>
+                    <time class="ts" datetime="{{.Time.Format "2006-01-02T15:04:05Z07:00"}}">{{.Time.Format "15:04:05"}}</time>
+                    <span class="lvl-{{.Level}}">[{{upper .Level}}]</span>
+                    <span class="obj">{{if eq .Kind "cluster"}}<span class="kind">cluster</span> {{end}}<span class="tok-data">{{.Name}}</span> → {{.State}}</span>
+                    <span class="src">{{.Source}}</span>
+                    {{if .Detail}}<span class="detail">{{.Detail}}</span>{{end}}
+                </li>
+                {{else}}
+                <li class="log-empty"><span class="log-idle">no activity since vmm-web started</span></li>
+                {{end}}
             </ol>
         </section>
 
@@ -100,12 +110,12 @@
             {{if .Clusters}}
             <ul class="list">
                 {{range .Clusters}}
-                <li class="list-row">
+                <li class="list-row" data-cluster="{{.Name}}">
                     <div>
                         <a href="/clusters" class="id-name">{{.Name}}</a>
                         <div class="list-meta">{{if eq .Distro "openshift"}}openshift{{else}}kubeadm{{end}} · {{len .WorkerVMs}} workers</div>
                     </div>
-                    <span class="chip chip-{{.State}}"><span class="dot"></span>{{.State}}</span>
+                    <span class="chip chip-{{.State}}" data-state><span class="dot"></span><span data-state-label>{{.State}}</span></span>
                 </li>
                 {{end}}
             </ul>

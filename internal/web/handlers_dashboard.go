@@ -1,13 +1,11 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
-	"time"
 
 	"github.com/raesene/baremetalvmm/internal/cluster"
-	"github.com/raesene/baremetalvmm/internal/config"
 	"github.com/raesene/baremetalvmm/internal/firecracker"
 	"github.com/raesene/baremetalvmm/internal/vm"
 )
@@ -53,6 +51,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		"Stats":    stats,
 		"VMs":      vms,
 		"Clusters": clusters,
+		"Events":   s.sseBroker.Recent(),
 	})
 }
 
@@ -80,103 +79,16 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
 			return
-		case event := <-ch:
-			fmt.Fprintf(w, "event: vm-update\ndata: %s\n\n", event)
+		case event, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(event)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "event: activity\ndata: %s\n\n", data)
 			flusher.Flush()
 		}
 	}
-}
-
-type SSEBroker struct {
-	subscribers map[chan string]struct{}
-	subscribe   chan chan string
-	unsubscribe chan chan string
-	broadcast   chan string
-}
-
-func NewSSEBroker() *SSEBroker {
-	return &SSEBroker{
-		subscribers: make(map[chan string]struct{}),
-		subscribe:   make(chan chan string),
-		unsubscribe: make(chan chan string),
-		broadcast:   make(chan string, 16),
-	}
-}
-
-func (b *SSEBroker) Subscribe() chan string {
-	ch := make(chan string, 16)
-	b.subscribe <- ch
-	return ch
-}
-
-func (b *SSEBroker) Unsubscribe(ch chan string) {
-	b.unsubscribe <- ch
-}
-
-func (b *SSEBroker) Start(cfg *config.Config) {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	var lastStates map[string]string
-
-	for {
-		select {
-		case ch := <-b.subscribe:
-			b.subscribers[ch] = struct{}{}
-		case ch := <-b.unsubscribe:
-			delete(b.subscribers, ch)
-			close(ch)
-		case msg := <-b.broadcast:
-			for ch := range b.subscribers {
-				select {
-				case ch <- msg:
-				default:
-				}
-			}
-		case <-ticker.C:
-			currentStates := pollVMStates(cfg)
-			if lastStates != nil {
-				for name, state := range currentStates {
-					if lastStates[name] != state {
-						msg := fmt.Sprintf(`{"name":"%s","state":"%s"}`, name, state)
-						for ch := range b.subscribers {
-							select {
-							case ch <- msg:
-							default:
-							}
-						}
-					}
-				}
-				for name := range lastStates {
-					if _, ok := currentStates[name]; !ok {
-						msg := fmt.Sprintf(`{"name":"%s","state":"deleted"}`, name)
-						for ch := range b.subscribers {
-							select {
-							case ch <- msg:
-							default:
-							}
-						}
-					}
-				}
-			}
-			lastStates = currentStates
-		}
-	}
-}
-
-func pollVMStates(cfg *config.Config) map[string]string {
-	paths := cfg.GetPaths()
-	vms, err := vm.List(paths.VMs)
-	if err != nil {
-		log.Printf("SSE poll error: %v", err)
-		return nil
-	}
-
-	fcClient := firecracker.NewClient()
-	states := make(map[string]string)
-	for _, v := range vms {
-		fcClient.UpdateVMState(v)
-		states[v.Name] = string(v.State)
-	}
-	return states
 }

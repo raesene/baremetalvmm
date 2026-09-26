@@ -36,10 +36,10 @@
             </thead>
             <tbody>
                 {{range .Clusters}}
-                <tr id="cluster-row-{{.Name}}">
+                <tr id="cluster-row-{{.Name}}" data-cluster="{{.Name}}">
                     <td><span class="id-name">{{.Name}}</span></td>
                     <td>
-                        <span class="chip chip-{{.State}}"><span class="dot"></span>{{.State}}</span>
+                        <span class="chip chip-{{.State}}" data-state><span class="dot"></span><span data-state-label>{{.State}}</span></span>
                         {{if .StatusMessage}}
                         <span class="id-sub truncate is-error" title="{{.StatusMessage}}">{{.StatusMessage}}</span>
                         {{end}}

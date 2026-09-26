@@ -49,9 +49,11 @@ func (s *Server) handleSnapshotCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := snapMgr.Create(context.Background(), fcClient, v, snapName, true); err != nil {
+		s.sseBroker.Note(kindVM, name, "failed", requestSource(r), "snapshot "+snapName+": "+err.Error())
 		httpError(w, r, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.sseBroker.Note(kindVM, name, "snapshot", requestSource(r), "created "+snapName)
 
 	http.Redirect(w, r, "/vms/"+name, http.StatusSeeOther)
 }
@@ -84,6 +86,10 @@ func (s *Server) handleSnapshotRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	source := requestSource(r)
+	release := s.sseBroker.Hold(kindVM, name)
+	defer release()
+
 	fcClient := firecracker.NewClient()
 	fcClient.UpdateVMState(v)
 	ctx := context.Background()
@@ -96,6 +102,7 @@ func (s *Server) handleSnapshotRestore(w http.ResponseWriter, r *http.Request) {
 		if err := fcClient.Terminate(ctx, v); err != nil {
 			v.State = vm.StateError
 			v.Save(paths.VMs)
+			s.sseBroker.Record(kindVM, name, string(vm.StateError), source, "restore: "+err.Error())
 			httpError(w, r, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -114,10 +121,13 @@ func (s *Server) handleSnapshotRestore(w http.ResponseWriter, r *http.Request) {
 	if _, err := snapMgr.Restore(ctx, fcClient, netMgr, v, snapName, logPath, true); err != nil {
 		v.State = vm.StateError
 		v.Save(paths.VMs)
+		s.sseBroker.Record(kindVM, name, string(vm.StateError), source, "restore "+snapName+": "+err.Error())
 		httpError(w, r, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	v.Save(paths.VMs)
+	s.sseBroker.Note(kindVM, name, "restored", source, "from "+snapName)
+	s.sseBroker.Record(kindVM, name, string(v.State), source, "")
 
 	http.Redirect(w, r, "/vms/"+name, http.StatusSeeOther)
 }
@@ -141,6 +151,7 @@ func (s *Server) handleSnapshotDelete(w http.ResponseWriter, r *http.Request) {
 		httpError(w, r, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.sseBroker.Note(kindVM, name, "snapshot", requestSource(r), "deleted "+snapName)
 
 	http.Redirect(w, r, "/vms/"+name, http.StatusSeeOther)
 }
@@ -188,5 +199,6 @@ func (s *Server) handleAPISnapshotDelete(w http.ResponseWriter, r *http.Request)
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.sseBroker.Note(kindVM, name, "snapshot", sourceAPI, "deleted "+snapName)
 	jsonResponse(w, map[string]string{"status": "deleted"})
 }

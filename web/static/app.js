@@ -12,16 +12,29 @@ document.body.addEventListener('htmx:configRequest', function(event) {
     event.detail.headers['X-CSRF-Token'] = token;
 });
 
-// Live VM state: /events emits {"name":..., "state":...} whenever a VM changes
-// state. Update any status chip for that VM on the page and, on the dashboard,
-// append a line to the activity log.
+// Live activity: /events emits one JSON object per VM or cluster change
+// ({time, kind, name, state, source, detail, level}). Update any status chip
+// for that object on the page and, on the dashboard, prepend it to the
+// activity log, which the server renders with recent history on page load.
 (function() {
     var statusEl = document.getElementById('event-status');
     if (!statusEl || !window.EventSource) return;
     var statusText = document.getElementById('event-status-text');
     var log = document.getElementById('event-log');
     var logChip = document.getElementById('log-chip');
-    var levels = { running: 'ok', created: 'info', stopped: 'info', starting: 'warn', stopping: 'warn', error: 'err', deleted: 'warn' };
+    var chipStates = ['created', 'starting', 'running', 'stopping', 'stopped', 'error', 'creating', 'deleted'];
+
+    function clock(date) {
+        return date.toLocaleTimeString([], { hour12: false });
+    }
+
+    // Show server-rendered timestamps in the browser's timezone.
+    if (log) {
+        log.querySelectorAll('time[datetime]').forEach(function(t) {
+            var d = new Date(t.getAttribute('datetime'));
+            if (!isNaN(d)) t.textContent = clock(d);
+        });
+    }
 
     function setLive(live) {
         statusEl.classList.toggle('is-live', live);
@@ -30,41 +43,49 @@ document.body.addEventListener('htmx:configRequest', function(event) {
         if (logChip) logChip.className = live ? 'chip chip-running' : 'chip chip-error';
     }
 
-    function updateChips(name, state) {
-        document.querySelectorAll('[data-vm]').forEach(function(el) {
-            if (el.getAttribute('data-vm') !== name) return;
+    function updateChips(ev) {
+        if (chipStates.indexOf(ev.state) === -1) return;
+        var attr = 'data-' + ev.kind;
+        document.querySelectorAll('[' + attr + ']').forEach(function(el) {
+            if (el.getAttribute(attr) !== ev.name) return;
             var chip = el.querySelector('[data-state]');
             if (!chip) return;
-            chip.className = 'chip chip-' + state;
+            chip.className = 'chip chip-' + ev.state;
             var label = chip.querySelector('[data-state-label]');
-            if (label) label.textContent = state;
+            if (label) label.textContent = ev.state;
         });
     }
 
-    function appendLog(name, state) {
+    function span(cls, text) {
+        var el = document.createElement('span');
+        el.className = cls;
+        el.textContent = text;
+        return el;
+    }
+
+    function appendLog(ev) {
         if (!log) return;
         var empty = log.querySelector('.log-empty');
         if (empty) empty.remove();
 
         var li = document.createElement('li');
         li.className = 'is-new';
-        var ts = document.createElement('span');
+        var ts = document.createElement('time');
         ts.className = 'ts';
-        ts.textContent = new Date().toLocaleTimeString([], { hour12: false });
-        var lvl = document.createElement('span');
-        var level = levels[state] || 'info';
-        lvl.className = 'lvl-' + level;
-        lvl.textContent = '[' + level.toUpperCase() + ']';
-        var obj = document.createElement('span');
-        obj.className = 'obj';
-        var vmName = document.createElement('span');
-        vmName.className = 'tok-data';
-        vmName.textContent = name;
-        obj.appendChild(vmName);
-        obj.appendChild(document.createTextNode(' → ' + state));
+        ts.setAttribute('datetime', ev.time);
+        ts.textContent = clock(new Date(ev.time));
+        var obj = span('obj', '');
+        if (ev.kind === 'cluster') {
+            obj.appendChild(span('kind', 'cluster'));
+            obj.appendChild(document.createTextNode(' '));
+        }
+        obj.appendChild(span('tok-data', ev.name));
+        obj.appendChild(document.createTextNode(' \u2192 ' + ev.state));
         li.appendChild(ts);
-        li.appendChild(lvl);
+        li.appendChild(span('lvl-' + ev.level, '[' + String(ev.level).toUpperCase() + ']'));
         li.appendChild(obj);
+        li.appendChild(span('src', ev.source));
+        if (ev.detail) li.appendChild(span('detail', ev.detail));
         log.insertBefore(li, log.firstChild);
         while (log.children.length > 50) log.removeChild(log.lastChild);
     }
@@ -72,12 +93,12 @@ document.body.addEventListener('htmx:configRequest', function(event) {
     var source = new EventSource('/events');
     source.addEventListener('open', function() { setLive(true); });
     source.addEventListener('error', function() { setLive(false); });
-    source.addEventListener('vm-update', function(e) {
-        var msg;
-        try { msg = JSON.parse(e.data); } catch (err) { return; }
-        if (!msg || !msg.name || !msg.state) return;
-        updateChips(msg.name, msg.state);
-        appendLog(msg.name, msg.state);
+    source.addEventListener('activity', function(e) {
+        var ev;
+        try { ev = JSON.parse(e.data); } catch (err) { return; }
+        if (!ev || !ev.kind || !ev.name || !ev.state) return;
+        updateChips(ev);
+        appendLog(ev);
     });
 })();
 
