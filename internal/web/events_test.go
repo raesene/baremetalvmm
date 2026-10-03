@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -139,7 +140,7 @@ func TestNoteDoesNotChangeKnownState(t *testing.T) {
 
 func TestHistoryIsCappedAndNewestFirst(t *testing.T) {
 	b := NewSSEBroker()
-	for i := 0; i < eventHistorySize+10; i++ {
+	for i := range eventHistorySize + 10 {
 		b.Note(kindVM, fmt.Sprintf("vm-%d", i), "snapshot", sourceWeb, "")
 	}
 	recent := b.Recent()
@@ -199,10 +200,10 @@ func TestEventLevel(t *testing.T) {
 }
 
 func TestRequestSource(t *testing.T) {
-	if got := requestSource(httptest.NewRequest("POST", "/api/v1/vms/a/start", nil)); got != sourceAPI {
+	if got := requestSource(httptest.NewRequest(http.MethodPost, "/api/v1/vms/a/start", nil)); got != sourceAPI {
 		t.Errorf("api request source = %q", got)
 	}
-	if got := requestSource(httptest.NewRequest("POST", "/vms/a/start", nil)); got != sourceWeb {
+	if got := requestSource(httptest.NewRequest(http.MethodPost, "/vms/a/start", nil)); got != sourceWeb {
 		t.Errorf("web request source = %q", got)
 	}
 }

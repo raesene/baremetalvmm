@@ -78,6 +78,7 @@ linters:
       exclude-functions:
         - (io.Closer).Close
         - (*os.File).Close
+        - (*compress/gzip.Reader).Close
         - (net/http.ResponseWriter).Write
         - (*os/exec.Cmd).Run
         - os.Remove

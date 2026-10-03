@@ -540,7 +540,9 @@ func (s *Server) deleteVM(w http.ResponseWriter, r *http.Request) {
 
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 	imgMgr.DeleteVMRootfs(name, paths.VMs)
-	snapshot.NewManager(paths.Snapshots).DeleteAllForVM(name)
+	if err := snapshot.NewManager(paths.Snapshots).DeleteAllForVM(name); err != nil {
+		log.Printf("vm %s: failed to delete snapshots: %v", name, err)
+	}
 	os.Remove(existingVM.SocketPath)
 	vm.Delete(paths.VMs, name)
 	s.sseBroker.Record(kindVM, name, stateDeleted, source, "")
@@ -756,7 +758,9 @@ func (s *Server) handleAPIVMDelete(w http.ResponseWriter, r *http.Request) {
 
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 	imgMgr.DeleteVMRootfs(name, paths.VMs)
-	snapshot.NewManager(paths.Snapshots).DeleteAllForVM(name)
+	if err := snapshot.NewManager(paths.Snapshots).DeleteAllForVM(name); err != nil {
+		log.Printf("vm %s: failed to delete snapshots: %v", name, err)
+	}
 	os.Remove(existingVM.SocketPath)
 	vm.Delete(paths.VMs, name)
 	s.sseBroker.Record(kindVM, name, stateDeleted, source, "")

@@ -78,10 +78,10 @@ func snapshotCreateCmd() *cobra.Command {
 				// The VM was left paused by Create; fully stop it now.
 				fmt.Printf("Stopping VM '%s'...\n", vmName)
 				v.State = vm.StateStopping
-				v.Save(paths.VMs)
+				saveVMWarn(v, paths.VMs)
 				if err := fcClient.Terminate(ctx, v); err != nil {
 					v.State = vm.StateError
-					v.Save(paths.VMs)
+					saveVMWarn(v, paths.VMs)
 					return fmt.Errorf("snapshot created, but failed to stop VM '%s': %w", vmName, err)
 				}
 				netMgr := network.NewManager(cfg.BridgeName, cfg.Subnet, cfg.Gateway, cfg.HostInterface)
@@ -98,7 +98,9 @@ func snapshotCreateCmd() *cobra.Command {
 					}
 				}
 				v.State = vm.StateStopped
-				v.Save(paths.VMs)
+				if err := v.Save(paths.VMs); err != nil {
+					return fmt.Errorf("snapshot created and VM stopped, but failed to save VM state: %w", err)
+				}
 			}
 
 			fmt.Printf("Snapshot '%s' created (%.1f MB)\n", snapName, float64(meta.SizeBytes)/(1024*1024))
@@ -195,10 +197,10 @@ func snapshotRestoreCmd() *cobra.Command {
 				}
 				fmt.Printf("Stopping VM '%s'...\n", vmName)
 				v.State = vm.StateStopping
-				v.Save(paths.VMs)
+				saveVMWarn(v, paths.VMs)
 				if err := fcClient.Terminate(ctx, v); err != nil {
 					v.State = vm.StateError
-					v.Save(paths.VMs)
+					saveVMWarn(v, paths.VMs)
 					return fmt.Errorf("failed to stop VM '%s' before restore: %w", vmName, err)
 				}
 				if v.TapDevice != "" && netMgr.TapExists(v.TapDevice) {
@@ -207,7 +209,7 @@ func snapshotRestoreCmd() *cobra.Command {
 					}
 				}
 				v.State = vm.StateStopped
-				v.Save(paths.VMs)
+				saveVMWarn(v, paths.VMs)
 			}
 
 			if fcVer := fcClient.Version(); fcVer != "" && meta.FCVersion != "" && fcVer != meta.FCVersion {
@@ -222,18 +224,22 @@ func snapshotRestoreCmd() *cobra.Command {
 			logPath := fmt.Sprintf("%s/%s.log", paths.Logs, vmName)
 			if _, err := snapMgr.Restore(ctx, fcClient, netMgr, v, snapName, logPath, !noStart); err != nil {
 				v.State = vm.StateError
-				v.Save(paths.VMs)
+				saveVMWarn(v, paths.VMs)
 				return fmt.Errorf("failed to restore snapshot: %w", err)
 			}
 
 			if noStart {
 				v.State = vm.StateStopped
-				v.Save(paths.VMs)
+				if err := v.Save(paths.VMs); err != nil {
+					return fmt.Errorf("disks restored, but failed to save VM state: %w", err)
+				}
 				fmt.Printf("VM '%s' disks restored from snapshot '%s' (VM left stopped)\n", vmName, snapName)
 				return nil
 			}
 
-			v.Save(paths.VMs)
+			if err := v.Save(paths.VMs); err != nil {
+				return fmt.Errorf("VM '%s' restored and running (PID %d), but failed to save its state; 'vmm list' may not show it correctly: %w", vmName, v.PID, err)
+			}
 			fmt.Printf("VM '%s' restored from snapshot '%s' and resumed\n", vmName, snapName)
 			fmt.Printf("  IP Address: %s\n", v.IPAddress)
 			fmt.Printf("  PID: %d\n", v.PID)
@@ -314,4 +320,12 @@ func snapshotDeleteCmd() *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+// saveVMWarn saves VM state partway through an operation. A failure there
+// shouldn't abort the operation, so it is reported as a warning.
+func saveVMWarn(v *vm.VM, dir string) {
+	if err := v.Save(dir); err != nil {
+		fmt.Printf("Warning: failed to save VM state: %v\n", err)
+	}
 }

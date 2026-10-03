@@ -3,6 +3,7 @@ package config
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -105,7 +106,7 @@ func DefaultConfig() *Config {
 // so the identifier name pattern in internal/validate does not apply.
 func ValidateDataDir(path string) error {
 	if strings.TrimSpace(path) == "" {
-		return fmt.Errorf("data directory cannot be empty")
+		return errors.New("data directory cannot be empty")
 	}
 	if !filepath.IsAbs(path) {
 		return fmt.Errorf("data directory must be an absolute path: %q", path)

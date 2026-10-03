@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -58,7 +59,7 @@ Examples:
 				return upgradeCheck(ctx)
 			}
 			if os.Geteuid() != 0 {
-				return fmt.Errorf("upgrade must be run as root (sudo vmm upgrade)")
+				return errors.New("upgrade must be run as root (sudo vmm upgrade)")
 			}
 			paths, err := resolveInstallPaths()
 			if err != nil {
@@ -199,8 +200,7 @@ func runUpgrade(ctx context.Context, paths installPaths, target string, yes, for
 		return fmt.Errorf("installing vmm: %w", err)
 	}
 	if got := binaryVersion(paths.VMM, "version", "--json"); got != rel.Version {
-		rbErr := upgrade.Rollback(paths.VMM)
-		return fmt.Errorf("new vmm binary reported version %q, expected %s; rolled back (rollback error: %v)", got, rel.Version, rbErr)
+		return fmt.Errorf("new vmm binary reported version %q, expected %s; %w", got, rel.Version, rollbackResult(upgrade.Rollback(paths.VMM)))
 	}
 	fmt.Printf("  [ok] vmm %s\n", rel.Version)
 
@@ -209,8 +209,7 @@ func runUpgrade(ctx context.Context, paths installPaths, target string, yes, for
 			return fmt.Errorf("installing vmm-web: %w", err)
 		}
 		if got := binaryVersion(paths.VMMWeb, "--version"); got != rel.Version {
-			rbErr := upgrade.Rollback(paths.VMMWeb)
-			return fmt.Errorf("new vmm-web binary reported version %q, expected %s; rolled back vmm-web (rollback error: %v). vmm is already upgraded; run 'sudo vmm upgrade --rollback' to revert it", got, rel.Version, rbErr)
+			return fmt.Errorf("new vmm-web binary reported version %q, expected %s; vmm-web %w. vmm is already upgraded; run 'sudo vmm upgrade --rollback' to revert it", got, rel.Version, rollbackResult(upgrade.Rollback(paths.VMMWeb)))
 		}
 		fmt.Printf("  [ok] vmm-web %s\n", rel.Version)
 	}
@@ -377,4 +376,13 @@ func confirm(prompt string) bool {
 	}
 	answer := strings.ToLower(strings.TrimSpace(line))
 	return answer == "y" || answer == "yes"
+}
+
+// rollbackResult describes the outcome of rolling back a binary after a
+// failed upgrade, as an error to wrap into the upgrade failure.
+func rollbackResult(err error) error {
+	if err != nil {
+		return fmt.Errorf("rollback failed: %w", err)
+	}
+	return errors.New("rolled back")
 }

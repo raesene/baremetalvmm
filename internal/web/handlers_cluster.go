@@ -313,7 +313,9 @@ func (s *Server) provisionClusterInBackground(clusterName, source string) {
 
 	fail := func(msg string) {
 		cl.SetError(msg)
-		cl.Save(paths.Clusters)
+		if err := cl.Save(paths.Clusters); err != nil {
+			log.Printf("cluster %s: failed to save error state: %v", clusterName, err)
+		}
 		s.sseBroker.Record(kindCluster, clusterName, string(cluster.StateError), source, msg)
 	}
 

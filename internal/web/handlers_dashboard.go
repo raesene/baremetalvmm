@@ -71,7 +71,9 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 	// Flush a comment straight away so the client sees the stream open
 	// rather than waiting for the first state change.
-	fmt.Fprint(w, ": connected\n\n")
+	if _, err := fmt.Fprint(w, ": connected\n\n"); err != nil {
+		return
+	}
 	flusher.Flush()
 
 	ctx := r.Context()

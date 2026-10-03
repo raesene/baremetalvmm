@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -98,19 +99,21 @@ func (s *Server) handleSnapshotRestore(w http.ResponseWriter, r *http.Request) {
 	// The VM must be stopped before its disks are overwritten.
 	if v.State == vm.StateRunning {
 		v.State = vm.StateStopping
-		v.Save(paths.VMs)
+		saveVMLog(v, paths.VMs)
 		if err := fcClient.Terminate(ctx, v); err != nil {
 			v.State = vm.StateError
-			v.Save(paths.VMs)
+			saveVMLog(v, paths.VMs)
 			s.sseBroker.Record(kindVM, name, string(vm.StateError), source, "restore: "+err.Error())
 			httpError(w, r, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if v.TapDevice != "" && netMgr.TapExists(v.TapDevice) {
-			netMgr.DeleteTap(v.TapDevice)
+			if err := netMgr.DeleteTap(v.TapDevice); err != nil {
+				log.Printf("restore %s: failed to delete TAP device %s: %v", name, v.TapDevice, err)
+			}
 		}
 		v.State = vm.StateStopped
-		v.Save(paths.VMs)
+		saveVMLog(v, paths.VMs)
 	}
 
 	// Restore uses the snapshot's resource configuration (memory size is fixed).
@@ -120,12 +123,12 @@ func (s *Server) handleSnapshotRestore(w http.ResponseWriter, r *http.Request) {
 	logPath := fmt.Sprintf("%s/%s.log", paths.Logs, name)
 	if _, err := snapMgr.Restore(ctx, fcClient, netMgr, v, snapName, logPath, true); err != nil {
 		v.State = vm.StateError
-		v.Save(paths.VMs)
+		saveVMLog(v, paths.VMs)
 		s.sseBroker.Record(kindVM, name, string(vm.StateError), source, "restore "+snapName+": "+err.Error())
 		httpError(w, r, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	v.Save(paths.VMs)
+	saveVMLog(v, paths.VMs)
 	s.sseBroker.Note(kindVM, name, "restored", source, "from "+snapName)
 	s.sseBroker.Record(kindVM, name, string(v.State), source, "")
 
@@ -201,4 +204,12 @@ func (s *Server) handleAPISnapshotDelete(w http.ResponseWriter, r *http.Request)
 	}
 	s.sseBroker.Note(kindVM, name, "snapshot", sourceAPI, "deleted "+snapName)
 	jsonResponse(w, map[string]string{"status": "deleted"})
+}
+
+// saveVMLog saves VM state from a web handler, logging rather than failing
+// the request: by this point the VM operation itself has already happened.
+func saveVMLog(v *vm.VM, dir string) {
+	if err := v.Save(dir); err != nil {
+		log.Printf("vm %s: failed to save state: %v", v.Name, err)
+	}
 }
