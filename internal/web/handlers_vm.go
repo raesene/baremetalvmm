@@ -255,6 +255,7 @@ func (s *Server) handleVMDetail(w http.ResponseWriter, r *http.Request) {
 	s.renderPage(w, r, "vm_detail.html", "vms", map[string]interface{}{
 		"VM":        v,
 		"Snapshots": snaps,
+		"MaxUpload": s.maxUploadBytes,
 	})
 }
 

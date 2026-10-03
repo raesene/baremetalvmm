@@ -131,6 +131,23 @@
 </div>
 {{end}}
 
+{{if eq (printf "%s" .VM.State) "running"}}
+<section class="panel mt-5 files-panel" id="files-panel">
+    <div class="panel-head">
+        <div><span class="hw">fs / sftp root@{{.VM.IPAddress}}</span><h2>Files</h2></div>
+        <div class="actions">
+            <label for="files-input" class="btn btn-primary btn-sm">Upload</label>
+            <input type="file" id="files-input" multiple class="hidden">
+        </div>
+    </div>
+    <ul class="upload-queue hidden" id="upload-queue"></ul>
+    <div id="vm-files" hx-get="/vms/{{.VM.Name}}/files" hx-trigger="load">
+        <div class="empty"><span class="spinner"></span> Connecting to {{.VM.Name}}…</div>
+    </div>
+    <div class="panel-foot">Drop files onto this panel to upload them into the current directory, up to {{humanBytes .MaxUpload}} each.</div>
+</section>
+{{end}}
+
 <section class="panel mt-5">
     <div class="panel-head">
         <div><span class="hw">state / memory + disk</span><h2>Snapshots</h2></div>

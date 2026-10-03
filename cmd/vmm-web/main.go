@@ -20,6 +20,7 @@ var (
 func main() {
 	listenAddr := flag.String("listen", "127.0.0.1:8080", "Address to listen on")
 	showVersion := flag.Bool("version", false, "Show version information")
+	maxUploadMB := flag.Int64("max-upload-mb", web.DefaultMaxUploadBytes>>20, "Largest file that can be uploaded into a VM, in MB")
 	flag.Parse()
 
 	if *showVersion {
@@ -62,6 +63,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)
 	}
+	server.SetMaxUploadBytes(*maxUploadMB << 20)
 
 	if err := server.Run(); err != nil {
 		log.Fatalf("Server error: %v", err)

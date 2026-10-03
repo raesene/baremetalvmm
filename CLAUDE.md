@@ -71,7 +71,8 @@ Future work (P4 — significant effort, deferred):
 - `internal/upgrade/` — Release lookup, checksum-verified download/extract, atomic binary swap (`.prev` backups) and Firecracker install, used by `vmm upgrade` and the web UI's update notice (`internal/web/updates.go`)
 - `internal/sshkey/` — VMM-managed Ed25519 SSH key pair (auto-generated in `/var/lib/vmm/ssh/`)
 - `internal/cluster/` — Cluster management. `--type kubeadm` (default): multi-node Kubernetes via kubeadm with CNI selection (`--cni cilium` default, or `--cni calico` for Calico via Tigera operator). `--type openshift`: single-node OpenShift-derived cluster via upstream MicroShift (`internal/cluster/openshift.go`), installed on the base Ubuntu rootfs over SSH using OKD payload images (no Red Hat subscription). Admin workstation support for both.
-- `internal/web/` — Web UI handlers, auth, SSE, WebSocket terminal
+- `internal/guestfile/` — SFTP access to a running VM's filesystem (list, download, atomic upload via temp file + rename), used by the web UI file browser
+- `internal/web/` — Web UI handlers, auth, SSE, WebSocket terminal, file browser (`handlers_files.go`)
 - `web/` — Embedded templates and static assets (`go:embed`)
 - `scripts/vmm.service` — Systemd unit for VM auto-start on boot
 - `scripts/vmm-web.service` — Systemd unit for web UI (reads password from `/etc/vmm-web/environment`)
@@ -184,6 +185,7 @@ Requirements: root access, KVM (`/dev/kvm`), Firecracker in PATH.
 - **CSP**: `script-src 'self' https://cdn.jsdelivr.net` — no inline `<script>` tags or inline event handlers (`onclick`, etc.). All JS must go in `web/static/` files using `addEventListener`/event delegation. Use `data-` attributes to pass server data to JS.
 - Auth via `VMM_WEB_PASSWORD` env var, session cookies, or Bearer token for API.
 - Templates use `{{template "layout.html" .}}` with `{{define "content"}}` blocks.
+- **File browser**: `handlers_files.go` + `vm_files.html` (HTMX fragment swapped into `#vm-files` on the VM detail page). Uploads are the raw request body (not multipart) sent by XHR with the CSRF token in `X-CSRF-Token`; `csrfMiddleware` checks that header before `FormValue` so it never buffers an upload. Transfer handlers call `clearReadDeadline` to lift the server's 30s `ReadTimeout`. Build URLs in Go (`filesURL`) because html/template doesn't URL-escape `hx-get` attributes.
 - **Web Terminal**: `handlers_terminal.go` provides WebSocket-to-SSH bridge for in-browser terminal access. Uses xterm.js from CDN, `nhooyr.io/websocket`, and `golang.org/x/crypto/ssh`. Standalone template (no layout) at `vm_terminal.html`.
 
 ## GitHub Release Tags

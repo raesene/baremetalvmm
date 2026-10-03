@@ -27,6 +27,7 @@ To run it as a systemd service with a generated password, install with `--with-s
 - **Dashboard** - Overview of all VMs and clusters with resource usage stats
 - **VM Management** - Create, start, stop, and delete VMs from the browser
 - **Web Terminal** - Browser-based SSH terminal for running VMs (xterm.js + WebSocket)
+- **File Browser** - Browse, upload to, and download from a running VM's filesystem
 - **Cluster Management** - Create and delete Kubernetes clusters
 - **Live Status** - VM status updates via Server-Sent Events (no page refresh needed)
 - **JSON API** - REST API at `/api/v1/` for scripting and automation
@@ -39,6 +40,20 @@ Running VMs have a **Terminal** button on their detail page that opens a full-sc
 - Uses the host's SSH private key (auto-detected from `~/.ssh/`, same as `vmm ssh`)
 - Supports terminal resize, scrollback, and clickable links
 - Requires the VM to be in "running" state (the managed SSH key is always available)
+
+## File Browser
+
+The detail page of a running VM has a **Files** panel that browses the guest filesystem over SFTP as root, starting in root's home directory.
+
+- Click a folder (or a breadcrumb, or `../`) to move around, or type an absolute path into the path box
+- **download** saves a file to your machine. Only regular files can be downloaded, not devices, sockets, or FIFOs
+- **Upload** (or dropping files onto the panel) puts files into the directory being shown, with a progress bar per file. Uploading a file that already exists replaces it and keeps its permissions
+- Uploads are written to a temporary file and renamed into place, so a failed or cancelled upload never leaves a truncated file
+- Uploads are capped at 4 GB per file by default; change it with `vmm-web --max-upload-mb N`
+- Folders can't be uploaded or downloaded yet; use `vmm cp -r` from the host
+- Uploads and downloads appear in the dashboard activity log
+
+The guest needs an SFTP server (`sftp-server`), which the stock Ubuntu rootfs images include.
 
 ## JSON API
 
@@ -58,6 +73,12 @@ curl -X POST -H "Authorization: Bearer <session-token>" \
 curl -X POST -H "Authorization: Bearer <session-token>" \
   http://localhost:8080/api/v1/vms/myvm/start
 
+# Upload and download a file
+curl -H "Authorization: Bearer <session-token>" -T ./app.tar.gz \
+  "http://localhost:8080/api/v1/vms/myvm/files/content?path=/tmp/app.tar.gz"
+curl -H "Authorization: Bearer <session-token>" -o syslog \
+  "http://localhost:8080/api/v1/vms/myvm/files/content?path=/var/log/syslog"
+
 # Health check (no auth required)
 curl http://localhost:8080/api/v1/health
 ```
@@ -73,6 +94,9 @@ curl http://localhost:8080/api/v1/health
 | POST | `/api/v1/vms/{name}/start` | Start a VM |
 | POST | `/api/v1/vms/{name}/stop` | Stop a VM |
 | DELETE | `/api/v1/vms/{name}` | Delete a VM |
+| GET | `/api/v1/vms/{name}/files?path=DIR` | List a guest directory (defaults to root's home) |
+| GET | `/api/v1/vms/{name}/files/content?path=FILE` | Download a guest file |
+| PUT | `/api/v1/vms/{name}/files/content?path=FILE` | Upload the request body to a guest file |
 | GET | `/api/v1/clusters` | List clusters |
 | POST | `/api/v1/clusters` | Create a cluster |
 | DELETE | `/api/v1/clusters/{name}` | Delete a cluster |
@@ -91,5 +115,6 @@ When creating VMs or clusters via the API, VMM uses its auto-generated Ed25519 k
 - **Security headers** - CSP (`script-src 'self'` + CDN only), X-Frame-Options DENY, X-Content-Type-Options nosniff.
 - **WebSocket origin verification** - Terminal WebSocket connections verify the request origin.
 - **Input validation** - All names, resource values, DNS addresses, and Kubernetes versions are validated at entry points. Image downloads resolve URLs server-side from release tags.
-- **Server timeouts** - ReadHeader (10s), Read (30s), Idle (120s) with graceful shutdown on SIGINT/SIGTERM.
+- **Server timeouts** - ReadHeader (10s), Read (30s), Idle (120s) with graceful shutdown on SIGINT/SIGTERM. File uploads and downloads lift the Read timeout for their own request so large transfers aren't cut off.
+- **File downloads** are always served as `application/octet-stream` attachments, so content from a VM never renders as a page on the console's origin. Anyone who can log in already has root in every VM through the terminal, so the file browser doesn't widen access.
 - The web server runs as root (required for Firecracker operations). For production use, consider putting it behind a reverse proxy with TLS (e.g., nginx, Caddy).

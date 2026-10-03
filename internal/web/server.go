@@ -40,6 +40,8 @@ type Server struct {
 	apiKey       string
 	version      VersionInfo
 	updates      *updateChecker
+
+	maxUploadBytes int64
 }
 
 func NewServer(cfg *config.Config, configPath, password, listenAddr string, ver VersionInfo) (*Server, error) {
@@ -59,6 +61,8 @@ func NewServer(cfg *config.Config, configPath, password, listenAddr string, ver 
 		apiKey:       hex.EncodeToString(b),
 		version:      ver,
 		updates:      newUpdateChecker(ver.Version),
+
+		maxUploadBytes: DefaultMaxUploadBytes,
 	}
 
 	if err := s.loadTemplates(); err != nil {
@@ -81,6 +85,7 @@ func (s *Server) loadTemplates() error {
 		"divFloat": func(a int64, b int64) float64 {
 			return float64(a) / float64(b)
 		},
+		"humanBytes": humanBytes,
 	}
 
 	s.templates = make(map[string]*template.Template)
@@ -107,7 +112,7 @@ func (s *Server) loadTemplates() error {
 	}
 
 	// Standalone templates (no layout)
-	for _, name := range []string{"login.html", "vm_row.html", "vm_terminal.html"} {
+	for _, name := range []string{"login.html", "vm_row.html", "vm_terminal.html", "vm_files.html"} {
 		t, err := template.New("").Funcs(funcMap).ParseFS(tmplFS, name)
 		if err != nil {
 			return fmt.Errorf("parsing %s: %w", name, err)
@@ -172,6 +177,9 @@ func (s *Server) setupRouter() {
 		r.Post("/vms/{name}/snapshots", s.handleSnapshotCreate)
 		r.Post("/vms/{name}/snapshots/{snapshot}/restore", s.handleSnapshotRestore)
 		r.Post("/vms/{name}/snapshots/{snapshot}/delete", s.handleSnapshotDelete)
+		r.Get("/vms/{name}/files", s.handleFilesList)
+		r.Get("/vms/{name}/files/download", s.handleFileDownload)
+		r.Post("/vms/{name}/files/upload", s.handleFileUpload)
 
 		// Image management HTML routes
 		r.Get("/images", s.handleImages)
@@ -204,6 +212,9 @@ func (s *Server) setupRouter() {
 			r.Post("/vms/{name}/snapshots", s.handleAPISnapshotCreate)
 			r.Post("/vms/{name}/snapshots/{snapshot}/restore", s.handleAPISnapshotRestore)
 			r.Delete("/vms/{name}/snapshots/{snapshot}", s.handleAPISnapshotDelete)
+			r.Get("/vms/{name}/files", s.handleAPIFilesList)
+			r.Get("/vms/{name}/files/content", s.handleAPIFileDownload)
+			r.Put("/vms/{name}/files/content", s.handleAPIFileUpload)
 
 			r.Get("/clusters", s.handleAPIClusterList)
 			r.Post("/clusters", s.handleAPIClusterCreate)

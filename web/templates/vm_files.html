@@ -1,0 +1,58 @@
+{{define "vm_files.html"}}
+<div class="files" data-files-dir="{{.Dir}}" data-upload-url="{{.UploadURL}}" data-max-upload="{{.MaxUpload}}">
+    <div class="files-bar">
+        <nav class="files-crumbs" aria-label="Path">
+            {{range $i, $c := .Crumbs}}{{if gt $i 1}}<span class="sep">/</span>{{end}}<a href="#" hx-get="{{$c.URL}}" hx-target="#vm-files">{{$c.Name}}</a>{{end}}
+        </nav>
+        <form class="inline-form files-goto" hx-get="/vms/{{.VMName}}/files" hx-target="#vm-files">
+            <input type="text" name="path" value="{{.Dir}}" placeholder="/absolute/path" class="input" aria-label="Go to directory">
+            <button type="submit" class="btn btn-sm">Go</button>
+        </form>
+    </div>
+    {{if .Error}}
+    <div class="panel-body">
+        <div class="notice notice-error">{{.Error}}</div>
+    </div>
+    {{else if or .Entries .ParentURL}}
+    <div class="table-wrap">
+        <table class="ledger">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th class="num">Size</th>
+                    <th>Modified</th>
+                    <th>Mode</th>
+                    <th class="right">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{if .ParentURL}}
+                <tr>
+                    <td><a href="#" class="files-dir" hx-get="{{.ParentURL}}" hx-target="#vm-files">../</a></td>
+                    <td></td><td></td><td></td><td></td>
+                </tr>
+                {{end}}
+                {{range .Entries}}
+                <tr>
+                    <td>
+                        {{if .IsDir}}<a href="#" class="files-dir" hx-get="{{.ListURL}}" hx-target="#vm-files">{{.Name}}/</a>{{else}}<span class="id-name">{{.Name}}</span>{{end}}
+                        {{if .IsLink}}<span class="muted xsmall">link</span>{{end}}
+                    </td>
+                    <td class="num">{{if not .IsDir}}{{humanBytes .Size}}{{end}}</td>
+                    <td class="muted">{{.ModTime.Format "2006-01-02 15:04"}}</td>
+                    <td class="muted">{{.ModeStr}}</td>
+                    <td class="right">{{if .DownloadURL}}<a href="{{.DownloadURL}}" class="act" download>download</a>{{end}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    {{if .Truncated}}<div class="panel-foot">Showing the first {{.Limit}} entries.</div>{{end}}
+    {{else}}
+    <div class="empty">
+        <span class="empty-cmd"><span class="prompt">$</span> ls {{.Dir}} → 0 entries</span>
+        This directory is empty. Drop files here to upload them.
+    </div>
+    {{end}}
+</div>
+{{end}}

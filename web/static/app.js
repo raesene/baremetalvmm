@@ -212,3 +212,138 @@ document.addEventListener('submit', function(e) {
         });
     });
 })();
+
+// VM file browser: upload files (button or drag-and-drop) into the directory
+// the browser is showing. The listing itself is an HTMX fragment in #vm-files
+// that carries the current directory and upload URL as data attributes.
+(function() {
+    var panel = document.getElementById('files-panel');
+    if (!panel) return;
+    var input = document.getElementById('files-input');
+    var queue = document.getElementById('upload-queue');
+    var listing = document.getElementById('vm-files');
+    var token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+    function current() { return listing.querySelector('[data-files-dir]'); }
+
+    function addRow(name) {
+        queue.classList.remove('hidden');
+        var li = document.createElement('li');
+        var label = document.createElement('span');
+        label.className = 'name';
+        label.textContent = name;
+        var bar = document.createElement('span');
+        bar.className = 'upload-bar';
+        var fill = document.createElement('span');
+        bar.appendChild(fill);
+        var status = document.createElement('span');
+        status.className = 'status';
+        status.textContent = 'queued';
+        li.appendChild(label);
+        li.appendChild(bar);
+        li.appendChild(status);
+        queue.insertBefore(li, queue.firstChild);
+        while (queue.children.length > 20) queue.removeChild(queue.lastChild);
+        return {
+            progress: function(pct) { fill.style.width = pct + '%'; status.textContent = pct + '%'; },
+            done: function(msg) { li.classList.add('is-ok'); fill.style.width = '100%'; status.textContent = msg; },
+            fail: function(msg) { li.classList.add('is-error'); fill.style.width = '100%'; status.textContent = msg; }
+        };
+    }
+
+    function humanBytes(n) {
+        var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        var i = 0;
+        while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+        return (i === 0 ? n : n.toFixed(1)) + ' ' + units[i];
+    }
+
+    function uploadOne(file, dest) {
+        var row = addRow(file.name);
+        var max = parseInt(dest.getAttribute('data-max-upload'), 10);
+        if (max && file.size > max) {
+            row.fail('larger than ' + humanBytes(max));
+            return Promise.resolve();
+        }
+        return new Promise(function(resolve) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', dest.getAttribute('data-upload-url') + '&name=' + encodeURIComponent(file.name));
+            xhr.setRequestHeader('X-CSRF-Token', token);
+            xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+            xhr.upload.addEventListener('progress', function(e) {
+                if (e.lengthComputable) row.progress(Math.floor(e.loaded / e.total * 100));
+            });
+            xhr.addEventListener('load', function() {
+                if (xhr.status === 201) {
+                    row.done('uploaded ' + humanBytes(file.size));
+                } else if (xhr.responseURL && xhr.responseURL.indexOf('/login') !== -1) {
+                    row.fail('session expired, reload the page');
+                } else {
+                    row.fail(xhr.responseText.trim() || 'failed (' + xhr.status + ')');
+                }
+                resolve();
+            });
+            xhr.addEventListener('error', function() { row.fail('network error'); resolve(); });
+            row.progress(0);
+            xhr.send(file);
+        });
+    }
+
+    // Upload one at a time, then refresh the listing so new files show up.
+    function uploadAll(files) {
+        var dest = current();
+        if (!dest || !dest.getAttribute('data-upload-url')) {
+            addRow(files.length ? files[0].name : 'upload').fail('open a directory first');
+            return;
+        }
+        var chain = Promise.resolve();
+        files.forEach(function(file) {
+            chain = chain.then(function() { return uploadOne(file, dest); });
+        });
+        chain.then(function() {
+            var dir = dest.getAttribute('data-files-dir');
+            if (current() === dest) {
+                htmx.ajax('GET', location.pathname + '/files?path=' + encodeURIComponent(dir), { target: '#vm-files' });
+            }
+        });
+    }
+
+    input.addEventListener('change', function() {
+        uploadAll(Array.prototype.slice.call(input.files));
+        input.value = '';
+    });
+
+    function hasFiles(e) {
+        return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types, 'Files') !== -1;
+    }
+    var depth = 0;
+    panel.addEventListener('dragenter', function(e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        depth++;
+        panel.classList.add('is-drop');
+    });
+    panel.addEventListener('dragover', function(e) {
+        if (hasFiles(e)) e.preventDefault();
+    });
+    panel.addEventListener('dragleave', function() {
+        if (--depth <= 0) { depth = 0; panel.classList.remove('is-drop'); }
+    });
+    panel.addEventListener('drop', function(e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        depth = 0;
+        panel.classList.remove('is-drop');
+        var files = [];
+        var items = e.dataTransfer.items || [];
+        for (var i = 0; i < e.dataTransfer.files.length; i++) {
+            var entry = items[i] && items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+            if (entry && entry.isDirectory) {
+                addRow(e.dataTransfer.files[i].name + '/').fail('folders are not supported, upload files');
+                continue;
+            }
+            files.push(e.dataTransfer.files[i]);
+        }
+        if (files.length) uploadAll(files);
+    });
+})();

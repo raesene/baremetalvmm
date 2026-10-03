@@ -210,10 +210,12 @@ func (s *Server) csrfMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
-		// Check CSRF token from form or header
-		csrfToken := r.FormValue("csrf_token")
+		// Check CSRF token from header or form. The header comes first:
+		// reading the form consumes the body, which for a file upload would
+		// buffer the whole file to disk before the handler runs.
+		csrfToken := r.Header.Get("X-CSRF-Token")
 		if csrfToken == "" {
-			csrfToken = r.Header.Get("X-CSRF-Token")
+			csrfToken = r.FormValue("csrf_token")
 		}
 
 		cookie, err := r.Cookie("vmm_session")

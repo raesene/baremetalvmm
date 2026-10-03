@@ -732,6 +732,55 @@ select.input option { background: var(--color-surface); color: var(--color-text)
 .empty .empty-cmd .prompt { color: var(--color-accent-command); }
 .empty .btn { margin-top: var(--space-4); }
 
+/* ---------- VM file browser ---------- */
+
+.files-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+}
+.files-crumbs {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+}
+.files-crumbs a { color: var(--color-accent-data); }
+.files-crumbs a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.files-crumbs .sep { color: var(--color-muted); margin: 0 1px; }
+.files-goto .input { min-width: 18rem; padding: 5px 10px; font-size: 0.75rem; }
+.files-dir { font-weight: 600; color: var(--color-accent-data); }
+.files-dir:hover { text-decoration: underline; text-underline-offset: 3px; }
+.files-panel.is-drop { outline: 1px dashed var(--color-accent-command); outline-offset: -6px; }
+
+.upload-queue {
+    list-style: none;
+    margin: 0;
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0;
+}
+.upload-queue li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 10rem minmax(6rem, auto);
+    gap: var(--space-3);
+    align-items: center;
+    padding: 3px 0;
+}
+.upload-queue .name { overflow-wrap: anywhere; }
+.upload-queue .status { color: var(--color-muted); text-align: right; }
+.upload-queue .is-ok .status { color: var(--color-success); }
+.upload-queue .is-error .status { color: var(--color-error); }
+.upload-bar { height: 4px; background: var(--color-border); border-radius: 2px; overflow: hidden; }
+.upload-bar > span { display: block; height: 100%; width: 0; background: var(--color-accent-data); transition: width var(--motion); }
+.upload-queue .is-error .upload-bar > span { background: var(--color-error); }
+
 /* ---------- Event log stream ---------- */
 
 .log {
