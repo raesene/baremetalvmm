@@ -62,7 +62,7 @@ func Dial(ip, user string, auth []ssh.AuthMethod) (*Client, error) {
 	}
 	sc, err := sftp.NewClient(conn, sftp.UseConcurrentWrites(true))
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("sftp session failed (is sftp-server installed in the guest?): %w", err)
 	}
 	return &Client{sftp: sc, conn: conn}, nil
@@ -207,7 +207,8 @@ func (c *Client) Upload(dest string, r io.Reader, maxBytes int64) (int64, error)
 	committed := false
 	defer func() {
 		if !committed {
-			c.sftp.Remove(tmp)
+			// Best effort: the upload error is what the caller needs.
+			_ = c.sftp.Remove(tmp)
 		}
 	}()
 

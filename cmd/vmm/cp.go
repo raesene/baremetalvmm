@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -91,9 +92,9 @@ func parseCopyArgs(src, dest string) (copySpec, error) {
 	var spec copySpec
 	switch {
 	case srcRemote && destRemote:
-		return spec, fmt.Errorf("copying directly between VMs is not supported; copy via the host instead")
+		return spec, errors.New("copying directly between VMs is not supported; copy via the host instead")
 	case !srcRemote && !destRemote:
-		return spec, fmt.Errorf("one of <src> or <dest> must be a VM path in the form <vm>:<path>")
+		return spec, errors.New("one of <src> or <dest> must be a VM path in the form <vm>:<path>")
 	case srcRemote:
 		spec = copySpec{vmName: srcVM, guestPath: srcPath, hostPath: dest}
 	default:
@@ -104,7 +105,7 @@ func parseCopyArgs(src, dest string) (copySpec, error) {
 		return copySpec{}, err
 	}
 	if spec.hostPath == "" {
-		return copySpec{}, fmt.Errorf("host path must not be empty")
+		return copySpec{}, errors.New("host path must not be empty")
 	}
 	return spec, nil
 }

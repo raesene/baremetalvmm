@@ -100,6 +100,14 @@ func (s *Server) openGuest(r *http.Request) (*vm.VM, *guestfile.Client, error) {
 	return v, client, nil
 }
 
+// closeGuest ends an SFTP session opened by openGuest. A failure here only
+// affects the connection being torn down, so it is logged, not returned.
+func closeGuest(c *guestfile.Client) {
+	if err := c.Close(); err != nil {
+		log.Printf("files: closing sftp session: %v", err)
+	}
+}
+
 // clearReadDeadline lifts the server-wide ReadTimeout for a transfer. Without
 // it, an upload is cut off after 30 seconds, and a long download has its
 // request context cancelled when the idle read deadline passes.
@@ -142,7 +150,7 @@ func (s *Server) handleFilesList(w http.ResponseWriter, r *http.Request) {
 		render(err)
 		return
 	}
-	defer client.Close()
+	defer closeGuest(client)
 
 	dir := r.URL.Query().Get("path")
 	if dir == "" {
@@ -234,7 +242,7 @@ func (s *Server) handleAPIFilesList(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, msg, code)
 		return
 	}
-	defer client.Close()
+	defer closeGuest(client)
 
 	dir := r.URL.Query().Get("path")
 	if dir == "" {
@@ -303,14 +311,14 @@ func (s *Server) serveDownload(w http.ResponseWriter, r *http.Request) {
 		fail(err)
 		return
 	}
-	defer client.Close()
+	defer closeGuest(client)
 
 	f, info, err := client.Open(p)
 	if err != nil {
 		fail(err)
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Always an attachment of opaque bytes: a guest file must never render
 	// as a page on the console's origin.
@@ -349,7 +357,7 @@ func (s *Server) receiveUpload(w http.ResponseWriter, r *http.Request, dest stri
 		fail(err)
 		return
 	}
-	defer client.Close()
+	defer closeGuest(client)
 
 	start := time.Now()
 	n, err := client.Upload(dest, r.Body, s.maxUploadBytes)
@@ -367,7 +375,7 @@ func (s *Server) receiveUpload(w http.ResponseWriter, r *http.Request, dest stri
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{"path": dest, "size": n})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"path": dest, "size": n})
 }
 
 // humanBytes formats a byte count with a binary unit, e.g. "12.3 MB".

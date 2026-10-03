@@ -100,7 +100,7 @@ func sshIdentityArgs() []string {
 	// Fall back to user's SSH keys when managed key isn't readable
 	var userHome string
 	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" && sudoUser != "root" {
-		userHome = fmt.Sprintf("/home/%s", sudoUser)
+		userHome = "/home/" + sudoUser
 	} else {
 		userHome, _ = os.UserHomeDir()
 	}
