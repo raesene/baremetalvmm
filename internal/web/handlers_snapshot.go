@@ -10,6 +10,7 @@ import (
 
 	"github.com/raesene/baremetalvmm/internal/firecracker"
 	"github.com/raesene/baremetalvmm/internal/network"
+	"github.com/raesene/baremetalvmm/internal/portforward"
 	"github.com/raesene/baremetalvmm/internal/snapshot"
 	"github.com/raesene/baremetalvmm/internal/validate"
 	"github.com/raesene/baremetalvmm/internal/vm"
@@ -112,6 +113,9 @@ func (s *Server) handleSnapshotRestore(w http.ResponseWriter, r *http.Request) {
 				log.Printf("restore %s: failed to delete TAP device %s: %v", name, v.TapDevice, err)
 			}
 		}
+		if err := portforward.Clear(netMgr, v); err != nil {
+			log.Printf("restore %s: failed to remove port forwards: %v", name, err)
+		}
 		v.State = vm.StateStopped
 		saveVMLog(v, paths.VMs)
 	}
@@ -129,6 +133,9 @@ func (s *Server) handleSnapshotRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	saveVMLog(v, paths.VMs)
+	if err := portforward.Apply(netMgr, v); err != nil {
+		log.Printf("restore %s: failed to apply port forwards: %v", name, err)
+	}
 	s.sseBroker.Note(kindVM, name, "restored", source, "from "+snapName)
 	s.sseBroker.Record(kindVM, name, string(v.State), source, "")
 

@@ -213,6 +213,7 @@ func startCmd() *cobra.Command {
 			fmt.Printf("VM '%s' started successfully\n", name)
 			fmt.Printf("  IP Address: %s\n", existingVM.IPAddress)
 			fmt.Printf("  PID: %d\n", existingVM.PID)
+			applyPortForwards(netMgr, existingVM)
 			fmt.Printf("  Socket: %s\n", existingVM.SocketPath)
 
 			return nil

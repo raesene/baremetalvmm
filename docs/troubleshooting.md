@@ -65,6 +65,13 @@ cat ~/.config/vmm/config.json
 
 After updating the config, restart your VM for the NAT rules to be recreated with the correct interface.
 
+## Port Forward Doesn't Respond
+
+1. Check its status: `sudo vmm port-forward list`. If it shows `missing` or `outdated` (common after upgrading from an older vmm while VMs were running), run `sudo vmm port-forward apply <vm>`.
+2. Check the service in the VM is listening on all interfaces, not just localhost: `sudo vmm ssh <vm> -- ss -ltnu`. A service bound to `127.0.0.1` can't be reached through a forward.
+3. Test from the host with its LAN address (`curl http://<host-ip>:<port>`); `127.0.0.1:<port>` is not forwarded.
+4. Inspect the rules: `sudo iptables -t nat -S | grep <port>` should show a `PREROUTING` and an `OUTPUT` DNAT rule, and `sudo iptables -S FORWARD | head -3` should include `-o vmm-br0 -m conntrack --ctstate DNAT -j ACCEPT`.
+
 ## VM Won't Start
 
 Check the serial console log for kernel boot errors:

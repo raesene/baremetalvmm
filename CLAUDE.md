@@ -90,7 +90,7 @@ vmm list [-a]
 vmm ssh <name> [-u user]
 vmm cp [-r] [-u user] <src> <dest>     # one side is <vm>:<path>
 vmm console <name> [--full] [-f] [-n LINES]
-vmm port-forward add|list|remove <name> <host>:<guest>
+vmm port-forward add|remove <name> <host>:<guest>[/udp]|list [name]|apply <name>
 vmm mount list|sync <name> [tag]
 vmm snapshot create <vm> <name> [--stop]|list [vm]|restore <vm> <name> [-f] [--no-start]|show <vm> <name>|delete <vm> <name>
 vmm image list [--remote]|pull [name]|import|snapshot|delete
@@ -119,6 +119,7 @@ Create flag defaults can be set in `~/.config/vmm/config.json` under `vm_default
 ### Modifying network behavior
 - Edit `internal/network/network.go`
 - Key functions: `EnsureBridge()`, `CreateTap()`, `AllocateIP()`, `AddPortForward()`
+- Port forwards go through `internal/portforward` (CLI and web): `Apply` on start/restore, `Clear` on stop/delete, `Add`/`Remove` for live changes, `List` for status. Don't call `AddPortForward`/`RemovePortForward` directly from lifecycle code. iptables rules are unit-tested against a fake runner (`Manager.run`) in `internal/network/portforward_test.go`
 
 ### Adding new image/kernel variants
 - Prefix-based naming drives descriptions in `describeKernel()`/`describeRootfs()` in `internal/image/image.go`

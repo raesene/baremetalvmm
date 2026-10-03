@@ -32,13 +32,28 @@ IP addresses are allocated from 172.16.0.2 upward when a VM is started (not when
 ```bash
 # Forward host port 8080 to VM port 80 (needs sudo for iptables)
 sudo vmm port-forward add myvm 8080:80
+sudo vmm port-forward add myvm 5353:53/udp
 
-# List port forwards
-vmm port-forward list myvm
+# List forwards for every VM (or pass a VM name)
+sudo vmm port-forward list
 
 # Remove a port forward
 sudo vmm port-forward remove myvm 8080:80
 ```
+
+Forwards can be added and removed while a VM is running and take effect immediately, so a service started on a running VM can be exposed without recreating it. They are saved on the VM: stopping it removes their firewall rules, and starting it (from the CLI, the web UI, autostart, or a snapshot restore) puts them back. Forwards added to a stopped VM apply when it starts. The web UI can do the same from a VM's page, and its **Port forwards** page lists every forward on the host.
+
+A forwarded port is reachable:
+
+- from other machines, at the host's address (e.g. `192.168.1.10:8080`)
+- from the host itself, at any of its own addresses except `127.0.0.1`
+- from other VMs, at the host's address or the bridge gateway (`172.16.0.1`)
+
+`vmm` refuses a host port that another VM already forwards, or that a service on the host is listening on (a forward would capture that service's traffic from other machines).
+
+`list` shows each forward's status: `active` (live), `inactive` (VM not running), `missing` (VM running but the rules aren't installed), or `outdated` (installed by an older vmm in a form that also redirected the VM's own outbound traffic to that port). Fix the last two with `sudo vmm port-forward apply <vm>`.
+
+How it works: each forward is a DNAT rule in the nat table's `PREROUTING` chain (traffic from the network and other VMs) and `OUTPUT` chain (traffic from the host), both limited to packets addressed to the host. Two shared rules make them work on any host: a `FORWARD` rule, inserted at the top of the chain, that accepts connections a forward redirected to the VM bridge (needed where Docker or ufw set the FORWARD policy to `DROP`), and a `MASQUERADE` rule so VM-to-VM forwards get their replies.
 
 ## SSH Key Injection
 

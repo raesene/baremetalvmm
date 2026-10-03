@@ -15,6 +15,7 @@ import (
 	"github.com/raesene/baremetalvmm/internal/firecracker"
 	"github.com/raesene/baremetalvmm/internal/image"
 	"github.com/raesene/baremetalvmm/internal/network"
+	"github.com/raesene/baremetalvmm/internal/portforward"
 	"github.com/raesene/baremetalvmm/internal/snapshot"
 	"github.com/raesene/baremetalvmm/internal/sshkey"
 	"github.com/raesene/baremetalvmm/internal/validate"
@@ -204,6 +205,15 @@ func (s *Server) handleVMCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if all, err := vm.List(paths.VMs); err == nil {
+		if err := portforward.CheckNew(all, name, portForwards); err != nil {
+			s.renderPage(w, r, "vm_create.html", "vms", map[string]interface{}{
+				"Flash": err.Error(), "FlashType": "error",
+			})
+			return
+		}
+	}
+
 	newVM := vm.NewVM(name)
 	newVM.CPUs = cpus
 	newVM.MemoryMB = memory
@@ -243,20 +253,28 @@ func (s *Server) handleVMDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fcClient := firecracker.NewClient()
-	fcClient.UpdateVMState(v)
+	firecracker.NewClient().UpdateVMState(v)
+	s.renderVMDetail(w, r, v, nil)
+}
 
+// renderVMDetail renders a VM's page. v must have its current state; data
+// may carry a Flash message.
+func (s *Server) renderVMDetail(w http.ResponseWriter, r *http.Request, v *vm.VM, data map[string]interface{}) {
+	paths := s.cfg.GetPaths()
 	snapMgr := snapshot.NewManager(paths.Snapshots)
-	snaps, err := snapMgr.List(name)
+	snaps, err := snapMgr.List(v.Name)
 	if err != nil {
-		log.Printf("failed to list snapshots for VM %s: %v", name, err)
+		log.Printf("failed to list snapshots for VM %s: %v", v.Name, err)
 	}
 
-	s.renderPage(w, r, "vm_detail.html", "vms", map[string]interface{}{
-		"VM":        v,
-		"Snapshots": snaps,
-		"MaxUpload": s.maxUploadBytes,
-	})
+	if data == nil {
+		data = map[string]interface{}{}
+	}
+	data["VM"] = v
+	data["Snapshots"] = snaps
+	data["MaxUpload"] = s.maxUploadBytes
+	s.addForwardRows(data, []*vm.VM{v})
+	s.renderPage(w, r, "vm_detail.html", "vms", data)
 }
 
 func (s *Server) startVM(existingVM *vm.VM) error {
@@ -332,19 +350,6 @@ func (s *Server) startVM(existingVM *vm.VM) error {
 		}
 	})
 
-	for _, pf := range existingVM.PortForwards {
-		if err := netMgr.AddPortForward(pf.HostPort, pf.GuestPort, existingVM.IPAddress, pf.Protocol); err != nil {
-			return fmt.Errorf("failed to add port forward %d:%d: %w", pf.HostPort, pf.GuestPort, err)
-		}
-		// Capture pf values for cleanup closure
-		pfCopy := pf
-		cleanupFuncs = append(cleanupFuncs, func() {
-			if err := netMgr.RemovePortForward(pfCopy.HostPort, pfCopy.GuestPort, existingVM.IPAddress, pfCopy.Protocol); err != nil {
-				fmt.Printf("Warning: failed to clean up port forward %d:%d: %v\n", pfCopy.HostPort, pfCopy.GuestPort, err)
-			}
-		})
-	}
-
 	existingVM.State = vm.StateStarting
 	existingVM.Save(paths.VMs)
 
@@ -383,6 +388,12 @@ func (s *Server) startVM(existingVM *vm.VM) error {
 	existingVM.PID = fcClient.GetVMPID(machine)
 	existingVM.StartedAt = time.Now()
 	existingVM.Save(paths.VMs)
+
+	// Forwards go in once the VM is up, as on the CLI; a broken forward
+	// shouldn't fail a start that has already succeeded.
+	if err := portforward.Apply(netMgr, existingVM); err != nil {
+		log.Printf("vm %s: failed to apply port forwards: %v", existingVM.Name, err)
+	}
 	return nil
 }
 
@@ -466,10 +477,8 @@ func (s *Server) handleVMStop(w http.ResponseWriter, r *http.Request) {
 		netMgr.DeleteTap(existingVM.TapDevice)
 	}
 
-	for _, pf := range existingVM.PortForwards {
-		if existingVM.IPAddress != "" {
-			netMgr.RemovePortForward(pf.HostPort, pf.GuestPort, existingVM.IPAddress, pf.Protocol)
-		}
+	if err := portforward.Clear(netMgr, existingVM); err != nil {
+		log.Printf("vm %s: failed to remove port forwards: %v", existingVM.Name, err)
 	}
 
 	// Terminate already cleared the PID and removed the socket
@@ -532,10 +541,8 @@ func (s *Server) deleteVM(w http.ResponseWriter, r *http.Request) {
 		netMgr.DeleteTap(existingVM.TapDevice)
 	}
 
-	for _, pf := range existingVM.PortForwards {
-		if existingVM.IPAddress != "" {
-			netMgr.RemovePortForward(pf.HostPort, pf.GuestPort, existingVM.IPAddress, pf.Protocol)
-		}
+	if err := portforward.Clear(netMgr, existingVM); err != nil {
+		log.Printf("vm %s: failed to remove port forwards: %v", existingVM.Name, err)
 	}
 
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
@@ -679,6 +686,16 @@ func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	all, err := vm.List(paths.VMs)
+	if err != nil {
+		jsonError(w, "Failed to list VMs: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := portforward.CheckNew(all, req.Name, req.PortForwards); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	newVM := vm.NewVM(req.Name)
 	newVM.CPUs = req.CPUs
 	newVM.MemoryMB = req.MemoryMB
@@ -750,10 +767,8 @@ func (s *Server) handleAPIVMDelete(w http.ResponseWriter, r *http.Request) {
 		netMgr.DeleteTap(existingVM.TapDevice)
 	}
 
-	for _, pf := range existingVM.PortForwards {
-		if existingVM.IPAddress != "" {
-			netMgr.RemovePortForward(pf.HostPort, pf.GuestPort, existingVM.IPAddress, pf.Protocol)
-		}
+	if err := portforward.Clear(netMgr, existingVM); err != nil {
+		log.Printf("vm %s: failed to remove port forwards: %v", existingVM.Name, err)
 	}
 
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)

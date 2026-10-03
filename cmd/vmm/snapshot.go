@@ -90,13 +90,7 @@ func snapshotCreateCmd() *cobra.Command {
 						fmt.Printf("Warning: failed to delete TAP device: %v\n", err)
 					}
 				}
-				for _, pf := range v.PortForwards {
-					if v.IPAddress != "" {
-						if err := netMgr.RemovePortForward(pf.HostPort, pf.GuestPort, v.IPAddress, pf.Protocol); err != nil {
-							fmt.Printf("Warning: failed to remove port forward %d:%d: %v\n", pf.HostPort, pf.GuestPort, err)
-						}
-					}
-				}
+				clearPortForwards(netMgr, v)
 				v.State = vm.StateStopped
 				if err := v.Save(paths.VMs); err != nil {
 					return fmt.Errorf("snapshot created and VM stopped, but failed to save VM state: %w", err)
@@ -208,6 +202,7 @@ func snapshotRestoreCmd() *cobra.Command {
 						fmt.Printf("Warning: failed to delete TAP device: %v\n", err)
 					}
 				}
+				clearPortForwards(netMgr, v)
 				v.State = vm.StateStopped
 				saveVMWarn(v, paths.VMs)
 			}
@@ -243,6 +238,7 @@ func snapshotRestoreCmd() *cobra.Command {
 			fmt.Printf("VM '%s' restored from snapshot '%s' and resumed\n", vmName, snapName)
 			fmt.Printf("  IP Address: %s\n", v.IPAddress)
 			fmt.Printf("  PID: %d\n", v.PID)
+			applyPortForwards(netMgr, v)
 			return nil
 		},
 	}

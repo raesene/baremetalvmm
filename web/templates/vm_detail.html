@@ -82,30 +82,61 @@
     </section>
 </div>
 
-{{if or .VM.PortForwards .VM.Mounts}}
-<div class="grid grid-2 mt-5">
-    {{if .VM.PortForwards}}
+<div class="grid {{if .VM.Mounts}}grid-2{{end}} mt-5">
     <section class="panel">
         <div class="panel-head">
             <div><span class="hw">net / iptables dnat</span><h2>Port forwards</h2></div>
+            <form method="POST" action="/vms/{{.VM.Name}}/port-forwards" class="inline-form pf-add">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <input type="number" name="host_port" min="1" max="65535" required placeholder="host port" class="input" aria-label="Host port">
+                <span class="muted">→</span>
+                <input type="number" name="guest_port" min="1" max="65535" required placeholder="guest port" class="input" aria-label="Guest port">
+                <select name="protocol" class="input" aria-label="Protocol"><option value="tcp">tcp</option><option value="udp">udp</option></select>
+                <button type="submit" class="btn btn-primary btn-sm">Add</button>
+            </form>
         </div>
+        {{if .PortForwards}}
         <div class="table-wrap">
             <table class="ledger">
-                <thead><tr><th>Host port</th><th></th><th>Guest port</th><th>Protocol</th></tr></thead>
+                <thead><tr><th>Host address</th><th></th><th>Guest port</th><th>Proto</th><th>Status</th><th class="right">Actions</th></tr></thead>
                 <tbody>
-                    {{range .VM.PortForwards}}
+                    {{range .PortForwards}}
                     <tr>
-                        <td class="data">{{.HostPort}}</td>
+                        <td class="data">{{.HostAddr}}</td>
                         <td class="muted">→</td>
                         <td class="data">{{.GuestPort}}</td>
                         <td>{{.Protocol}}</td>
+                        <td><span class="chip {{.ChipClass}}"><span class="dot"></span>{{.Status}}</span></td>
+                        <td class="right">
+                            <form method="POST" action="/vms/{{.VMName}}/port-forwards/delete">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <input type="hidden" name="host_port" value="{{.HostPort}}">
+                                <input type="hidden" name="guest_port" value="{{.GuestPort}}">
+                                <input type="hidden" name="protocol" value="{{.Protocol}}">
+                                <button type="submit" data-confirm="Remove forward {{.HostPort}}/{{.Protocol}} → {{.GuestPort}}?" class="act act-danger">remove</button>
+                            </form>
+                        </td>
                     </tr>
                     {{end}}
                 </tbody>
             </table>
         </div>
+        {{if .ForwardsMissing}}
+        <div class="panel-foot">
+            <form method="POST" action="/vms/{{.VM.Name}}/port-forwards/apply" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <span>Some forwards are missing from the firewall or use an older rule.</span>
+                <button type="submit" class="act">apply now</button>
+            </form>
+        </div>
+        {{end}}
+        {{else}}
+        <div class="empty">
+            <span class="empty-cmd"><span class="prompt">$</span> vmm port-forward list {{.VM.Name}} → 0 rows</span>
+            {{if eq (printf "%s" .VM.State) "running"}}Forward a host port to a service on this VM. It takes effect straight away.{{else}}Forwards added now apply when the VM starts.{{end}}
+        </div>
+        {{end}}
     </section>
-    {{end}}
 
     {{if .VM.Mounts}}
     <section class="panel">
@@ -129,7 +160,6 @@
     </section>
     {{end}}
 </div>
-{{end}}
 
 {{if eq (printf "%s" .VM.State) "running"}}
 <section class="panel mt-5 files-panel" id="files-panel">

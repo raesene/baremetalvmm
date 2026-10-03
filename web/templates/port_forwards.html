@@ -1,0 +1,81 @@
+{{template "layout.html" .}}
+{{define "content"}}
+<header class="page-head">
+    <div>
+        <div class="eyebrow">Network</div>
+        <h1>Port forwards</h1>
+        <p class="lede">Host ports forwarded into VMs{{if .HostIP}}, reachable at <span class="data">{{.HostIP}}</span>{{end}}. Forwards on running VMs are live; the rest apply when their VM starts.</p>
+    </div>
+    <div class="actions">
+        <div class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">vmm port-forward list</span></span></div>
+    </div>
+</header>
+
+{{if .PortForwards}}
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <span class="hw">net / iptables dnat</span>
+            <h2>{{len .PortForwards}} forwarded</h2>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table class="ledger">
+            <thead>
+                <tr>
+                    <th>Host address</th>
+                    <th>Proto</th>
+                    <th></th>
+                    <th>VM</th>
+                    <th>Guest</th>
+                    <th>Status</th>
+                    <th class="right">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .PortForwards}}
+                <tr data-vm="{{.VMName}}">
+                    <td class="data">{{.HostAddr}}</td>
+                    <td>{{.Protocol}}</td>
+                    <td class="muted">→</td>
+                    <td>
+                        <a href="/vms/{{.VMName}}" class="id-name">{{.VMName}}</a>
+                        <span class="chip chip-{{.VMState}}" data-state><span class="dot"></span><span data-state-label>{{.VMState}}</span></span>
+                    </td>
+                    <td class="data">{{if .GuestIP}}{{.GuestIP}}{{end}}:{{.GuestPort}}</td>
+                    <td><span class="chip {{.ChipClass}}"><span class="dot"></span>{{.Status}}</span></td>
+                    <td class="right">
+                        <span class="row-actions">
+                            {{if or (eq (printf "%s" .Status) "missing") (eq (printf "%s" .Status) "outdated")}}
+                            <form method="POST" action="/vms/{{.VMName}}/port-forwards/apply">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <input type="hidden" name="return" value="port-forwards">
+                                <button type="submit" class="act">apply</button>
+                            </form>
+                            {{end}}
+                            <form method="POST" action="/vms/{{.VMName}}/port-forwards/delete">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <input type="hidden" name="return" value="port-forwards">
+                                <input type="hidden" name="host_port" value="{{.HostPort}}">
+                                <input type="hidden" name="guest_port" value="{{.GuestPort}}">
+                                <input type="hidden" name="protocol" value="{{.Protocol}}">
+                                <button type="submit" data-confirm="Remove forward {{.HostPort}}/{{.Protocol}} → {{.VMName}}:{{.GuestPort}}?" class="act act-danger">remove</button>
+                            </form>
+                        </span>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    {{if .ForwardsMissing}}<div class="panel-foot"><strong>missing</strong>: the VM is running but the forward isn't in the firewall. <strong>outdated</strong>: the forward uses the rule an older vmm wrote, which also catches the VM's own outbound traffic to that port. Use <strong>apply</strong> to fix either.</div>{{end}}
+</section>
+{{else if not .Flash}}
+<section class="panel">
+    <div class="empty">
+        <span class="empty-cmd"><span class="prompt">$</span> vmm port-forward list → 0 rows</span>
+        No port forwards yet. Add one from a VM's page, or run <span class="mono">sudo vmm port-forward add &lt;vm&gt; 8080:80</span>.
+    </div>
+</section>
+{{end}}
+{{end}}

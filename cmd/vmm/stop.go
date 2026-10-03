@@ -61,13 +61,7 @@ func stopCmd() *cobra.Command {
 				}
 			}
 
-			for _, pf := range existingVM.PortForwards {
-				if existingVM.IPAddress != "" {
-					if err := netMgr.RemovePortForward(pf.HostPort, pf.GuestPort, existingVM.IPAddress, pf.Protocol); err != nil {
-						fmt.Printf("Warning: failed to remove port forward %d:%d: %v\n", pf.HostPort, pf.GuestPort, err)
-					}
-				}
-			}
+			clearPortForwards(netMgr, existingVM)
 
 			// Cleanup (Terminate already cleared the PID and removed the socket)
 			existingVM.State = vm.StateStopped

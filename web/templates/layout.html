@@ -26,6 +26,7 @@
         <nav class="rail-nav">
             <a href="/dashboard" class="{{if eq .Active "dashboard"}}is-active{{end}}">Overview <span class="rail-cmd">status</span></a>
             <a href="/vms" class="{{if eq .Active "vms"}}is-active{{end}}">Virtual machines <span class="rail-cmd">list</span></a>
+            <a href="/port-forwards" class="{{if eq .Active "port-forwards"}}is-active{{end}}">Port forwards <span class="rail-cmd">port-forward</span></a>
             <a href="/clusters" class="{{if eq .Active "clusters"}}is-active{{end}}">Clusters <span class="rail-cmd">cluster</span></a>
             <a href="/images" class="{{if eq .Active "images"}}is-active{{end}}">Images &amp; kernels <span class="rail-cmd">image</span></a>
         </nav>

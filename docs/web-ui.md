@@ -28,6 +28,7 @@ To run it as a systemd service with a generated password, install with `--with-s
 - **VM Management** - Create, start, stop, and delete VMs from the browser
 - **Web Terminal** - Browser-based SSH terminal for running VMs (xterm.js + WebSocket)
 - **File Browser** - Browse, upload to, and download from a running VM's filesystem
+- **Port Forwards** - Add and remove forwards on a VM's page (live on running VMs), and see every forward on the host, with its status, on the Port forwards page
 - **Cluster Management** - Create and delete Kubernetes clusters
 - **Live Status** - VM status updates via Server-Sent Events (no page refresh needed)
 - **JSON API** - REST API at `/api/v1/` for scripting and automation
@@ -94,6 +95,10 @@ curl http://localhost:8080/api/v1/health
 | POST | `/api/v1/vms/{name}/start` | Start a VM |
 | POST | `/api/v1/vms/{name}/stop` | Stop a VM |
 | DELETE | `/api/v1/vms/{name}` | Delete a VM |
+| GET | `/api/v1/port-forwards` | List every port forward with its status |
+| GET | `/api/v1/vms/{name}/port-forwards` | List a VM's port forwards |
+| POST | `/api/v1/vms/{name}/port-forwards` | Add a forward: `{"host_port":8080,"guest_port":80,"protocol":"tcp"}` (live if the VM is running) |
+| DELETE | `/api/v1/vms/{name}/port-forwards?host_port=H&guest_port=G[&protocol=P]` | Remove a forward |
 | GET | `/api/v1/vms/{name}/files?path=DIR` | List a guest directory (defaults to root's home) |
 | GET | `/api/v1/vms/{name}/files/content?path=FILE` | Download a guest file |
 | PUT | `/api/v1/vms/{name}/files/content?path=FILE` | Upload the request body to a guest file |

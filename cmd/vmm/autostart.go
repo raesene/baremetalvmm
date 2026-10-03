@@ -167,6 +167,7 @@ func autostartCmd() *cobra.Command {
 				v.Save(paths.VMs)
 
 				fmt.Printf("  Started (IP: %s, PID: %d)\n", v.IPAddress, v.PID)
+				applyPortForwards(netMgr, v)
 				started++
 			}
 
@@ -190,6 +191,7 @@ func autostopCmd() *cobra.Command {
 			}
 
 			fcClient := firecracker.NewClient()
+			netMgr := newNetManager()
 			stopped := 0
 
 			for _, v := range vms {
@@ -210,6 +212,7 @@ func autostopCmd() *cobra.Command {
 					continue
 				}
 
+				clearPortForwards(netMgr, v)
 				v.State = vm.StateStopped
 				v.Save(paths.VMs)
 				stopped++

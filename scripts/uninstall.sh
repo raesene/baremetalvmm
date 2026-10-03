@@ -198,6 +198,31 @@ while iptables -t nat -L PREROUTING -n --line-numbers 2>/dev/null | grep -q "172
     fi
 done
 
+# Port forwards also have an OUTPUT rule, for connections from the host itself
+while iptables -t nat -L OUTPUT -n --line-numbers 2>/dev/null | grep "DNAT" | grep -q "172.16.0."; do
+    LINE=$(iptables -t nat -L OUTPUT -n --line-numbers 2>/dev/null | grep "DNAT" | grep "172.16.0." | head -1 | awk '{print $1}')
+    if [ -n "$LINE" ]; then
+        iptables -t nat -D OUTPUT "$LINE" 2>/dev/null || break
+        echo -e "  ${GREEN}Removed DNAT port forwarding rule (host-local)${NC}"
+        RULES_REMOVED=$((RULES_REMOVED + 1))
+    else
+        break
+    fi
+done
+
+# Shared rules port forwards rely on
+if iptables -C FORWARD -o "$BRIDGE_NAME" -m conntrack --ctstate DNAT -j ACCEPT 2>/dev/null; then
+    iptables -D FORWARD -o "$BRIDGE_NAME" -m conntrack --ctstate DNAT -j ACCEPT 2>/dev/null || true
+    echo -e "  ${GREEN}Removed FORWARD rule (port forwards)${NC}"
+    RULES_REMOVED=$((RULES_REMOVED + 1))
+fi
+
+if iptables -t nat -C POSTROUTING -s "$SUBNET" -o "$BRIDGE_NAME" -m conntrack --ctstate DNAT -j MASQUERADE 2>/dev/null; then
+    iptables -t nat -D POSTROUTING -s "$SUBNET" -o "$BRIDGE_NAME" -m conntrack --ctstate DNAT -j MASQUERADE 2>/dev/null || true
+    echo -e "  ${GREEN}Removed NAT rule (VM-to-VM port forwards)${NC}"
+    RULES_REMOVED=$((RULES_REMOVED + 1))
+fi
+
 if [ "$RULES_REMOVED" -eq 0 ]; then
     echo "  No iptables rules found"
 fi

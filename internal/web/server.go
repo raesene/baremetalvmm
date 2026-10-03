@@ -95,6 +95,7 @@ func (s *Server) loadTemplates() error {
 		"vms.html",
 		"vm_create.html",
 		"vm_detail.html",
+		"port_forwards.html",
 		"clusters.html",
 		"cluster_create.html",
 		"images.html",
@@ -177,6 +178,10 @@ func (s *Server) setupRouter() {
 		r.Post("/vms/{name}/snapshots", s.handleSnapshotCreate)
 		r.Post("/vms/{name}/snapshots/{snapshot}/restore", s.handleSnapshotRestore)
 		r.Post("/vms/{name}/snapshots/{snapshot}/delete", s.handleSnapshotDelete)
+		r.Post("/vms/{name}/port-forwards", s.handlePortForwardAdd)
+		r.Post("/vms/{name}/port-forwards/delete", s.handlePortForwardRemove)
+		r.Post("/vms/{name}/port-forwards/apply", s.handlePortForwardApply)
+		r.Get("/port-forwards", s.handlePortForwards)
 		r.Get("/vms/{name}/files", s.handleFilesList)
 		r.Get("/vms/{name}/files/download", s.handleFileDownload)
 		r.Post("/vms/{name}/files/upload", s.handleFileUpload)
@@ -212,6 +217,10 @@ func (s *Server) setupRouter() {
 			r.Post("/vms/{name}/snapshots", s.handleAPISnapshotCreate)
 			r.Post("/vms/{name}/snapshots/{snapshot}/restore", s.handleAPISnapshotRestore)
 			r.Delete("/vms/{name}/snapshots/{snapshot}", s.handleAPISnapshotDelete)
+			r.Get("/port-forwards", s.handleAPIPortForwards)
+			r.Get("/vms/{name}/port-forwards", s.handleAPIVMPortForwards)
+			r.Post("/vms/{name}/port-forwards", s.handleAPIPortForwardAdd)
+			r.Delete("/vms/{name}/port-forwards", s.handleAPIPortForwardRemove)
 			r.Get("/vms/{name}/files", s.handleAPIFilesList)
 			r.Get("/vms/{name}/files/content", s.handleAPIFileDownload)
 			r.Put("/vms/{name}/files/content", s.handleAPIFileUpload)

@@ -948,3 +948,7 @@ select.input option { background: var(--color-surface); color: var(--color-text)
 .mt-5 { margin-top: var(--space-5); }
 .mb-5 { margin-bottom: var(--space-5); }
 .mt-3 { margin-top: var(--space-3); }
+
+/* Port forward add form in a panel head */
+.pf-add .input { width: 7.5rem; min-width: 0; padding: 5px 10px; font-size: 0.75rem; }
+.pf-add select.input { width: 5.5rem; padding-right: 28px; }

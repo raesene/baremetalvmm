@@ -88,21 +88,25 @@ Console logs are especially useful for:
 
 | Command | Description |
 |---------|-------------|
-| `vmm port-forward add <name> <host>:<guest>` | Forward port from host to VM |
-| `vmm port-forward list <name>` | List port forwards for a VM |
-| `vmm port-forward remove <name> <host>:<guest>` | Remove a port forward |
+| `vmm port-forward add <name> <host>:<guest>[/udp]` | Forward a host port to a VM; live immediately if it's running |
+| `vmm port-forward list [name]` | List forwards for one VM, or every VM, with their status |
+| `vmm port-forward remove <name> <host>:<guest>[/udp]` | Remove a forward; live immediately if it's running |
+| `vmm port-forward apply <name>` | Re-install a running VM's forwards (fixes `missing`/`outdated`) |
 
 Example:
 ```bash
-# Forward host port 8080 to VM port 80 (needs sudo for iptables)
+# Expose a service you just started on a running VM
 sudo vmm port-forward add myvm 8080:80
+sudo vmm port-forward add myvm 5353:53/udp   # or --udp
 
-# List port forwards
-vmm port-forward list myvm
+# See every forward on the host
+sudo vmm port-forward list
 
 # Remove a port forward
 sudo vmm port-forward remove myvm 8080:80
 ```
+
+See [Networking → Port Forwarding](networking.md#port-forwarding) for how forwards behave.
 
 ## Mounts
 
