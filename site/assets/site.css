@@ -367,6 +367,7 @@ section.block { padding: var(--space-9) 0 0; }
 }
 .shot figcaption .hw { font-size: 0.6rem; }
 .screens { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); margin-top: var(--space-4); }
+.shot.is-follow { margin-top: var(--space-4); }
 .screens-bullets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-5); margin-top: var(--space-6); }
 .bullet h3 { font-size: 0.98rem; }
 .bullet h3::before { content: "> "; font-family: var(--font-mono); color: var(--color-accent-command); }

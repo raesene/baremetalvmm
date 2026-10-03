@@ -119,7 +119,7 @@ root@vmm-guest:~# <span class="caret"></span></code></pre>
                 <article class="panel feature">
                     <span class="hw">net / bridge + nat</span>
                     <h3>Networking handled for you</h3>
-                    <p>A Linux bridge, TAP devices, IP allocation and NAT are set up automatically. VMs are reachable from the host by default. Idempotent iptables rules forward ports and custom DNS servers can be set per VM.</p>
+                    <p>A Linux bridge, TAP devices, IP allocation and NAT are set up automatically, and VMs are reachable from the host by default. Started a new service on a running VM? Forward a TCP or UDP port to it and it's live straight away. Forwards follow the VM through stops, starts and restores, and work alongside Docker.</p>
                     <span class="cmdline"><span class="prompt">$</span><span><span class="tok-cmd">sudo vmm port-forward add</span> <span class="tok-data">myvm 8080:80</span></span></span>
                 </article>
 
@@ -185,7 +185,7 @@ root@vmm-guest:~# <span class="caret"></span></code></pre>
             <div class="section-head">
                 <div class="eyebrow"><span class="idx">02</span> Web console</div>
                 <h2>The whole host, at a glance.</h2>
-                <p><code class="mono">vmm-web</code> is a separate, optional binary. It gives you a dashboard for every VM and cluster, live state updates, and a terminal that runs in the browser.</p>
+                <p><code class="mono">vmm-web</code> is a separate, optional binary. It gives you a dashboard for every VM and cluster, live state updates, a terminal that runs in the browser, and one place to see and manage every port forward on the host.</p>
             </div>
 
             <figure class="panel shot">
@@ -202,6 +202,10 @@ root@vmm-guest:~# <span class="caret"></span></code></pre>
                     <figcaption><span><span class="hw">screen / terminal</span>WebSocket-to-SSH terminal, no client needed</span></figcaption>
                 </figure>
             </div>
+            <figure class="panel shot is-follow">
+                <img src="assets/img/ui-port-forwards.jpg" width="1440" height="641" loading="lazy" alt="vmm-web Port forwards page listing every forwarded host port with its protocol, target VM and guest address, the VM's state and whether the forward is active">
+                <figcaption><span><span class="hw">screen / port forwards</span>Every forward on the host: where it goes, whether it's live, and one-click removal. Add forwards from any VM's page, even while it's running.</span></figcaption>
+            </figure>
 
             <div class="screens-bullets">
                 <div class="bullet">
@@ -210,7 +214,7 @@ root@vmm-guest:~# <span class="caret"></span></code></pre>
                 </div>
                 <div class="bullet">
                     <h3>Scriptable</h3>
-                    <p>The JSON API under <code class="mono">/api/v1</code> can list, create, start, stop and delete VMs and clusters using a Bearer token.</p>
+                    <p>The JSON API under <code class="mono">/api/v1</code> can list, create, start, stop and delete VMs and clusters, and add or remove port forwards, using a Bearer token.</p>
                 </div>
                 <div class="bullet">
                     <h3>Runs as a service</h3>
@@ -252,7 +256,7 @@ root@vmm-guest:~# <span class="caret"></span></code></pre>
                     <li><span class="k">State</span><span>VM and cluster configs are JSON files in <code class="mono data">/var/lib/vmm</code>, written atomically. Change the location with <code class="mono">vmm config set data_dir</code>.</span></li>
                     <li><span class="k">Isolation</span><span>Every VM gets its own guest kernel inside a KVM-backed Firecracker process. It is much stronger isolation than a shared-kernel container.</span></li>
                     <li><span class="k">Lifecycle</span><span>Stop escalates from Ctrl+Alt+Del to SIGTERM to SIGKILL and waits for the process to exit. Failed starts roll back their TAP device, IP and socket.</span></li>
-                    <li><span class="k">Networking</span><span>VMs share a bridge with NAT out through the host interface. Only the ports you forward are exposed beyond the host.</span></li>
+                    <li><span class="k">Networking</span><span>VMs share a bridge with NAT out through the host interface. Only the ports you forward are exposed beyond the host. Forwards are DNAT rules matched to the host's own addresses, so they can be changed on running VMs and never redirect a VM's outbound traffic.</span></li>
                     <li><span class="k">Upgrades</span><span><code class="mono">vmm upgrade</code> verifies a release against its checksums, then swaps binaries by atomic rename, keeping <code class="mono">.prev</code> copies. Firecracker processes that are already running are untouched, so VMs keep running through an upgrade.</span></li>
                     <li><span class="k">Downloads</span><span>Kernels and rootfs images come from GitHub releases and are checked against SHA256 checksums when they are published.</span></li>
                 </ul>
