@@ -89,6 +89,10 @@ sudo vmm start myvm
 # SSH in (also works with standard ssh as root@<vm-ip>)
 vmm ssh myvm
 
+# Copy files in and out
+sudo vmm cp ./app.tar.gz myvm:/tmp/
+sudo vmm cp myvm:/var/log/syslog ./syslog
+
 # Stop and clean up
 sudo vmm stop myvm
 sudo vmm delete myvm

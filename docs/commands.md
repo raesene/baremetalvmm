@@ -44,10 +44,25 @@ sudo vmm create myvm --cpus 2 --memory 2048 --disk 10000 \
 |---------|-------------|
 | `vmm ssh <name>` | SSH into a VM as root |
 | `vmm ssh <name> -u <user>` | SSH as specific user |
+| `vmm cp <src> <name>:<path>` | Copy a file from the host into a running VM |
+| `vmm cp <name>:<path> <dest>` | Copy a file from a running VM to the host |
+| `vmm cp -r <src> <dest>` | Copy a directory recursively (either direction) |
 | `vmm console <name>` | View serial console output (tail + follow) |
 | `vmm console <name> --full` | View complete console log |
 
 VMM auto-generates an Ed25519 SSH key at `/var/lib/vmm/ssh/vmm_ed25519` that is always injected into VMs, so SSH access works without `--ssh-key`. If you provide `--ssh-key`, that key is added alongside the managed key. You can use `sudo vmm ssh <name>` if you prefer consistency with other commands - VMM automatically detects the original user and uses their SSH keys.
+
+### Copying Files
+
+`vmm cp` copies files between the host and a running VM over SCP, using the same key selection as `vmm ssh`. Exactly one side must be a VM path written as `<name>:<path>`; a relative guest path is relative to the user's home directory, and `<name>:` on its own means the home directory.
+
+```bash
+sudo vmm cp ./app.tar.gz myvm:/tmp/
+sudo vmm cp myvm:/var/log/syslog ./syslog
+sudo vmm cp -r ./src myvm:/root/src
+```
+
+To copy a host path that contains a colon, prefix it with `./` or use an absolute path. VM-to-VM copies aren't supported; copy via the host. The `-u` flag only works for guest users that have an authorized key, and vmm only injects its key for root. Files copied to the host under `sudo` are owned by root.
 
 ### Serial Console
 

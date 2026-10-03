@@ -87,6 +87,7 @@ vmm stop <name>
 vmm delete <name> [-f]
 vmm list [-a]
 vmm ssh <name> [-u user]
+vmm cp [-r] [-u user] <src> <dest>     # one side is <vm>:<path>
 vmm console <name> [--full] [-f] [-n LINES]
 vmm port-forward add|list|remove <name> <host>:<guest>
 vmm mount list|sync <name> [tag]
