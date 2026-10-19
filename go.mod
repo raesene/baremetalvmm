@@ -4,7 +4,7 @@ go 1.27.2
 
 require (
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
-	github.com/go-chi/chi/v5 v5.3.2
+	github.com/go-chi/chi/v5 v5.5.0
 	github.com/google/uuid v1.6.0
 	github.com/pkg/sftp v1.13.11
 	github.com/sirupsen/logrus v1.10.2
