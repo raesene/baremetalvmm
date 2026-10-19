@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/raesene/baremetalvmm/internal/vm"
@@ -57,23 +59,25 @@ func (m *Manager) CreateMountImage(mount *vm.Mount, vmName string) error {
 		return fmt.Errorf("failed to create mounts directory: %w", err)
 	}
 
-	// Calculate size needed for the directory
-	sizeMB, err := calculateDirSize(mount.HostPath)
+	// Calculate the image budget for the directory
+	budget, err := calculateMountBudget(mount.HostPath)
 	if err != nil {
 		return fmt.Errorf("failed to calculate directory size: %w", err)
 	}
 
-	// calculateDirSize already includes filesystem overhead and minimum.
-
-	fmt.Printf("  Creating mount image for '%s' (%d MB)...\n", mount.GuestTag, sizeMB)
+	fmt.Printf("  Creating mount image for '%s' (%d MB)...\n", mount.GuestTag, budget.SizeMB)
 
 	// Create a sparse file
-	if err := exec.Command("truncate", "-s", fmt.Sprintf("%dM", sizeMB), imagePath).Run(); err != nil {
+	if err := exec.Command("truncate", "-s", fmt.Sprintf("%dM", budget.SizeMB), imagePath).Run(); err != nil {
 		return fmt.Errorf("failed to create image file: %w", err)
 	}
 
-	// Create ext4 filesystem
-	mkfsCmd := exec.Command("mkfs.ext4", "-F", "-L", mount.GuestTag, imagePath)
+	// Create ext4 filesystem. -N reserves exactly the budgeted inode count:
+	// the sizing budget assumes one inode per entry plus headroom, and
+	// mkfs's default ratio (16KB/inode for images >= ~1GB) would starve
+	// small-file trees, while a fixed low ratio would over-reserve on
+	// large-file trees.
+	mkfsCmd := exec.Command("mkfs.ext4", "-F", "-N", strconv.FormatInt(budget.Inodes, 10), "-L", mount.GuestTag, imagePath)
 	if output, err := mkfsCmd.CombinedOutput(); err != nil {
 		os.Remove(imagePath)
 		return fmt.Errorf("failed to create ext4 filesystem: %w: %s", err, string(output))
@@ -110,11 +114,22 @@ func (m *Manager) SyncMountImage(mount *vm.Mount, vmName string) error {
 	}
 
 	// Check if we need to resize the image
-	sizeMB, err := calculateDirSize(mount.HostPath)
+	budget, err := calculateMountBudget(mount.HostPath)
 	if err != nil {
 		return fmt.Errorf("failed to calculate directory size: %w", err)
 	}
-	// calculateDirSize already includes filesystem overhead and minimum.
+
+	// If the tree's entry count outgrew the image's inode count (e.g. a few
+	// large files were replaced by many small ones), growing the image does
+	// not help: resize2fs keeps the original bytes-per-inode ratio and cannot
+	// add inodes. The sync below re-copies everything from the host anyway,
+	// so recreate the image with the full budget instead.
+	if currentInodes := ext4InodeCount(mount.ImagePath); currentInodes > 0 && budget.Inodes > currentInodes {
+		if err := os.Remove(mount.ImagePath); err != nil {
+			return fmt.Errorf("failed to remove undersized mount image: %w", err)
+		}
+		return m.CreateMountImage(mount, vmName)
+	}
 
 	// Get current image size
 	imgInfo, err := os.Stat(mount.ImagePath)
@@ -123,10 +138,12 @@ func (m *Manager) SyncMountImage(mount *vm.Mount, vmName string) error {
 	}
 	currentSizeMB := int(imgInfo.Size() / (1024 * 1024))
 
-	// Resize if needed (only grow, never shrink)
-	if sizeMB > currentSizeMB {
-		fmt.Printf("  Resizing mount image to %d MB...\n", sizeMB)
-		if err := exec.Command("truncate", "-s", fmt.Sprintf("%dM", sizeMB), mount.ImagePath).Run(); err != nil {
+	// Resize if needed (only grow, never shrink). resize2fs keeps the
+	// bytes-per-inode ratio of the original mkfs, so the inode count grows
+	// proportionally with the size budget.
+	if budget.SizeMB > currentSizeMB {
+		fmt.Printf("  Resizing mount image to %d MB...\n", budget.SizeMB)
+		if err := exec.Command("truncate", "-s", fmt.Sprintf("%dM", budget.SizeMB), mount.ImagePath).Run(); err != nil {
 			return fmt.Errorf("failed to resize image file: %w", err)
 		}
 		// Check filesystem
@@ -248,44 +265,95 @@ func (m *Manager) copyFilesToImage(srcDir, imagePath string) error {
 	return nil
 }
 
-// calculateDirSize returns the estimated ext4 image size needed to hold a
-// directory, in MB. It accounts for both file content and filesystem overhead
-// (inodes, journal, block group descriptors). A naive 1.2x multiplier on raw
-// bytes breaks on trees with many small files (e.g. .git/objects) where inode
-// and metadata overhead dominates.
-func calculateDirSize(path string) (int, error) {
-	var contentBytes int64
-	var fileCount int64
+// mountBudget is the ext4 image sizing needed to hold a directory tree.
+type mountBudget struct {
+	SizeMB int   // total image size in MB
+	Inodes int64 // inode count to pass to mkfs via -N
+}
+
+// calculateMountBudget estimates the ext4 image size and inode count needed
+// to hold a directory tree. Content is rounded up to whole 4KB blocks per
+// file (ext4's minimum allocation) plus one block per directory. A naive
+// multiplier on raw bytes breaks in both directions: trees with many small
+// files (e.g. .git/objects) need one inode per entry regardless of content
+// size, and the filesystem's own metadata (inode tables, journal, block
+// group descriptors) scales with image size rather than being a fixed amount.
+func calculateMountBudget(path string) (mountBudget, error) {
+	var contentBytes, entryCount int64
 	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() {
-			contentBytes += info.Size()
+		if info.IsDir() {
+			contentBytes += 4096 // each directory needs at least one block
+		} else {
+			contentBytes += (info.Size() + 4095) &^ 4095 // ext4 allocates whole 4KB blocks
 		}
-		fileCount++
+		entryCount++ // files and directories each need an inode
 		return nil
 	})
 	if err != nil {
-		return 0, err
+		return mountBudget{}, err
 	}
 
-	// Each file/dir needs an inode (256 bytes) plus directory entry overhead
-	// (~64 bytes average). Round up to 4KB per entry to account for block
-	// alignment on the ext4 side.
-	inodeOverhead := fileCount * 4096
+	// One inode per entry, plus headroom for entries created inside the VM
+	// between syncs: 10% plus a fixed margin. mkfs reserves exactly this
+	// count, so there is no per-inode waste on large-file trees.
+	inodes := entryCount + entryCount/10 + 1024
 
-	// Fixed ext4 overhead: journal (4-32MB), superblock copies, block group
-	// descriptors. Use 32MB as a safe baseline.
-	const fixedOverheadMB = 32
+	// Inode tables: mkfs reserves 256 bytes per inode up front.
+	tableBytes := inodes * 256
 
-	totalBytes := contentBytes + inodeOverhead
-	sizeMB := int((totalBytes+1024*1024-1)/(1024*1024)) + fixedOverheadMB
+	// The journal scales with image size and is capped by mkfs (16MB at 1GB,
+	// 64MB from 4GB up to 16GB; larger images use up to 128MB, which the 2%
+	// allowance below covers). It depends on the total size, which depends on
+	// it, so iterate the estimate to convergence.
+	const mb = 1024 * 1024
+	totalBytes := contentBytes + tableBytes
+	var journalBytes int64
+	for range 2 {
+		journalBytes = totalBytes / 64
+		switch {
+		case journalBytes < 16*mb:
+			journalBytes = 16 * mb
+		case journalBytes > 64*mb:
+			journalBytes = 64 * mb
+		}
+		// Superblock copies, block group descriptors, and other ext4
+		// metadata: a couple of percent of the total.
+		totalBytes = contentBytes + tableBytes + journalBytes
+		totalBytes += totalBytes / 50
+	}
 
+	sizeMB := int((totalBytes + mb - 1) / mb)
 	if sizeMB < 64 {
 		sizeMB = 64
 	}
-	return sizeMB, nil
+	return mountBudget{SizeMB: sizeMB, Inodes: inodes}, nil
+}
+
+// ext4InodeCount returns the inode count of an ext4 image file, or 0 if it
+// cannot be determined (dumpe2fs missing or failed).
+func ext4InodeCount(imagePath string) int64 {
+	out, err := exec.Command("dumpe2fs", "-h", imagePath).Output()
+	if err != nil {
+		return 0
+	}
+	return parseInodeCount(string(out))
+}
+
+// parseInodeCount extracts the "Inode count" value from dumpe2fs -h output.
+func parseInodeCount(dumpe2fsOutput string) int64 {
+	for line := range strings.SplitSeq(dumpe2fsOutput, "\n") {
+		if after, ok := strings.CutPrefix(line, "Inode count:"); ok {
+			n, err := strconv.ParseInt(strings.TrimSpace(after), 10, 64)
+			if err != nil {
+				return 0
+			}
+			return n
+		}
+	}
+	return 0
 }
 
 // ParseMountSpec parses a mount specification string in format "host_path:tag[:ro|rw]"
