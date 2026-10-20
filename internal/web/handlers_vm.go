@@ -212,6 +212,16 @@ func (s *Server) handleVMCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	restrictLocal := r.FormValue("restrict_local_networks") != ""
+	if restrictLocal {
+		if err := lifecycle.CheckRestrictedDNS(dnsServers); err != nil {
+			s.renderPage(w, r, "vm_create.html", "vms", map[string]interface{}{
+				"Flash": err.Error(), "FlashType": "error",
+			})
+			return
+		}
+	}
+
 	if all, err := vm.List(paths.VMs); err == nil {
 		if err := portforward.CheckNew(all, name, portForwards); err != nil {
 			s.renderPage(w, r, "vm_create.html", "vms", map[string]interface{}{
@@ -229,6 +239,7 @@ func (s *Server) handleVMCreate(w http.ResponseWriter, r *http.Request) {
 	newVM.Kernel = kernelName
 	newVM.Backend = backend
 	newVM.Nested = nested
+	newVM.RestrictLocalNetworks = restrictLocal
 	newVM.MacAddress = newVM.GenerateMacAddress()
 	newVM.TapDevice = network.GenerateTapName(newVM.ID)
 	newVM.DNSServers = dnsServers
@@ -535,6 +546,8 @@ func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
 		PortForwards []vm.PortForward `json:"port_forwards"`
 		Backend      string           `json:"backend"`
 		Nested       bool             `json:"nested"`
+
+		RestrictLocalNetworks bool `json:"restrict_local_networks"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "Invalid request body", http.StatusBadRequest)
@@ -577,6 +590,12 @@ func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.RestrictLocalNetworks {
+		if err := lifecycle.CheckRestrictedDNS(req.DNSServers); err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 
 	paths := s.cfg.GetPaths()
 	s.cfg.EnsureDirectories()
@@ -611,6 +630,7 @@ func (s *Server) handleAPIVMCreate(w http.ResponseWriter, r *http.Request) {
 	newVM.Kernel = kernelName
 	newVM.Backend = backend
 	newVM.Nested = req.Nested
+	newVM.RestrictLocalNetworks = req.RestrictLocalNetworks
 	newVM.MacAddress = newVM.GenerateMacAddress()
 	newVM.TapDevice = network.GenerateTapName(newVM.ID)
 	newVM.DNSServers = req.DNSServers

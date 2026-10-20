@@ -57,7 +57,7 @@ How it works: each forward is a DNAT rule in the nat table's `PREROUTING` chain 
 
 ## Restricting Local Network Access
 
-A VM created with `--restrict-local-networks` (or switched with `vmm set <vm> restrict-local-networks on`) can reach the internet but not the host, the host's local networks or other VMs. It's meant for running untrusted code. It isn't available for clusters, whose nodes need to reach each other.
+A VM created with `--restrict-local-networks`, the **Restrict local networks** checkbox in the web UI or `"restrict_local_networks": true` in the API (switch it later with `vmm set <vm> restrict-local-networks on|off`) can reach the internet but not the host, the host's local networks or other VMs. It's meant for running untrusted code. It isn't available for clusters, whose nodes need to reach each other.
 
 ```bash
 sudo vmm create sandbox --restrict-local-networks

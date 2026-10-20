@@ -71,6 +71,14 @@
                 </span>
             </label>
 
+            <label class="check">
+                <input type="checkbox" name="restrict_local_networks" id="restrict_local_networks">
+                <span>
+                    <span class="label">Restrict local networks</span>
+                    <span class="hint block">Internet access only, for untrusted code: the VM can't connect to this host, private/LAN ranges or other VMs. SSH, the terminal, files and port forwards still work. DNS servers must be public; needs nftables.</span>
+                </span>
+            </label>
+
             <div class="field">
                 <label for="ssh_key">SSH public key <span class="label-opt">optional</span></label>
                 <textarea id="ssh_key" name="ssh_key" rows="3" placeholder="ssh-ed25519 AAAA..." class="input">{{.Defaults.SSHKey}}</textarea>

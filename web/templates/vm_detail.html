@@ -58,6 +58,7 @@
             <dl class="kv">
                 <div><dt>IP address</dt><dd class="data">{{if .VM.IPAddress}}{{.VM.IPAddress}}{{else}}<span class="muted">—</span>{{end}}</dd></div>
                 <div><dt>MAC address</dt><dd>{{.VM.MacAddress}}</dd></div>
+                <div><dt>Local networks</dt><dd>{{if .VM.RestrictLocalNetworks}}restricted <span class="muted">· internet only</span>{{else}}<span class="muted">unrestricted</span>{{end}}</dd></div>
                 <div><dt>TAP device</dt><dd>{{.VM.TapDevice}}</dd></div>
                 {{if .VM.DNSServers}}
                 <div><dt>DNS servers</dt><dd class="data">{{range $i, $dns := .VM.DNSServers}}{{if $i}}, {{end}}{{$dns}}{{end}}</dd></div>

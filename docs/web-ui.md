@@ -25,7 +25,7 @@ To run it as a systemd service with a generated password, install with `--with-s
 ## Features
 
 - **Dashboard** - Overview of all VMs and clusters with resource usage stats
-- **VM Management** - Create, start, stop, and delete VMs from the browser, including nested VMs (the **Nested virtualization** checkbox; see [Nested Virtualization](nested-virtualization.md))
+- **VM Management** - Create, start, stop, and delete VMs from the browser, including nested VMs (the **Nested virtualization** checkbox; see [Nested Virtualization](nested-virtualization.md)) and internet-only VMs (the **Restrict local networks** checkbox; see [Restricting Local Network Access](networking.md#restricting-local-network-access))
 - **Web Terminal** - Browser-based SSH terminal for running VMs (xterm.js + WebSocket)
 - **File Browser** - Browse, upload to, and download from a running VM's filesystem
 - **Port Forwards** - Add and remove forwards on a VM's page (live on running VMs), and see every forward on the host, with its status, on the Port forwards page
@@ -90,7 +90,7 @@ curl http://localhost:8080/api/v1/health
 |--------|------|-------------|
 | GET | `/api/v1/health` | Health check (no auth) |
 | GET | `/api/v1/vms` | List all VMs |
-| POST | `/api/v1/vms` | Create a VM. Optional `"nested": true` or `"backend": "cloud-hypervisor"` ([nested VMs](nested-virtualization.md)) |
+| POST | `/api/v1/vms` | Create a VM. Optional `"nested": true` or `"backend": "cloud-hypervisor"` ([nested VMs](nested-virtualization.md)), and `"restrict_local_networks": true` ([internet only](networking.md#restricting-local-network-access)) |
 | GET | `/api/v1/vms/{name}` | Get VM details |
 | POST | `/api/v1/vms/{name}/start` | Start a VM |
 | POST | `/api/v1/vms/{name}/stop` | Stop a VM |

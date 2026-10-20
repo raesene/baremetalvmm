@@ -24,7 +24,7 @@ func CheckRestrictedDNS(servers []string) error {
 	}
 	for _, s := range servers {
 		if network.IsLocalAddress(s) {
-			return fmt.Errorf("DNS server %s is on a local network, which a VM with restricted local networks can't reach; use a public DNS server with --dns", s)
+			return fmt.Errorf("DNS server %s is on a local network, which a VM with restricted local networks can't reach; use a public DNS server", s)
 		}
 	}
 	return nil
