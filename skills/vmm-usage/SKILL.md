@@ -74,6 +74,7 @@ Additional networking features exist but are not covered in detail here:
 - **Remove port forward**: `sudo vmm port-forward remove <name> <host-port>:<guest-port>`
 - **Custom DNS**: `--dns <server>` flag on create (repeatable)
 - **Host directory mounts**: `--mount /host/path:tag[:ro|rw]` flag on create
+- **Internet-only VM for untrusted code**: `--restrict-local-networks` on create (or `sudo vmm set <name> restrict-local-networks on|off`, live). The VM can't open connections to the host, private/LAN ranges or other VMs; `vmm ssh`/`cp` and port forwards still work. Its DNS servers must be public. Not for clusters
 
 ## Images and Kernels
 

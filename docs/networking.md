@@ -55,6 +55,26 @@ A forwarded port is reachable:
 
 How it works: each forward is a DNAT rule in the nat table's `PREROUTING` chain (traffic from the network and other VMs) and `OUTPUT` chain (traffic from the host), both limited to packets addressed to the host. Two shared rules make them work on any host: a `FORWARD` rule, inserted at the top of the chain, that accepts connections a forward redirected to the VM bridge (needed where Docker or ufw set the FORWARD policy to `DROP`), and a `MASQUERADE` rule so VM-to-VM forwards get their replies.
 
+## Restricting Local Network Access
+
+A VM created with `--restrict-local-networks` (or switched with `vmm set <vm> restrict-local-networks on`) can reach the internet but not the host, the host's local networks or other VMs. It's meant for running untrusted code. It isn't available for clusters, whose nodes need to reach each other.
+
+```bash
+sudo vmm create sandbox --restrict-local-networks
+sudo vmm set sandbox restrict-local-networks off   # applies immediately if the VM is running
+```
+
+A restricted VM can't open connections to:
+
+- private and special ranges: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` (CGNAT, Tailscale), `169.254.0.0/16`, multicast and reserved space
+- the host, on any of its addresses (ping to the gateway still works)
+- other VMs, which can't reach it either
+- anything over IPv6
+
+`vmm ssh`, `vmm cp`, the web terminal and file browser, and port forwards still work: the connection comes from the host or the network, and the VM's replies are allowed. Its DNS servers must be public; `vmm` refuses a local one (the default servers are public).
+
+How it works: the rules live in two nftables tables of vmm's own, `bridge vmm_restrict` and `ip vmm_restrict`, created the first time a restricted VM starts. A drop in any nftables table is final, so Docker, ufw or firewalld rules can't let the traffic through. The bridge table matches on the VM's TAP device: only frames with the VM's own MAC and IP get through (the guest can't switch to another address), non-IPv4 traffic is dropped, and so is traffic to or from other VMs. The ip table drops new connections from the VM's address to local ranges and to the host. VMs are added to and removed from nftables sets as they start and are deleted. The host needs the `nft` command, which Ubuntu 24.04 and Fedora install by default. Hosts with no restricted VMs never get the tables.
+
 ## SSH Key Injection
 
 VMM automatically generates and manages an Ed25519 SSH key pair at `/var/lib/vmm/ssh/vmm_ed25519`. This managed key is always injected into every VM, so SSH access works out of the box without providing `--ssh-key`.

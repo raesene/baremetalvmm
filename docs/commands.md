@@ -12,6 +12,7 @@ Run vmm commands with `sudo`. The data directory (`/var/lib/vmm`) is root-only, 
 | `vmm delete <name>` | Delete a VM and its resources |
 | `vmm list` | List all VMs |
 | `vmm set <name> autostart on\|off` | Choose whether the VM starts at boot (via `vmm.service`; new VMs default to on) |
+| `vmm set <name> restrict-local-networks on\|off` | Block the VM from the host, local networks and other VMs, keeping internet access (applies immediately if running) |
 
 **Note**: VMs must be explicitly started after creation. IP addresses are assigned at start time, not at creation time.
 
@@ -30,12 +31,17 @@ Flags:
   --kernel string    Name of kernel to use (from 'vmm kernel import' or 'vmm kernel build')
   --mount string     Mount host directory in VM (format: /host/path:tag[:ro|rw], can be repeated)
   --no-autostart     Don't start this VM at boot
+  --restrict-local-networks
+                     Block the VM from the host, local/private networks and
+                     other VMs; internet access still works (needs nftables)
   --backend string   Hypervisor: firecracker (default) or cloud-hypervisor
   --nested           Let the VM run its own VMs (uses cloud-hypervisor and the
                      nested-kernel kernel unless --kernel is given)
 ```
 
 Nested VMs need Cloud Hypervisor, nested KVM on the host and the `nested-kernel` kernel. See [Nested Virtualization](nested-virtualization.md).
+
+For running untrusted code, `--restrict-local-networks` gives the VM internet access only. See [Restricting Local Network Access](networking.md#restricting-local-network-access).
 
 Example with all options:
 ```bash

@@ -67,6 +67,11 @@ func deleteCmd() *cobra.Command {
 			}
 
 			clearPortForwards(netMgr, existingVM)
+			if existingVM.RestrictLocalNetworks && existingVM.IPAddress != "" {
+				if err := netMgr.SetLocalNetworkRestriction(false, existingVM.TapDevice, existingVM.MacAddress, existingVM.IPAddress); err != nil {
+					fmt.Printf("Warning: failed to remove local network restriction: %v\n", err)
+				}
+			}
 
 			// Delete VM rootfs
 			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)

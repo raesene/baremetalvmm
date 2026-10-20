@@ -182,6 +182,15 @@ func Start(cfg *config.Config, v *vm.VM, opts Options) error {
 		}
 	})
 
+	// A restricted VM must never boot unrestricted, even best-effort. For
+	// any other VM this only clears a stale restriction on its address.
+	if err := ApplyRestriction(netMgr, v); err != nil {
+		if v.RestrictLocalNetworks {
+			return fmt.Errorf("failed to restrict local networks: %w", err)
+		}
+		opts.warn("failed to clear local network restriction: %v", err)
+	}
+
 	v.State = vm.StateStarting
 	if err := v.Save(paths.VMs); err != nil {
 		opts.warn("failed to save VM state: %v", err)

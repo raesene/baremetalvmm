@@ -54,6 +54,9 @@ type VM struct {
 	// Nested exposes hardware virtualization to the guest so it can run its
 	// own VMs. Only backends other than Firecracker support it.
 	Nested bool `json:"nested,omitempty"`
+	// RestrictLocalNetworks keeps the VM off the host, the host's local
+	// networks and other VMs, leaving it internet access only.
+	RestrictLocalNetworks bool `json:"restrict_local_networks,omitempty"`
 }
 
 // PortForward represents a port forwarding rule

@@ -86,12 +86,12 @@ Data directory: `/var/lib/vmm` (vms, images, kernels, logs, sockets, mounts, clu
 ## CLI Commands
 
 ```
-vmm create <name> [--cpus N] [--memory MB] [--disk MB] [--ssh-key PATH] [--dns SERVER] [--image NAME] [--kernel NAME] [--mount PATH:TAG[:ro|rw]] [--no-autostart] [--backend firecracker|cloud-hypervisor] [--nested]
+vmm create <name> [--cpus N] [--memory MB] [--disk MB] [--ssh-key PATH] [--dns SERVER] [--image NAME] [--kernel NAME] [--mount PATH:TAG[:ro|rw]] [--no-autostart] [--backend firecracker|cloud-hypervisor] [--nested] [--restrict-local-networks]
 vmm start <name>
 vmm stop <name>
 vmm delete <name> [-f]
 vmm list [-a]
-vmm set <name> autostart on|off
+vmm set <name> autostart|restrict-local-networks on|off
 vmm ssh <name> [-u user]
 vmm cp [-r] [-u user] <src> <dest>     # one side is <vm>:<path>
 vmm console <name> [--full] [-f] [-n LINES]
@@ -127,6 +127,7 @@ Create flag defaults can be set in `/etc/vmm/config.json` under `vm_defaults`. R
 - On hosts running firewalld (Fedora/RHEL), `EnsureBridge()` puts the bridge in the `trusted` zone (runtime + permanent). firewalld's nftables table rejects inter-zone forwarding independently of our iptables rules, so without this VMs lose egress whenever the host NIC isn't in the default zone
 - `EnsureBridge()` sets the gateway address on every call and removes any other IPv4 address on the bridge (`ensureGatewayAddr`): the bridge outlives vmm runs and can carry an address from an older config
 - Key functions: `EnsureBridge()`, `CreateTap()`, `AllocateIP()`, `AddPortForward()`
+- Local network restriction (`--restrict-local-networks`, `internal/network/restrict.go`): nftables tables `bridge vmm_restrict` (per-TAP anti-spoofing MAC/IP binding, IPv4/ARP only, no VM-to-VM) and `ip vmm_restrict` (drop new connections from the VM's IP to private ranges and the host), with VMs as set elements. Kept out of iptables because an nftables drop is final whatever Docker/ufw/firewalld accept. `lifecycle.Start` and snapshot restore call it for every VM (fail closed for restricted ones; for others it clears a stale address, and is a no-op when the tables don't exist, so hosts without restricted VMs never need `nft`). Delete removes the VM's elements. Not offered for clusters
 - Port forwards go through `internal/portforward` (CLI and web): `Apply` on start/restore, `Clear` on stop/delete, `Add`/`Remove` for live changes, `List` for status. Don't call `AddPortForward`/`RemovePortForward` directly from lifecycle code. iptables rules are unit-tested against a fake runner (`Manager.run`) in `internal/network/portforward_test.go`
 
 ### Adding new image/kernel variants

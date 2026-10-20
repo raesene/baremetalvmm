@@ -197,6 +197,17 @@ if iptables -C FORWARD -o "$BRIDGE_NAME" -m conntrack --ctstate RELATED,ESTABLIS
     RULES_REMOVED=$((RULES_REMOVED + 1))
 fi
 
+# Local network restriction tables (vmm create --restrict-local-networks)
+if command -v nft &>/dev/null; then
+    for family in bridge ip; do
+        if nft list table "$family" vmm_restrict &>/dev/null; then
+            nft delete table "$family" vmm_restrict 2>/dev/null || true
+            echo -e "  ${GREEN}Removed nftables table $family vmm_restrict${NC}"
+            RULES_REMOVED=$((RULES_REMOVED + 1))
+        fi
+    done
+fi
+
 # Legacy (pinned host interface) shapes from older versions
 if iptables -C FORWARD -i "$BRIDGE_NAME" -o "$HOST_IFACE" -j ACCEPT 2>/dev/null; then
     iptables -D FORWARD -i "$BRIDGE_NAME" -o "$HOST_IFACE" -j ACCEPT 2>/dev/null || true

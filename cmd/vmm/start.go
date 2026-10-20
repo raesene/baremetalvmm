@@ -54,6 +54,9 @@ func startCmd() *cobra.Command {
 			fmt.Printf("VM '%s' started successfully\n", name)
 			fmt.Printf("  IP Address: %s\n", existingVM.IPAddress)
 			fmt.Printf("  PID: %d\n", existingVM.PID)
+			if existingVM.RestrictLocalNetworks {
+				fmt.Println("  Local networks: restricted (internet only)")
+			}
 			if !warned {
 				printPortForwards(existingVM)
 			}

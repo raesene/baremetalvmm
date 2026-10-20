@@ -439,6 +439,11 @@ func (s *Server) deleteVM(w http.ResponseWriter, r *http.Request) {
 	if err := portforward.Clear(netMgr, existingVM); err != nil {
 		log.Printf("vm %s: failed to remove port forwards: %v", existingVM.Name, err)
 	}
+	if existingVM.RestrictLocalNetworks && existingVM.IPAddress != "" {
+		if err := netMgr.SetLocalNetworkRestriction(false, existingVM.TapDevice, existingVM.MacAddress, existingVM.IPAddress); err != nil {
+			log.Printf("vm %s: failed to remove local network restriction: %v", existingVM.Name, err)
+		}
+	}
 
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
 	imgMgr.DeleteVMRootfs(name, paths.VMs)
@@ -672,6 +677,11 @@ func (s *Server) handleAPIVMDelete(w http.ResponseWriter, r *http.Request) {
 
 	if err := portforward.Clear(netMgr, existingVM); err != nil {
 		log.Printf("vm %s: failed to remove port forwards: %v", existingVM.Name, err)
+	}
+	if existingVM.RestrictLocalNetworks && existingVM.IPAddress != "" {
+		if err := netMgr.SetLocalNetworkRestriction(false, existingVM.TapDevice, existingVM.MacAddress, existingVM.IPAddress); err != nil {
+			log.Printf("vm %s: failed to remove local network restriction: %v", existingVM.Name, err)
+		}
 	}
 
 	imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)

@@ -242,6 +242,14 @@ func (m *Manager) Restore(ctx context.Context, hv hypervisor.Snapshotter, netMgr
 			return nil, fmt.Errorf("failed to create TAP device: %w", err)
 		}
 	}
+	if v.IPAddress != "" || v.RestrictLocalNetworks {
+		if err := netMgr.SetLocalNetworkRestriction(v.RestrictLocalNetworks, v.TapDevice, v.MacAddress, v.IPAddress); err != nil {
+			if v.RestrictLocalNetworks {
+				return nil, fmt.Errorf("failed to restrict local networks: %w", err)
+			}
+			fmt.Printf("Warning: failed to clear local network restriction: %v\n", err)
+		}
+	}
 
 	memPath := filepath.Join(dir, meta.MemFile)
 	statePath := filepath.Join(dir, meta.StateFile)

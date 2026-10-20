@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 
+	"github.com/raesene/baremetalvmm/internal/hypervisor"
+	"github.com/raesene/baremetalvmm/internal/lifecycle"
 	"github.com/raesene/baremetalvmm/internal/validate"
 	"github.com/raesene/baremetalvmm/internal/vm"
 	"github.com/spf13/cobra"
@@ -15,8 +17,12 @@ func setCmd() *cobra.Command {
 		Long: `Change a setting on an existing microVM.
 
 Keys:
-  autostart on|off   Start the VM at boot (via vmm.service). New VMs default to on.`,
-		Example:           "  vmm set myvm autostart off",
+  autostart on|off                 Start the VM at boot (via vmm.service). New VMs default to on.
+  restrict-local-networks on|off   Block the VM from the host, local/private networks and
+                                   other VMs, leaving internet access. Applies immediately
+                                   to a running VM. Needs nftables.`,
+		Example: `  vmm set myvm autostart off
+  vmm set myvm restrict-local-networks on`,
 		Args:              cobra.ExactArgs(3),
 		ValidArgsFunction: completeVMNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -38,8 +44,26 @@ Keys:
 					return err
 				}
 				existingVM.AutoStart = on
+			case "restrict-local-networks":
+				on, err := parseOnOff(value)
+				if err != nil {
+					return err
+				}
+				if on {
+					if err := lifecycle.CheckRestrictedDNS(existingVM.DNSServers); err != nil {
+						return err
+					}
+				}
+				existingVM.RestrictLocalNetworks = on
+				// A running VM changes now. Otherwise its next start applies it.
+				hypervisor.UpdateVMState(existingVM)
+				if existingVM.State == vm.StateRunning {
+					if err := lifecycle.ApplyRestriction(newNetManager(), existingVM); err != nil {
+						return fmt.Errorf("failed to update local network restriction: %w", err)
+					}
+				}
 			default:
-				return fmt.Errorf("unknown setting %q (supported: autostart)", key)
+				return fmt.Errorf("unknown setting %q (supported: autostart, restrict-local-networks)", key)
 			}
 
 			if err := existingVM.Save(paths.VMs); err != nil {

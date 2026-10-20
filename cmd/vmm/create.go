@@ -26,6 +26,7 @@ func createCmd() *cobra.Command {
 	var noAutostart bool
 	var backend string
 	var nested bool
+	var restrictLocal bool
 
 	cmd := &cobra.Command{
 		Use:   "create <name>",
@@ -115,6 +116,11 @@ func createCmd() *cobra.Command {
 					return err
 				}
 			}
+			if restrictLocal {
+				if err := lifecycle.CheckRestrictedDNS(dnsServers); err != nil {
+					return err
+				}
+			}
 
 			// Create image manager for validation
 			imgMgr := image.NewManager(paths.Kernels, paths.Rootfs)
@@ -167,6 +173,7 @@ func createCmd() *cobra.Command {
 			newVM.AutoStart = !noAutostart
 			newVM.Backend = backend
 			newVM.Nested = nested
+			newVM.RestrictLocalNetworks = restrictLocal
 
 			// Set paths
 			newVM.SocketPath = fmt.Sprintf("%s/%s.sock", paths.Sockets, name)
@@ -201,6 +208,9 @@ func createCmd() *cobra.Command {
 			if !newVM.AutoStart {
 				fmt.Println("  Autostart: off")
 			}
+			if newVM.RestrictLocalNetworks {
+				fmt.Println("  Local networks: restricted (internet only)")
+			}
 			if newVM.SSHPublicKey != "" {
 				fmt.Printf("  SSH key: configured\n")
 			}
@@ -234,6 +244,7 @@ func createCmd() *cobra.Command {
 		return hypervisor.Names, cobra.ShellCompDirectiveNoFileComp
 	})
 	cmd.Flags().StringArrayVar(&mounts, "mount", nil, "Mount host directory in VM (format: /host/path:tag[:ro|rw])")
+	cmd.Flags().BoolVar(&restrictLocal, "restrict-local-networks", false, "Block the VM from the host, local/private networks and other VMs; internet access still works (needs nftables)")
 	cmd.Flags().BoolVar(&noAutostart, "no-autostart", false, "Don't start this VM at boot (change later with 'vmm set <name> autostart on')")
 	cmd.RegisterFlagCompletionFunc("kernel", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeKernelNames(cmd, nil, toComplete)
