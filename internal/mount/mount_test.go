@@ -1,6 +1,8 @@
 package mount
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,19 +10,34 @@ import (
 	"testing"
 )
 
-// writeTree creates files of the given size (in bytes) spread across
-// subdirectories, numPerDir per directory, plus some subdirectories.
-func writeTree(t *testing.T, dirs, numPerDir, fileSize int) string {
+// writeTree creates dirs subdirectories holding numPerDir files of fileSize
+// bytes each. Sparse files cost no disk and are enough for calculateMountBudget,
+// which only reads sizes. Otherwise the files hold non-zero data: mkfs.ext4 -d
+// skips all-zero blocks, so zero-filled files would allocate no blocks at all.
+func writeTree(t *testing.T, dirs, numPerDir, fileSize int, sparse bool) string {
 	t.Helper()
 	root := t.TempDir()
+	var data []byte
+	if !sparse {
+		data = bytes.Repeat([]byte{0x5a}, fileSize)
+	}
 	for d := range dirs {
-		dir := filepath.Join(root, "d"+string(rune('a'+d%26))+string(rune('a'+d/26)))
+		dir := filepath.Join(root, fmt.Sprintf("d%04d", d))
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatal(err)
 		}
 		for i := range numPerDir {
-			path := filepath.Join(dir, "f"+string(rune('a'+i%26))+string(rune('a'+i/26))+string(rune('a'+i/676)))
-			if err := os.WriteFile(path, make([]byte, fileSize), 0644); err != nil {
+			path := filepath.Join(dir, fmt.Sprintf("f%04d", i))
+			var err error
+			if sparse {
+				err = os.WriteFile(path, nil, 0644)
+				if err == nil {
+					err = os.Truncate(path, int64(fileSize))
+				}
+			} else {
+				err = os.WriteFile(path, data, 0644)
+			}
+			if err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -52,7 +69,7 @@ func TestCalculateMountBudget(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			budget, err := calculateMountBudget(writeTree(t, tt.dirs, tt.numPerDir, tt.fileSize))
+			budget, err := calculateMountBudget(writeTree(t, tt.dirs, tt.numPerDir, tt.fileSize, true))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -88,7 +105,7 @@ func TestCalculateMountBudgetMkfs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			root := writeTree(t, tt.dirs, tt.numPerDir, tt.fileSize)
+			root := writeTree(t, tt.dirs, tt.numPerDir, tt.fileSize, false)
 			budget, err := calculateMountBudget(root)
 			if err != nil {
 				t.Fatal(err)
@@ -104,7 +121,6 @@ func TestCalculateMountBudgetMkfs(t *testing.T) {
 			}
 			f.Close()
 
-			// Non-empty file data so blocks must really be allocated.
 			out, err := exec.Command("mkfs.ext4", "-q", "-F",
 				"-N", strconv.FormatInt(budget.Inodes, 10),
 				"-d", root, image).CombinedOutput()
