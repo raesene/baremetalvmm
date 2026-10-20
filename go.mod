@@ -1,6 +1,6 @@
 module github.com/raesene/baremetalvmm
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
