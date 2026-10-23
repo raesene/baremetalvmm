@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/raesene/baremetalvmm/internal/hypervisor"
 	"github.com/raesene/baremetalvmm/internal/lifecycle"
+	"github.com/raesene/baremetalvmm/internal/network"
 	"github.com/raesene/baremetalvmm/internal/validate"
 	"github.com/raesene/baremetalvmm/internal/vm"
 	"github.com/spf13/cobra"
@@ -55,6 +57,9 @@ Keys:
 					}
 				}
 				existingVM.RestrictLocalNetworks = on
+				if on && !network.NftAvailable() {
+					fmt.Fprintln(os.Stderr, nftMissingWarning)
+				}
 				// A running VM changes now. Otherwise its next start applies it.
 				hypervisor.UpdateVMState(existingVM)
 				if existingVM.State == vm.StateRunning {

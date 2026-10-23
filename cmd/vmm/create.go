@@ -14,6 +14,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// nftMissingWarning is printed when a VM is set to restrict local networks on
+// a host without nft (Debian and minimal EL installs): the VM won't start
+// until nftables is installed.
+const nftMissingWarning = "Warning: local network restriction needs nftables, and nft isn't installed: install the nftables package before starting this VM"
+
 func createCmd() *cobra.Command {
 	var cpus int
 	var memory int
@@ -210,6 +215,9 @@ func createCmd() *cobra.Command {
 			}
 			if newVM.RestrictLocalNetworks {
 				fmt.Println("  Local networks: restricted (internet only)")
+			}
+			if newVM.RestrictLocalNetworks && !network.NftAvailable() {
+				fmt.Fprintln(os.Stderr, nftMissingWarning)
 			}
 			if newVM.SSHPublicKey != "" {
 				fmt.Printf("  SSH key: configured\n")

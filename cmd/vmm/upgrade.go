@@ -259,6 +259,10 @@ func runUpgrade(ctx context.Context, paths installPaths, target string, yes, for
 		fmt.Printf("  [ok] vmm-web %s\n", rel.Version)
 	}
 
+	for _, msg := range ensureSudoLinks(sudoPath(), sudoLinkDir, paths.VMM, paths.VMMWeb) {
+		fmt.Println("  " + msg)
+	}
+
 	if bundle.Scripts != "" {
 		n, err := installScripts(bundle.Scripts)
 		if err != nil {

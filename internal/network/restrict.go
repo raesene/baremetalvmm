@@ -3,6 +3,7 @@ package network
 import (
 	"fmt"
 	"net"
+	"os/exec"
 	"regexp"
 	"strings"
 )
@@ -35,6 +36,13 @@ var localNetworks = []string{
 }
 
 var tapNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,15}$`)
+
+// NftAvailable reports whether the nft command, which local network
+// restriction needs, is installed. Debian and minimal EL images lack it.
+func NftAvailable() bool {
+	_, err := exec.LookPath("nft")
+	return err == nil
+}
 
 // IsLocalAddress reports whether ip is in a range a restricted VM can't reach.
 func IsLocalAddress(ip string) bool {

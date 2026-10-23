@@ -244,6 +244,11 @@ if command -v dnf >/dev/null 2>&1 && command -v modinfo >/dev/null 2>&1 \
     fi
 fi
 
+# Only 'vmm create --restrict-local-networks' needs nft, so don't install it,
+# just say so: Debian and minimal EL installs don't have it.
+command -v nft >/dev/null 2>&1 \
+    || say "  [note] nft not found: install the nftables package to use 'vmm create --restrict-local-networks'"
+
 # ---------- Cloud Hypervisor (optional) ----------
 
 CH_BIN="$INSTALL_DIR/cloud-hypervisor"
