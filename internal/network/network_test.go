@@ -221,3 +221,17 @@ func TestEnsureGatewayAddrReplaceFails(t *testing.T) {
 		t.Fatal("want error when ip addr replace fails")
 	}
 }
+
+func TestMissingExtensionHint(t *testing.T) {
+	el10 := []byte("Warning: Extension MASQUERADE revision 0 not supported, missing kernel module?\n" +
+		"iptables v1.8.11 (nf_tables):  RULE_APPEND failed (No such file or directory): rule in chain POSTROUTING\n")
+	if hint := missingExtensionHint("iptables", el10); !strings.Contains(hint, "kernel-modules-extra-") {
+		t.Errorf("no kernel-modules-extra hint for the EL10 error, got %q", hint)
+	}
+	if hint := missingExtensionHint("iptables", []byte("iptables: Bad rule (does a matching rule exist in that chain?).\n")); hint != "" {
+		t.Errorf("hint for an unrelated iptables error: %q", hint)
+	}
+	if hint := missingExtensionHint("nft", el10); hint != "" {
+		t.Errorf("hint for a non-iptables command: %q", hint)
+	}
+}

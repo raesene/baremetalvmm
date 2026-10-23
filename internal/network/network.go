@@ -1,11 +1,14 @@
 package network
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 )
 
 // Manager handles network setup for VMs
@@ -449,9 +452,28 @@ func (m *Manager) runCmd(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s: %s", err, string(output))
+		return fmt.Errorf("%s: %s%s", err, string(output), missingExtensionHint(name, output))
 	}
 	return nil
+}
+
+// missingExtensionHint explains iptables' "Extension MASQUERADE revision 0 not
+// supported, missing kernel module?". RHEL 10 and its rebuilds (Rocky, Alma)
+// ship every xtables extension vmm uses (MASQUERADE, DNAT, conntrack,
+// addrtype) in kernel-modules-extra, which minimal and cloud installs leave
+// out. The installer adds it, but an older install, or a kernel update that
+// didn't bring the package along, still ends up here.
+func missingExtensionHint(name string, output []byte) string {
+	if name != "iptables" || !bytes.Contains(output, []byte("missing kernel module?")) {
+		return ""
+	}
+	release := "$(uname -r)"
+	if b, err := os.ReadFile("/proc/sys/kernel/osrelease"); err == nil {
+		release = strings.TrimSpace(string(b))
+	}
+	return fmt.Sprintf("the running kernel has no iptables extension modules, which vmm needs for VM networking. "+
+		"On RHEL, Rocky or AlmaLinux 10 they are in kernel-modules-extra: "+
+		"sudo dnf install kernel-modules-extra-%s (if that version is gone, install kernel-modules-extra and reboot into the newest kernel)", release)
 }
 
 // GenerateTapName generates a TAP device name for a VM

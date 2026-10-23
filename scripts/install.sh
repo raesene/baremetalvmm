@@ -203,6 +203,26 @@ else
     ok "firecracker $FC_VERSION already installed"
 fi
 
+# ---------- Kernel modules ----------
+
+# RHEL 10 and its rebuilds (Rocky, Alma) ship every iptables extension vmm
+# uses (MASQUERADE, DNAT, conntrack, addrtype) in kernel-modules-extra. A full
+# install has it (the kernel package pulls it in), but cloud and minimal images
+# can lack both it and iptables. Installing iptables-nft alone pulls the extra
+# modules for the newest kernel, not necessarily the running one, so ask for
+# the running kernel's. Without these no VM can start.
+if command -v dnf >/dev/null 2>&1 && command -v modinfo >/dev/null 2>&1 \
+        && { ! command -v iptables >/dev/null 2>&1 || ! modinfo xt_MASQUERADE >/dev/null 2>&1; }; then
+    say "Installing iptables and its kernel modules for VM networking..."
+    if dnf -y -q install iptables-nft "kernel-modules-extra-$(uname -r)" >"$TMP/dnf.log" 2>&1; then
+        ok "iptables-nft and kernel-modules-extra for kernel $(uname -r)"
+    elif dnf -y -q install iptables-nft kernel-modules-extra >"$TMP/dnf.log" 2>&1; then
+        warn "kernel-modules-extra for $(uname -r) is no longer available, so it was installed for the newest kernel: reboot into it before starting VMs"
+    else
+        warn "could not install iptables-nft and kernel-modules-extra ($(tail -1 "$TMP/dnf.log")): VMs can't start until they are installed"
+    fi
+fi
+
 # ---------- Cloud Hypervisor (optional) ----------
 
 CH_BIN="$INSTALL_DIR/cloud-hypervisor"
