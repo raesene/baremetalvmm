@@ -363,18 +363,32 @@ finish)
     if iptables -t nat -S 2>/dev/null | grep -q -- "--dport $PF_GUEST_PORT"; then fail "port-forward rules removed: still in nat table"; else pass "port-forward rules removed"; fi
     # Restricted VM: internet yes, host and private ranges no. dt1 is the control.
     check "create restricted" vmm create dt2 --cpus 1 --memory 512 --no-autostart --restrict-local-networks
-    check "start restricted" vmm start dt2
-    if wait_inner dt2; then
-        pass "ssh to restricted VM"
-        check "restricted VM egress (1.1.1.1:443)" tcp_ok dt2 1.1.1.1 443
-        check "unrestricted VM reaches host (control)" tcp_ok dt1 172.16.0.1 22
-        if tcp_ok dt2 172.16.0.1 22 >/dev/null 2>&1; then fail "restricted VM blocked from host: connected"; else pass "restricted VM blocked from host"; fi
-        if tcp_ok dt2 "$(inner_ip dt1)" 22 >/dev/null 2>&1; then fail "restricted VM blocked from other VM: connected"; else pass "restricted VM blocked from other VM"; fi
+    if command -v nft >/dev/null; then
+        check "start restricted" vmm start dt2
+        if wait_inner dt2; then
+            pass "ssh to restricted VM"
+            check "restricted VM egress (1.1.1.1:443)" tcp_ok dt2 1.1.1.1 443
+            check "unrestricted VM reaches host (control)" tcp_ok dt1 172.16.0.1 22
+            if tcp_ok dt2 172.16.0.1 22 >/dev/null 2>&1; then fail "restricted VM blocked from host: connected"; else pass "restricted VM blocked from host"; fi
+            if tcp_ok dt2 "$(inner_ip dt1)" 22 >/dev/null 2>&1; then fail "restricted VM blocked from other VM: connected"; else pass "restricted VM blocked from other VM"; fi
+        else
+            fail "ssh to restricted VM: no answer after 90s"
+        fi
+        check "stop restricted" vmm stop dt2
     else
-        fail "ssh to restricted VM: no answer after 90s"
+        # Debian and minimal EL images have no nft. A restricted VM must then
+        # refuse to start, not run unrestricted.
+        if out=$(vmm start dt2 2>&1); then
+            fail "restricted VM refuses to start without nft: it started"
+            vmm stop dt2 >/dev/null 2>&1
+        elif grep -q nftables <<<"$out"; then
+            pass "restricted VM refuses to start without nft"
+        else
+            fail "restricted VM refuses to start without nft: unexpected error: $(tail -1 <<<"$out")"
+        fi
+        echo "SKIP restricted VM network checks: nft not installed"
     fi
     check "stop" vmm stop dt1
-    check "stop restricted" vmm stop dt2
     check "delete" vmm delete dt1 -f
     check "delete restricted" vmm delete dt2 -f
     if pgrep -x firecracker >/dev/null; then fail "no firecracker left: $(pgrep -ax firecracker)"; else pass "no firecracker left"; fi
