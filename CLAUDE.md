@@ -189,6 +189,10 @@ sudo ./vmm delete test1
 
 Requirements: root access, KVM (`/dev/kvm`), Firecracker in PATH.
 
+### Other distributions (`scripts/distro-test.sh`)
+
+Runs vmm on stock distros, each in a throwaway QEMU/KVM VM from the distro's official cloud image (qcow2 overlay on a checksum-verified base, so every `up` is a clean install). Run it on the test server (nested KVM): `scripts/distro-test.sh run fedora-44` boots the VM, installs the given release with `scripts/install.sh`, runs the smoke test (image pull, boot, DNS/egress, port forward from inside and outside, `--restrict-local-networks`, stop/delete cleanup) and discards it. `--binaries DIR` swaps in an unreleased `vmm`/`vmm-web` build; `--keep`, `up`/`ssh`/`down` for poking around. Profiles: ubuntu-24.04, ubuntu-26.04, debian-13, fedora-44, rocky-10, alma-10; each profile's `PREP` adds what a normal install has that the cloud image lacks (firewalld on Fedora and the EL rebuilds). QEMU user-mode networking, so nothing is added to the host's bridges or firewall. State lives in `/var/tmp/vmm-distro-test`.
+
 ## Web UI Constraints
 
 - **Design system**: "Caret Ledger" from katagami.ai — graphite panels with clipped corners, semantic colour only (amber `--color-accent-command` = commands/actions, cyan `--color-accent-data` = data values, violet `--color-accent` = selection). All styling lives in `web/static/style.css` (no Tailwind); reuse its classes (`panel`, `ledger`, `chip chip-<state>`, `btn`, `input`, `kv`, `cmdline`) rather than adding one-off styles. Fonts are self-hosted in `web/static/fonts/` because the CSP has no `font-src`.
