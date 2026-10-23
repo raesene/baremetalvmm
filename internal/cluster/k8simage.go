@@ -8,7 +8,7 @@ import (
 
 // DefaultK8sMinor is the Kubernetes minor version clusters get when no
 // version or image is given: its newest patch with a pre-built rootfs.
-const DefaultK8sMinor = "1.36"
+const DefaultK8sMinor = "1.37"
 
 // ChooseK8sImage picks a kubeadm cluster's rootfs image and Kubernetes
 // version, so the two can't disagree. A k8s-<version> image supplies its

@@ -12,7 +12,7 @@
 | CPUs per node | 2 | `--cpus N` |
 | Memory per node | 4096 MB | `--memory MB` |
 | Disk per node | 10240 MB | `--disk MB` |
-| Kubernetes version | newest 1.36 patch | `--k8s-version VER` (exact, or MAJOR.MINOR for its newest patch; `--image k8s-X.Y.Z` implies X.Y.Z) |
+| Kubernetes version | newest 1.37 patch | `--k8s-version VER` (exact, or MAJOR.MINOR for its newest patch; `--image k8s-X.Y.Z` implies X.Y.Z) |
 
 ## Kernel and Rootfs Requirements
 

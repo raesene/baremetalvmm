@@ -213,7 +213,7 @@ sudo vmm cluster create mycluster
 sudo vmm cluster create mycluster --workers 2
 
 # Custom resources and K8s version
-sudo vmm cluster create mycluster --workers 2 --cpus 4 --memory 8192 --k8s-version 1.36   # newest 1.36 patch; or exact, e.g. 1.36.5
+sudo vmm cluster create mycluster --workers 2 --cpus 4 --memory 8192 --k8s-version 1.37   # newest 1.37 patch; or exact, e.g. 1.37.1
 
 # Use the cluster
 kubectl --context vmm-mycluster get nodes

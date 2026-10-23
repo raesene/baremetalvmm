@@ -80,7 +80,7 @@ Flags:
   --memory int           Memory per node in MB (default 4096)
   --disk int             Disk per node in MB (default 10240)
   --k8s-version string   Kubernetes version: exact (1.36.5) or MAJOR.MINOR for its newest patch
-                         (default: newest 1.36 patch, or the version of --image)
+                         (default: newest 1.37 patch, or the version of --image)
   --ssh-key string       Path to SSH public key (optional; managed key used if omitted)
   --cni string           CNI plugin: 'cilium' (default) or 'calico'
   --kernel string        Kernel name (k8s-kernel recommended)
@@ -159,7 +159,7 @@ This stops and deletes all VMs in the cluster and removes the kubeconfig context
 | CPUs | 2 | Minimum 2 required for kubeadm |
 | Memory | 4096 MB | Minimum 2048 MB required |
 | Disk | 10240 MB (10 GB) | Needs space for container images |
-| Kubernetes | newest 1.36 patch | Any version available from pkgs.k8s.io |
+| Kubernetes | newest 1.37 patch | Any version available from pkgs.k8s.io |
 | CNI | Cilium | Cilium (with kube-proxy replacement) or Calico (Tigera operator, VXLAN/nftables) |
 | Pod CIDR | 10.244.0.0/16 | Doesn't conflict with VM bridge network |
 | Service CIDR | 10.96.0.0/12 | Standard Kubernetes default |
