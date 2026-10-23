@@ -208,7 +208,7 @@ func waitForMicroShiftReady(client *SSHClient, timeout time.Duration) error {
 }
 
 // provisionMicroShift stands up a single-node OpenShift-derived cluster via MicroShift.
-func provisionMicroShift(cl *Cluster, sshKeyPath string, node NodeInfo) error {
+func provisionMicroShift(cl *Cluster, sshKeys []string, node NodeInfo) error {
 	cl.ControlPlaneIP = node.IP
 
 	debsURL, tag := findMicroShiftDebsURL(cl.OpenShiftVer)
@@ -218,7 +218,7 @@ func provisionMicroShift(cl *Cluster, sshKeyPath string, node NodeInfo) error {
 	fmt.Printf("Using MicroShift release: %s\n", tag)
 
 	fmt.Printf("Waiting for %s (%s) to be SSH-accessible...\n", node.Name, node.IP)
-	client, err := WaitForSSH(node.IP, sshKeyPath, 180*time.Second)
+	client, err := WaitForSSH(node.IP, sshKeys, 180*time.Second)
 	if err != nil {
 		return fmt.Errorf("SSH to %s failed: %w", node.Name, err)
 	}

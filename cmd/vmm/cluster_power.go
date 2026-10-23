@@ -71,7 +71,7 @@ func clusterStartCmd() *cobra.Command {
 			}
 
 			fmt.Println("Waiting for nodes to report Ready...")
-			client, err := cluster.WaitForSSH(cl.ControlPlaneIP, clusterSSHKeyPath(cl), 2*time.Minute)
+			client, err := cluster.WaitForSSH(cl.ControlPlaneIP, clusterSSHKeys(cl, paths.SSH), 2*time.Minute)
 			if err != nil {
 				return fmt.Errorf("failed to connect to control plane: %w", err)
 			}
@@ -186,7 +186,8 @@ func stopVMsParallel(vmsDir string, names []string) []string {
 	return failed
 }
 
-// clusterSSHKeyPath returns the private key that provisioned a cluster.
-func clusterSSHKeyPath(cl *cluster.Cluster) string {
-	return expandHomePath(strings.TrimSuffix(cl.SSHKeyPath, ".pub"))
+// clusterSSHKeys returns the private keys for SSH to a cluster's VMs: the key
+// that provisioned it, then vmm's managed key (see cluster.SSHKeys).
+func clusterSSHKeys(cl *cluster.Cluster, sshDir string) []string {
+	return cluster.SSHKeys(expandHomePath(strings.TrimSuffix(cl.SSHKeyPath, ".pub")), sshDir)
 }

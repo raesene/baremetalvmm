@@ -34,13 +34,13 @@ func AdminSSHConfig(clusterName string, nodes []NodeInfo) string {
 // InstallAdminKey copies the cluster admin private key to the admin workstation
 // and configures ssh there so `ssh <node>` works for every cluster node. The
 // nodes already trust the matching public key via their authorized_keys.
-func InstallAdminKey(adminIP, sshKeyPath, clusterKeyPath, clusterName string, nodes []NodeInfo) error {
+func InstallAdminKey(adminIP string, sshKeys []string, clusterKeyPath, clusterName string, nodes []NodeInfo) error {
 	privKey, err := os.ReadFile(clusterKeyPath)
 	if err != nil {
 		return fmt.Errorf("failed to read cluster admin key: %w", err)
 	}
 
-	client, err := WaitForSSH(adminIP, sshKeyPath, 60*time.Second)
+	client, err := WaitForSSH(adminIP, sshKeys, 60*time.Second)
 	if err != nil {
 		return fmt.Errorf("SSH to admin workstation failed: %w", err)
 	}

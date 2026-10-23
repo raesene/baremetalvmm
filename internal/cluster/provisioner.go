@@ -9,60 +9,107 @@ import (
 	"sync"
 	"time"
 
+	"github.com/raesene/baremetalvmm/internal/sshkey"
 	"github.com/raesene/baremetalvmm/internal/validate"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
 
 type SSHClient struct {
-	IP      string
-	User    string
-	KeyPath string
-	client  *ssh.Client
+	IP   string
+	User string
+	// KeyPaths are private keys to offer, in order, after any ssh-agent keys.
+	// Use SSHKeys to build the list, so vmm's managed key is always the last
+	// resort.
+	KeyPaths []string
+	client   *ssh.Client
+	port     string // "" means 22; set by tests
 }
 
-func NewSSHClient(ip, keyPath string) *SSHClient {
+func NewSSHClient(ip string, keyPaths []string) *SSHClient {
 	return &SSHClient{
-		IP:      ip,
-		User:    "root",
-		KeyPath: keyPath,
+		IP:       ip,
+		User:     "root",
+		KeyPaths: keyPaths,
 	}
+}
+
+// SSHKeys returns the private keys to try for SSH to a cluster's VMs: the
+// user's key, if there is one, then vmm's managed key, which
+// sshkey.BuildAuthorizedKeys puts on every VM. The user's key can be
+// unusable where vmm runs (a passphrase with no ssh-agent, as under
+// vmm-web's systemd unit or plain sudo), and the managed key still works.
+func SSHKeys(userKey, sshDir string) []string {
+	managed := sshkey.PrivateKeyPath(sshDir)
+	if userKey == "" || userKey == managed {
+		return []string{managed}
+	}
+	return []string{userKey, managed}
+}
+
+// errNoUsableKey means no ssh-agent key and no key file could be used, which
+// retrying won't change.
+var errNoUsableKey = errors.New("no usable SSH key")
+
+// signers returns the keys to offer, in order: the ssh-agent's, then each key
+// file that can be read and parsed. Key files that can't be used are skipped
+// and described in skipped. The caller closes agentConn, if any, once it has
+// finished authenticating.
+func (s *SSHClient) signers() (signers []ssh.Signer, skipped []string, agentConn net.Conn) {
+	// The agent goes first: it holds passphrase-protected keys already unlocked.
+	if agentSock := os.Getenv("SSH_AUTH_SOCK"); agentSock != "" {
+		if conn, err := net.Dial("unix", agentSock); err == nil {
+			if agentSigners, err := agent.NewClient(conn).Signers(); err == nil && len(agentSigners) > 0 {
+				signers = append(signers, agentSigners...)
+				agentConn = conn
+			} else {
+				_ = conn.Close()
+			}
+		}
+	}
+	for _, path := range s.KeyPaths {
+		keyData, err := os.ReadFile(path)
+		if err != nil {
+			skipped = append(skipped, fmt.Sprintf("%s: %v", path, err))
+			continue
+		}
+		signer, err := ssh.ParsePrivateKey(keyData)
+		if err != nil {
+			var passErr *ssh.PassphraseMissingError
+			if errors.As(err, &passErr) {
+				skipped = append(skipped, path+": passphrase protected (load it into an ssh-agent to use it)")
+			} else {
+				skipped = append(skipped, fmt.Sprintf("%s: %v", path, err))
+			}
+			continue
+		}
+		signers = append(signers, signer)
+	}
+	return signers, skipped, agentConn
 }
 
 func (s *SSHClient) Connect() error {
-	var authMethods []ssh.AuthMethod
-
-	// Try SSH agent first (handles passphrase-protected keys that are already unlocked)
-	if agentSock := os.Getenv("SSH_AUTH_SOCK"); agentSock != "" {
-		if conn, err := net.Dial("unix", agentSock); err == nil {
-			authMethods = append(authMethods, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
-		}
+	signers, skipped, agentConn := s.signers()
+	if agentConn != nil {
+		defer func() { _ = agentConn.Close() }()
 	}
-
-	// Fall back to reading the key file directly (works for unencrypted keys)
-	keyData, err := os.ReadFile(s.KeyPath)
-	if err != nil {
-		if len(authMethods) == 0 {
-			return fmt.Errorf("failed to read SSH key %s: %w", s.KeyPath, err)
-		}
-	} else {
-		signer, err := ssh.ParsePrivateKey(keyData)
-		if err != nil {
-			if len(authMethods) == 0 {
-				return fmt.Errorf("failed to parse SSH key (if the key has a passphrase, ensure ssh-agent is running with the key loaded): %w", err)
-			}
-		} else {
-			authMethods = append(authMethods, ssh.PublicKeys(signer))
-		}
+	if len(signers) == 0 {
+		return fmt.Errorf("%w (%s)", errNoUsableKey, strings.Join(skipped, "; "))
 	}
-
 	config := &ssh.ClientConfig{
-		User:            s.User,
-		Auth:            authMethods,
+		User: s.User,
+		// One method holding every key: x/crypto/ssh tries each auth method
+		// type once, so a second "publickey" method would never be offered
+		// after the first is refused.
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signers...)},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         10 * time.Second,
 	}
-	client, err := ssh.Dial("tcp", net.JoinHostPort(s.IP, "22"), config)
+	port := s.port
+	if port == "" {
+		port = "22"
+	}
+	client, err := ssh.Dial("tcp", net.JoinHostPort(s.IP, port), config)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", s.IP, err)
 	}
@@ -92,12 +139,19 @@ func (s *SSHClient) Close() {
 	}
 }
 
-func WaitForSSH(ip, keyPath string, timeout time.Duration) (*SSHClient, error) {
+// WaitForSSH connects to ip with keyPaths (see SSHKeys), retrying until the
+// VM's sshd answers or timeout passes. It gives up at once if none of the
+// keys can be used, since waiting won't fix that.
+func WaitForSSH(ip string, keyPaths []string, timeout time.Duration) (*SSHClient, error) {
 	deadline := time.Now().Add(timeout)
-	client := NewSSHClient(ip, keyPath)
+	client := NewSSHClient(ip, keyPaths)
 	var lastErr error
 	for time.Now().Before(deadline) {
-		if err := client.Connect(); err == nil {
+		err := client.Connect()
+		if errors.Is(err, errNoUsableKey) {
+			return nil, fmt.Errorf("SSH to %s: %w", ip, err)
+		}
+		if err == nil {
 			if _, err := client.Run("echo ready"); err == nil {
 				return client, nil
 			} else {
@@ -109,7 +163,7 @@ func WaitForSSH(ip, keyPath string, timeout time.Duration) (*SSHClient, error) {
 		}
 		time.Sleep(2 * time.Second)
 	}
-	return nil, fmt.Errorf("SSH to %s not available after %s (last error: %v, keyPath: %s)", ip, timeout, lastErr, keyPath)
+	return nil, fmt.Errorf("SSH to %s not available after %s (last error: %w, keys: %s)", ip, timeout, lastErr, strings.Join(keyPaths, ", "))
 }
 
 func installContainerd(client *SSHClient) error {
@@ -411,13 +465,13 @@ func checkNodesHaveKVM(clients map[string]*SSHClient, nodes []NodeInfo, kernel s
 	return nil
 }
 
-func ProvisionCluster(cl *Cluster, sshKeyPath string, nodes []NodeInfo) error {
+func ProvisionCluster(cl *Cluster, sshKeys []string, nodes []NodeInfo) error {
 	if len(nodes) == 0 {
 		return fmt.Errorf("no nodes to provision")
 	}
 
 	if cl.Distro == DistroOpenShift {
-		return provisionMicroShift(cl, sshKeyPath, nodes[0])
+		return provisionMicroShift(cl, sshKeys, nodes[0])
 	}
 
 	cpNode := nodes[0]
@@ -429,7 +483,7 @@ func ProvisionCluster(cl *Cluster, sshKeyPath string, nodes []NodeInfo) error {
 	clients := make(map[string]*SSHClient)
 	for _, node := range nodes {
 		fmt.Printf("  Waiting for %s (%s)...\n", node.Name, node.IP)
-		client, err := WaitForSSH(node.IP, sshKeyPath, 180*time.Second)
+		client, err := WaitForSSH(node.IP, sshKeys, 180*time.Second)
 		if err != nil {
 			return fmt.Errorf("SSH to %s failed: %w", node.Name, err)
 		}

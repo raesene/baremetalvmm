@@ -345,7 +345,7 @@ func (s *Server) provisionClusterInBackground(clusterName, source string) {
 		s.sseBroker.Record(kindCluster, clusterName, string(cluster.StateError), source, msg)
 	}
 
-	sshKeyPath := expandHomePath(cl.SSHKeyPath)
+	sshKeys := cluster.SSHKeys(expandHomePath(cl.SSHKeyPath), paths.SSH)
 
 	// Start all VMs sequentially
 	log.Printf("cluster %s: starting VMs...", clusterName)
@@ -384,7 +384,7 @@ func (s *Server) provisionClusterInBackground(clusterName, source string) {
 
 	// Provision Kubernetes (admin VM excluded)
 	log.Printf("cluster %s: provisioning Kubernetes...", clusterName)
-	if err := cluster.ProvisionCluster(cl, sshKeyPath, nodeInfos); err != nil {
+	if err := cluster.ProvisionCluster(cl, sshKeys, nodeInfos); err != nil {
 		log.Printf("cluster %s: provisioning failed: %v", clusterName, err)
 		fail(fmt.Sprintf("provisioning failed: %v", err))
 		return
@@ -392,7 +392,7 @@ func (s *Server) provisionClusterInBackground(clusterName, source string) {
 
 	// Extract and merge kubeconfig
 	log.Printf("cluster %s: extracting kubeconfig...", clusterName)
-	cpClient, err := cluster.WaitForSSH(cl.ControlPlaneIP, sshKeyPath, 30*time.Second)
+	cpClient, err := cluster.WaitForSSH(cl.ControlPlaneIP, sshKeys, 30*time.Second)
 	if err != nil {
 		log.Printf("cluster %s: failed to connect for kubeconfig: %v", clusterName, err)
 		fail(fmt.Sprintf("failed to connect for kubeconfig: %v", err))
@@ -421,13 +421,13 @@ func (s *Server) provisionClusterInBackground(clusterName, source string) {
 	// Copy kubeconfig to admin workstation
 	if cl.AdminVM != "" && adminIP != "" {
 		log.Printf("cluster %s: copying kubeconfig to admin workstation %s...", clusterName, cl.AdminVM)
-		if err := cluster.CopyKubeconfigToVM(adminIP, sshKeyPath, kubeconfigYAML, cl.ControlPlaneIP); err != nil {
+		if err := cluster.CopyKubeconfigToVM(adminIP, sshKeys, kubeconfigYAML, cl.ControlPlaneIP); err != nil {
 			log.Printf("cluster %s: warning: failed to copy kubeconfig to admin workstation: %v", clusterName, err)
 		} else {
 			log.Printf("cluster %s: kubeconfig copied to admin workstation", clusterName)
 		}
 		log.Printf("cluster %s: installing node SSH access on admin workstation %s...", clusterName, cl.AdminVM)
-		if err := cluster.InstallAdminKey(adminIP, sshKeyPath, sshkey.ClusterKeyPath(paths.SSH, clusterName), clusterName, nodeInfos); err != nil {
+		if err := cluster.InstallAdminKey(adminIP, sshKeys, sshkey.ClusterKeyPath(paths.SSH, clusterName), clusterName, nodeInfos); err != nil {
 			log.Printf("cluster %s: warning: failed to install node SSH access on admin workstation: %v", clusterName, err)
 		} else {
 			log.Printf("cluster %s: admin workstation can SSH to the cluster nodes", clusterName)

@@ -128,8 +128,8 @@ func MergeKubeconfig(clusterName, kubeconfigYAML string) error {
 
 // CopyKubeconfigToVM copies a kubeconfig YAML to a remote VM at /root/.kube/config
 // and rewrites the server URL to point at the control plane's internal IP.
-func CopyKubeconfigToVM(adminIP, sshKeyPath, kubeconfigYAML, controlPlaneIP string) error {
-	client, err := WaitForSSH(adminIP, sshKeyPath, 60*time.Second)
+func CopyKubeconfigToVM(adminIP string, sshKeys []string, kubeconfigYAML, controlPlaneIP string) error {
+	client, err := WaitForSSH(adminIP, sshKeys, 60*time.Second)
 	if err != nil {
 		return fmt.Errorf("SSH to admin workstation failed: %w", err)
 	}

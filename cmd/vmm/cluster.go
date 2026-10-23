@@ -346,7 +346,8 @@ func clusterCreateCmd() *cobra.Command {
 			} else {
 				fmt.Println("\nProvisioning Kubernetes cluster...")
 			}
-			if err := cluster.ProvisionCluster(cl, sshPrivateKeyPath, nodeInfos); err != nil {
+			sshKeys := cluster.SSHKeys(sshPrivateKeyPath, paths.SSH)
+			if err := cluster.ProvisionCluster(cl, sshKeys, nodeInfos); err != nil {
 				cl.SetError(fmt.Sprintf("provisioning failed: %v", err))
 				cl.Save(paths.Clusters)
 				return fmt.Errorf("cluster provisioning failed: %w\nVMs are left running for debugging. Use 'vmm cluster delete %s -f' to clean up", err, name)
@@ -354,7 +355,7 @@ func clusterCreateCmd() *cobra.Command {
 
 			// Extract and merge kubeconfig
 			fmt.Println("Configuring kubeconfig...")
-			cpClient, err := cluster.WaitForSSH(cl.ControlPlaneIP, sshPrivateKeyPath, 30*time.Second)
+			cpClient, err := cluster.WaitForSSH(cl.ControlPlaneIP, sshKeys, 30*time.Second)
 			if err != nil {
 				cl.SetError(fmt.Sprintf("failed to connect for kubeconfig: %v", err))
 				cl.Save(paths.Clusters)
@@ -383,13 +384,13 @@ func clusterCreateCmd() *cobra.Command {
 			// Copy kubeconfig to admin workstation
 			if cl.AdminVM != "" && adminIP != "" {
 				fmt.Printf("Copying kubeconfig to admin workstation %s...\n", cl.AdminVM)
-				if err := cluster.CopyKubeconfigToVM(adminIP, sshPrivateKeyPath, kubeconfigYAML, cl.ControlPlaneIP); err != nil {
+				if err := cluster.CopyKubeconfigToVM(adminIP, sshKeys, kubeconfigYAML, cl.ControlPlaneIP); err != nil {
 					fmt.Printf("Warning: failed to copy kubeconfig to admin workstation: %v\n", err)
 				} else {
 					fmt.Println("Kubeconfig copied to admin workstation at /root/.kube/config")
 				}
 				fmt.Printf("Installing node SSH access on admin workstation %s...\n", cl.AdminVM)
-				if err := cluster.InstallAdminKey(adminIP, sshPrivateKeyPath, sshkey.ClusterKeyPath(paths.SSH, name), name, nodeInfos); err != nil {
+				if err := cluster.InstallAdminKey(adminIP, sshKeys, sshkey.ClusterKeyPath(paths.SSH, name), name, nodeInfos); err != nil {
 					fmt.Printf("Warning: failed to install node SSH access on admin workstation: %v\n", err)
 				} else {
 					fmt.Println("Admin workstation can SSH to the cluster nodes as root (e.g. ssh " + cl.ControlPlaneVM + ")")
@@ -640,7 +641,7 @@ func clusterKubeconfigCmd() *cobra.Command {
 				return fmt.Errorf("cluster '%s' has no control plane IP (not yet started?)", name)
 			}
 
-			cpClient, err := cluster.WaitForSSH(cl.ControlPlaneIP, clusterSSHKeyPath(cl), 30*time.Second)
+			cpClient, err := cluster.WaitForSSH(cl.ControlPlaneIP, clusterSSHKeys(cl, paths.SSH), 30*time.Second)
 			if err != nil {
 				return fmt.Errorf("failed to connect to control plane: %w", err)
 			}
