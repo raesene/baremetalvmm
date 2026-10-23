@@ -36,6 +36,7 @@ DISK=40G
 VERSION=""
 BINARIES=""
 KEEP=0
+NO_PREP=0
 
 DISTROS="ubuntu-24.04 ubuntu-26.04 debian-13 fedora-44 rocky-10 alma-10"
 
@@ -57,6 +58,8 @@ Options:
   --binaries DIR        After installing, replace vmm and vmm-web with the
                         binaries in DIR (to test an unreleased build)
   --keep                run: leave the VM up afterwards
+  --no-prep             up: boot the bare cloud image, skipping the profile's
+                        normal-install setup (firewalld etc.)
   --cpus N              vCPUs per test VM (default $CPUS)
   --memory MB           Memory per test VM (default $MEMORY)
   --disk SIZE           Disk size per test VM (default $DISK)
@@ -231,6 +234,7 @@ cmd_up() {
     need qemu-system-x86_64 qemu-img cloud-localds curl ssh
     [ -r /dev/kvm ] && [ -w /dev/kvm ] || die "no access to /dev/kvm (sudo usermod -aG kvm $USER, then log in again)"
     profile "$d"
+    [ "$NO_PREP" = 1 ] && PREP=""
     vm_paths "$d"
     vm_running && die "$d is already running (down it first)"
 
@@ -457,6 +461,7 @@ while [ $# -gt 0 ]; do
         --version) VERSION="${2:?--version needs a value}"; OPTS+=("$1" "$2"); shift ;;
         --binaries) BINARIES="$(cd "${2:?--binaries needs a directory}" && pwd)"; OPTS+=("$1" "$BINARIES"); shift ;;
         --keep) KEEP=1 ;;
+        --no-prep) NO_PREP=1; OPTS+=("$1") ;;
         --cpus) CPUS="${2:?}"; OPTS+=("$1" "$2"); shift ;;
         --memory) MEMORY="${2:?}"; OPTS+=("$1" "$2"); shift ;;
         --disk) DISK="${2:?}"; OPTS+=("$1" "$2"); shift ;;
