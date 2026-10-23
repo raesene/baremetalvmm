@@ -452,7 +452,7 @@ func (m *Manager) runCmd(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s: %s%s", err, string(output), missingExtensionHint(name, output))
+		return fmt.Errorf("%w: %s%s", err, string(output), missingExtensionHint(name, output))
 	}
 	return nil
 }
