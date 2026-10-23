@@ -243,6 +243,8 @@ vmm ssh myvm -- 'getent hosts google.com'  # DNS from VM
 
 ## Sudo Behavior
 
+On RHEL and its rebuilds sudo's `secure_path` leaves out `/usr/local/bin`, so `install.sh` adds `/usr/bin/vmm` and `/usr/bin/vmm-web` symlinks when `sudo -n /usr/bin/env` shows a PATH without it (never overwriting an existing file; `uninstall.sh` removes only links pointing back at `/usr/local/bin`). `vmm upgrade` resolves the symlink to swap the real binary. Don't change `secure_path` itself.
+
 `vmm ssh` detects `SUDO_USER` to use the original user's home directory (SSH keys) rather than `/root/`. Cluster provisioning supports ssh-agent via `sudo -E` to preserve `SSH_AUTH_SOCK`.
 
 ## SSH Key Management

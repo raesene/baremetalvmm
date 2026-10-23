@@ -330,6 +330,14 @@ else
     echo "  /usr/local/bin/vmm-web not found"
 fi
 
+# Links the installer adds where sudo's PATH leaves out /usr/local/bin
+for link in /usr/bin/vmm /usr/bin/vmm-web; do
+    if [ -L "$link" ] && [ "$(readlink "$link")" = "/usr/local/bin/$(basename "$link")" ]; then
+        rm -f "$link"
+        echo -e "  ${GREEN}Removed $link${NC}"
+    fi
+done
+
 if [ -f /usr/local/bin/firecracker ]; then
     rm -f /usr/local/bin/firecracker
     echo -e "  ${GREEN}Removed /usr/local/bin/firecracker${NC}"

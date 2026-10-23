@@ -170,6 +170,27 @@ for f in "$TMP"/scripts/*.service; do
 done
 ok "helper scripts installed to $SHARE_DIR"
 
+# vmm is run as 'sudo vmm', and sudo resets PATH to its secure_path, which
+# leaves out /usr/local/bin on RHEL and its rebuilds (Rocky, Alma). There,
+# link the binaries into /usr/bin so 'sudo vmm' finds them. 'vmm upgrade'
+# resolves the link, so it still swaps the real binary.
+if command -v sudo >/dev/null 2>&1; then
+    SUDO_PATH=$(sudo -n /usr/bin/env 2>/dev/null | sed -n 's/^PATH=//p')
+    if [ -n "$SUDO_PATH" ] && [[ ":$SUDO_PATH:" != *":$INSTALL_DIR:"* ]]; then
+        for bin in vmm vmm-web; do
+            link="/usr/bin/$bin"
+            if [ -L "$link" ] && [ "$(readlink "$link")" = "$INSTALL_DIR/$bin" ]; then
+                continue
+            elif [ -e "$link" ] || [ -L "$link" ]; then
+                warn "sudo's PATH leaves out $INSTALL_DIR and $link already exists: run this install as sudo $INSTALL_DIR/$bin"
+            else
+                ln -s "$INSTALL_DIR/$bin" "$link"
+                ok "linked $link -> $INSTALL_DIR/$bin (sudo's PATH leaves out $INSTALL_DIR)"
+            fi
+        done
+    fi
+fi
+
 mkdir -p "$DATA_DIR"/{config,vms,images/kernels,images/rootfs,mounts,sockets,logs,state}
 chmod 0700 "$DATA_DIR"
 
