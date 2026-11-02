@@ -287,6 +287,14 @@ create_ext4_image() {
     # Create ext4 filesystem
     mkfs.ext4 -F -L rootfs "$image_path" >/dev/null 2>&1
 
+    # Newer mke2fs (Ubuntu 26.04, which ubuntu-latest runners use) enables
+    # orphan_file. e2fsprogs before 1.47 can't resize such a filesystem and
+    # kernels before 5.15 can't mount it read-write, so hosts older than the
+    # build machine couldn't use the image.
+    if dumpe2fs -h "$image_path" 2>/dev/null | grep -q '^Filesystem features:.*orphan_file'; then
+        tune2fs -O ^orphan_file "$image_path" >/dev/null
+    fi
+
     # Mount the image
     local mount_point="$TMP_DIR/mnt"
     mkdir -p "$mount_point"

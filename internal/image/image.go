@@ -757,8 +757,11 @@ func (m *Manager) CreateVMRootfs(vmName string, vmDir string, diskSizeMB int, im
 			fmt.Printf("Resizing rootfs to %d MB...\n", diskSizeMB)
 
 			// Expand the file to the desired size
+			// On failure the copy is removed: a later start would otherwise
+			// reuse it as is and boot with the unresized disk.
 			truncateCmd := exec.Command("truncate", "-s", fmt.Sprintf("%dM", diskSizeMB), dstPath)
 			if output, err := truncateCmd.CombinedOutput(); err != nil {
+				os.Remove(dstPath)
 				return "", fmt.Errorf("failed to expand rootfs file: %w: %s", err, string(output))
 			}
 
@@ -769,12 +772,25 @@ func (m *Manager) CreateVMRootfs(vmName string, vmDir string, diskSizeMB int, im
 			// Resize the ext4 filesystem to fill the file
 			resize2fsCmd := exec.Command("resize2fs", dstPath)
 			if output, err := resize2fsCmd.CombinedOutput(); err != nil {
-				return "", fmt.Errorf("failed to resize filesystem: %w: %s", err, string(output))
+				os.Remove(dstPath)
+				return "", fmt.Errorf("failed to resize filesystem: %w: %s%s", err, string(output), unsupportedFeatureHint(string(output)))
 			}
 		}
 	}
 
 	return dstPath, nil
+}
+
+// unsupportedFeatureHint explains resize2fs's "unsupported feature(s)" error.
+// Rootfs releases built on Ubuntu 26.04 runners before the build scripts
+// stripped it have orphan_file, which needs e2fsprogs 1.47 or later.
+func unsupportedFeatureHint(output string) string {
+	if !strings.Contains(output, "unsupported feature") {
+		return ""
+	}
+	return "\nThe image uses ext4 features this host's e2fsprogs is too old for " +
+		"(rootfs releases from late October 2026 have orphan_file, which needs e2fsprogs 1.47+). " +
+		"Re-pull the image with 'vmm image pull' to get a compatible build, or upgrade e2fsprogs."
 }
 
 // DeleteVMRootfs removes a VM's rootfs
