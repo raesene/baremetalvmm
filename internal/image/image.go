@@ -1494,9 +1494,9 @@ func (m *Manager) availableReleases(releases []ghRelease) []AvailableRelease {
 		{"k8s-rootfs-", "k8s-rootfs.ext4.gz", "", "rootfs",
 			func(tag string) string { return "Kubernetes rootfs (" + tag + ", kubeadm/containerd)" }},
 		{"security-rootfs-", "security-rootfs.ext4.gz", "security-rootfs", "rootfs",
-			func(_ string) string { return "Security rootfs (Ubuntu 24.04, container/K8s tools)" }},
+			func(_ string) string { return "Security rootfs (Ubuntu 26.04, container/K8s tools)" }},
 		{"dev-rootfs-", "dev-rootfs.ext4.gz", "dev-rootfs", "rootfs",
-			func(_ string) string { return "Dev rootfs (Ubuntu 24.04, development tools)" }},
+			func(_ string) string { return "Dev rootfs (Ubuntu 26.04, development tools)" }},
 	}
 
 	seen := make(map[string]bool)

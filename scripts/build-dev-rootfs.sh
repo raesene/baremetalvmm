@@ -36,7 +36,7 @@ set -e
 OUTPUT_DIR="/var/lib/vmm/images/rootfs"
 NAME=""
 SIZE_MB=4096
-BASE_IMAGE="ubuntu:24.04"
+BASE_IMAGE="ubuntu:26.04"
 CLEANUP=true
 TMP_DIR=""
 
@@ -58,13 +58,13 @@ Options:
   --name NAME           Name for the output rootfs file (required)
   --output DIR          Output directory (default: /var/lib/vmm/images/rootfs)
   --size MB             Image size in MB (default: 4096)
-  --base-image IMAGE    Docker base image (default: ubuntu:24.04)
+  --base-image IMAGE    Docker base image (default: ubuntu:26.04)
   --no-cleanup          Keep temporary directory after completion
   --help                Show this help message
 
 Examples:
   $0 --name dev-rootfs.ext4 --size 4096
-  $0 --name dev-rootfs.ext4 --base-image ubuntu:24.04 --output /tmp
+  $0 --name dev-rootfs.ext4 --base-image ubuntu:26.04 --output /tmp
 EOF
     exit 1
 }
@@ -193,6 +193,7 @@ install_apt_packages() {
         apt-get install -qq -y --no-install-recommends \
             systemd \
             systemd-sysv \
+            kmod \
             openssh-server \
             openssh-client \
             iproute2 \

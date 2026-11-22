@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       base_image:
-        description: 'Docker base image (e.g. ubuntu:24.04)'
+        description: 'Docker base image (e.g. ubuntu:26.04)'
         required: false
-        default: 'ubuntu:24.04'
+        default: 'ubuntu:26.04'
   push:
     paths:
       - 'scripts/build-dev-rootfs.sh'
@@ -25,7 +25,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      BASE_IMAGE: ${{ github.event.inputs.base_image || 'ubuntu:24.04' }}
+      BASE_IMAGE: ${{ github.event.inputs.base_image || 'ubuntu:26.04' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -58,8 +58,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="dev-rootfs-latest"
-          TITLE="Dev Rootfs (Ubuntu 24.04, $(date +%Y-%m-%d)) — Development Tools"
-          NOTES="Firecracker-compatible Ubuntu 24.04 rootfs with development tools pre-installed.
+          TITLE="Dev Rootfs (Ubuntu 26.04, $(date +%Y-%m-%d)) — Development Tools"
+          NOTES="Firecracker-compatible Ubuntu 26.04 rootfs with development tools pre-installed.
 
           **Use this rootfs for development VMs** (\`vmm create --image dev-rootfs\`).
 
