@@ -236,7 +236,12 @@ install_apt_packages() {
             net-tools \
             nmap \
             gpg \
-            lsb-release
+            lsb-release \
+            ripgrep \
+            fd-find
+
+        # Ubuntu installs fd as fdfind; pi (and people) look for fd too
+        ln -sf /usr/bin/fdfind /usr/local/bin/fd
 
         # Add Docker official repository
         install -m 0755 -d /etc/apt/keyrings
@@ -664,7 +669,7 @@ log_info "Security rootfs image built successfully!"
 log_info "  Output: $OUTPUT_DIR/${NAME}.gz ($local_size)"
 log_info "  Pre-installed tools:"
 log_info "    kubectl ${KUBECTL_VERSION}, Docker Engine (apt), nerdctl ${NERDCTL_VERSION}, crictl ${CRICTL_VERSION}"
-log_info "    nmap, tcpdump, socat, dnsutils, traceroute, whois"
+log_info "    nmap, tcpdump, socat, dnsutils, traceroute, whois, ripgrep, fd"
 log_info "    amicontained ${AMICONTAINED_VERSION}, kdigger ${KDIGGER_VERSION}, kubeletctl ${KUBELETCTL_VERSION}"
 log_info "    rbac-tool ${RBAC_TOOL_VERSION}, k9s ${K9S_VERSION}, jwt-cli ${JWT_CLI_VERSION}"
 log_info "    kind ${KIND_VERSION}, starship prompt, kubectx/kubens, oc ${OC_VERSION}"
