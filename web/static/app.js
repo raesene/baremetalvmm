@@ -136,7 +136,8 @@ document.addEventListener('submit', function(e) {
     }
 });
 
-// Show a busy state on long-running action buttons (snapshot create/restore).
+// Show a busy state on long-running action buttons (VM start/stop, snapshot
+// create/restore).
 // Runs after the confirm handler; skips if that handler cancelled submission.
 document.addEventListener('submit', function(e) {
     if (e.defaultPrevented) return;

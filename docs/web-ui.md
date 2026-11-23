@@ -92,8 +92,8 @@ curl http://localhost:8080/api/v1/health
 | GET | `/api/v1/vms` | List all VMs |
 | POST | `/api/v1/vms` | Create a VM. Optional `"nested": true` or `"backend": "cloud-hypervisor"` ([nested VMs](nested-virtualization.md)), and `"restrict_local_networks": true` ([internet only](networking.md#restricting-local-network-access)) |
 | GET | `/api/v1/vms/{name}` | Get VM details |
-| POST | `/api/v1/vms/{name}/start` | Start a VM |
-| POST | `/api/v1/vms/{name}/stop` | Stop a VM |
+| POST | `/api/v1/vms/{name}/start` | Start a VM; returns the VM with its new state |
+| POST | `/api/v1/vms/{name}/stop` | Stop a VM; returns the VM with its new state |
 | DELETE | `/api/v1/vms/{name}` | Delete a VM |
 | GET | `/api/v1/port-forwards` | List every port forward with its status |
 | GET | `/api/v1/vms/{name}/port-forwards` | List a VM's port forwards |

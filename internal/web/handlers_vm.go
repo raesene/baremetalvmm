@@ -332,11 +332,7 @@ func (s *Server) handleVMStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if isHTMXRequest(r) {
-		s.renderVMRow(w, existingVM)
-	} else {
-		http.Redirect(w, r, "/vms", http.StatusSeeOther)
-	}
+	s.respondVMAction(w, r, existingVM)
 }
 
 func (s *Server) handleVMStop(w http.ResponseWriter, r *http.Request) {
@@ -393,11 +389,7 @@ func (s *Server) handleVMStop(w http.ResponseWriter, r *http.Request) {
 	existingVM.Save(paths.VMs)
 	s.sseBroker.Record(kindVM, name, string(vm.StateStopped), source, "")
 
-	if isHTMXRequest(r) {
-		s.renderVMRow(w, existingVM)
-	} else {
-		http.Redirect(w, r, "/vms", http.StatusSeeOther)
-	}
+	s.respondVMAction(w, r, existingVM)
 }
 
 func (s *Server) handleVMDelete(w http.ResponseWriter, r *http.Request) {
@@ -489,6 +481,21 @@ func (s *Server) startVMTracked(v *vm.VM, source string) error {
 	}
 	s.sseBroker.Record(kindVM, v.Name, string(v.State), source, v.IPAddress)
 	return nil
+}
+
+// respondVMAction answers a start or stop in the form it was asked for: the
+// VM as JSON for the API, its list row for an HTMX button on the VMs page,
+// and otherwise a redirect back to the VM's page (the only plain form that
+// posts here), which then shows the new state and actions.
+func (s *Server) respondVMAction(w http.ResponseWriter, r *http.Request, v *vm.VM) {
+	switch {
+	case isAPIRequest(r):
+		jsonResponse(w, v)
+	case isHTMXRequest(r):
+		s.renderVMRow(w, v)
+	default:
+		http.Redirect(w, r, "/vms/"+v.Name, http.StatusSeeOther)
+	}
 }
 
 func (s *Server) renderVMRow(w http.ResponseWriter, v *vm.VM) {

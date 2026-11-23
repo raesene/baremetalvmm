@@ -14,12 +14,12 @@
         <a href="/vms/{{.VM.Name}}/terminal" class="btn btn-primary">Terminal</a>
         <form method="POST" action="/vms/{{.VM.Name}}/stop">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-            <button type="submit" class="btn">Stop</button>
+            <button type="submit" class="btn" data-busy="Stopping…">Stop</button>
         </form>
         {{else if or (eq (printf "%s" .VM.State) "stopped") (eq (printf "%s" .VM.State) "created")}}
         <form method="POST" action="/vms/{{.VM.Name}}/start">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-            <button type="submit" class="btn btn-success">Start</button>
+            <button type="submit" class="btn btn-success" data-busy="Starting…">Start</button>
         </form>
         {{end}}
         <form method="POST" action="/vms/{{.VM.Name}}/delete">

@@ -3,13 +3,16 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -109,7 +112,12 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 		Timeout:         5 * time.Second,
 	}
 
-	sshConn, err := ssh.Dial("tcp", v.IPAddress+":22", sshConfig)
+	addr := v.IPAddress + ":22"
+	sshConn, err := dialGuestSSH(ctx, sshBootWait, func() (*ssh.Client, error) {
+		return ssh.Dial("tcp", addr, sshConfig)
+	}, func() {
+		_ = conn.Write(ctx, websocket.MessageBinary, []byte("Waiting for SSH on "+v.Name+" to come up...\r\n"))
+	})
 	if err != nil {
 		writeWSError(conn, ctx, fmt.Sprintf("SSH connection failed: %v", err))
 		return
@@ -220,6 +228,44 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 
 	session.Wait()
 	wg.Wait()
+}
+
+// sshBootWait is how long the terminal keeps trying a guest whose SSH isn't
+// listening yet. The VM page offers the terminal as soon as the VM is
+// running, which is a couple of seconds before sshd is up.
+const sshBootWait = 30 * time.Second
+
+// dialGuestSSH calls dial until it succeeds, fails for a reason a booting
+// guest doesn't explain (such as authentication), wait runs out, or ctx is
+// done. waiting is called once, before the first retry.
+func dialGuestSSH(ctx context.Context, wait time.Duration, dial func() (*ssh.Client, error), waiting func()) (*ssh.Client, error) {
+	deadline := time.Now().Add(wait)
+	for attempt := 0; ; attempt++ {
+		client, err := dial()
+		if err == nil || !sshNotReady(err) || time.Now().After(deadline) {
+			return client, err
+		}
+		if attempt == 0 && waiting != nil {
+			waiting()
+		}
+		select {
+		case <-ctx.Done():
+			return nil, err
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+// sshNotReady reports whether err is what a guest that is still booting
+// gives: nothing listening yet, no ARP reply yet, or sshd dropping the
+// connection while it starts up.
+func sshNotReady(err error) bool {
+	var netErr net.Error
+	return errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.EHOSTUNREACH) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, io.EOF) ||
+		(errors.As(err, &netErr) && netErr.Timeout())
 }
 
 func writeWSError(conn *websocket.Conn, ctx context.Context, msg string) {
