@@ -71,6 +71,7 @@ jobs:
           - **Container tools**: Docker CLI, nerdctl, crictl, kubectl
           - **K8s security**: amicontained, kdigger, kubeletctl, rbac-tool, kubectx/kubens, k9s
           - **Utilities**: jwt-cli, openssl, python3, ruby, vim, nano, git, curl, wget
+          - **AI agents**: opencode, pi (https://pi.dev)
           - **Extras**: starship prompt, K8s security manifests in /manifests/, DNS enum script in /scripts/
           - Serial console on ttyS0, systemd-networkd
 
