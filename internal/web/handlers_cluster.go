@@ -539,7 +539,12 @@ func (s *Server) handleAPIClusterList(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResponse(w, clusters)
+	// cluster.Status, not the stored config: that holds the join token
+	out := make([]cluster.Status, 0, len(clusters))
+	for _, cl := range clusters {
+		out = append(out, cl.Status(paths.VMs))
+	}
+	jsonResponse(w, out)
 }
 
 func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) {
@@ -573,14 +578,11 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if req.SSHKey == "" {
-		jsonError(w, "SSH key is required", http.StatusBadRequest)
-		return
-	}
-	if req.SSHKeyPath == "" {
-		jsonError(w, "SSH key path is required for cluster provisioning", http.StatusBadRequest)
-		return
-	}
+	// Both keys are optional, as in the web form: ssh_key is added to the
+	// nodes alongside the managed key, and the managed key provisions the
+	// cluster unless ssh_key_path names another private key
+	req.SSHKey = strings.TrimSpace(req.SSHKey)
+	req.SSHKeyPath = strings.TrimSpace(req.SSHKeyPath)
 	distro := cluster.NormalizeDistro(req.Type)
 	isOpenShift := distro == cluster.DistroOpenShift
 
@@ -659,6 +661,14 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 	if cluster.Exists(paths.Clusters, req.Name) {
 		jsonError(w, fmt.Sprintf("Cluster '%s' already exists", req.Name), http.StatusConflict)
 		return
+	}
+
+	if req.SSHKeyPath == "" {
+		if err := sshkey.EnsureKeyPair(paths.SSH); err != nil {
+			jsonError(w, "Failed to ensure vmm SSH key: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		req.SSHKeyPath = sshkey.PrivateKeyPath(paths.SSH)
 	}
 
 	cniVal := cluster.NormalizeCNI(req.CNI)
@@ -767,10 +777,11 @@ func (s *Server) handleAPIClusterCreate(w http.ResponseWriter, r *http.Request) 
 		s.recordVMCreated(newVM, source)
 	}
 
+	status := cl.Status(paths.VMs)
 	go s.provisionClusterInBackground(req.Name, source)
 
 	w.WriteHeader(http.StatusCreated)
-	jsonResponse(w, cl)
+	jsonResponse(w, status)
 }
 
 func (s *Server) handleAPIClusterDelete(w http.ResponseWriter, r *http.Request) {

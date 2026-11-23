@@ -102,8 +102,8 @@ curl http://localhost:8080/api/v1/health
 | GET | `/api/v1/vms/{name}/files?path=DIR` | List a guest directory (defaults to root's home) |
 | GET | `/api/v1/vms/{name}/files/content?path=FILE` | Download a guest file |
 | PUT | `/api/v1/vms/{name}/files/content?path=FILE` | Upload the request body to a guest file |
-| GET | `/api/v1/clusters` | List clusters |
-| POST | `/api/v1/clusters` | Create a cluster |
+| GET | `/api/v1/clusters` | List clusters, as the objects `vmm cluster list --json` prints ([commands](commands.md#json-output)) |
+| POST | `/api/v1/clusters` | Create a cluster; returns it in the same shape, state `creating`, while it provisions in the background |
 | DELETE | `/api/v1/clusters/{name}` | Delete a cluster |
 
 ## SSH Key Behavior
