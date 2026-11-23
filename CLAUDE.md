@@ -75,6 +75,7 @@ Future work (P4 — significant effort, deferred):
 - `internal/upgrade/` — Release lookup, checksum-verified download/extract, atomic binary swap (`.prev` backups) and Firecracker install, used by `vmm upgrade` and the web UI's update notice (`internal/web/updates.go`), which also counts kernel/rootfs updates: `image.Updates` flags a local artifact whose matching release asset (`updated_at`) is newer than the file's mtime, plus newer k8s patches. `ListAvailableReleasesCached` caches the GitHub listing in `<kernels>/.github-releases.json` (the 60/hr API limit is shared with `vmm upgrade`). `security-kernel`/`kasan-kernel` are pinned to the 6.12 series (`defaultSeries`); other series are `<name>-<series>`
 - `internal/sshkey/` — VMM-managed Ed25519 SSH key pair (auto-generated in `/var/lib/vmm/ssh/`)
 - `internal/cluster/` — Cluster management. `--type kubeadm` (default): multi-node Kubernetes via kubeadm with CNI selection (`--cni cilium` default, or `--cni calico` for Calico via Tigera operator). `--type openshift`: single-node OpenShift-derived cluster via upstream MicroShift (`internal/cluster/openshift.go`), installed on the base Ubuntu rootfs over SSH using OKD payload images (no Red Hat subscription). Admin workstation support for both. `--nested` (kubeadm only) runs the nodes nested under Cloud Hypervisor for Kata Containers/KubeVirt: `Cluster.Nested` + `Cluster.ConfigureNodeVM` set each node VM's backend (the admin workstation stays on Firecracker), `lifecycle.CheckNestedCluster` validates up front (needs a k8s kernel, never falls back to nested-kernel), and `checkNodesHaveKVM` fails provisioning before kubeadm if a node has no `/dev/kvm` (a k8s-kernel from before KVM was added to the k8s profile). Node prep installs `vmm-k8s-mounts.service` (rshared `/` + bpffs at every boot, before containerd/kubelet); without it Cilium broke on any node restart ("/sys/fs/bpf ... not a shared mount")
+- **JSON output**: `vmm list --json` prints the stored `vm.VM` records (backend filled in); `vmm cluster list|show|create --json` print `cluster.Status` (`internal/cluster/status.go`), the stable machine-readable cluster shape that test harnesses parse. Add fields to it rather than renaming them, keep node roles `control-plane`/`worker`, and never put the join token or CA hash in it. `cluster create --json` swaps `os.Stdout` for stderr (`reserveStdoutForJSON`) so progress can't mix with the result
 - `internal/guestfile/` — SFTP access to a running VM's filesystem (list, download, atomic upload via temp file + rename), used by the web UI file browser
 - `internal/web/` — Web UI handlers, auth, SSE, WebSocket terminal, file browser (`handlers_files.go`)
 - `web/` — Embedded templates and static assets (`go:embed`)
@@ -90,7 +91,7 @@ vmm create <name> [--cpus N] [--memory MB] [--disk MB] [--ssh-key PATH] [--dns S
 vmm start <name>
 vmm stop <name>
 vmm delete <name> [-f]
-vmm list [-a]
+vmm list [-a] [--json]
 vmm set <name> autostart|restrict-local-networks on|off
 vmm ssh <name> [-u user]
 vmm cp [-r] [-u user] <src> <dest>     # one side is <vm>:<path>
@@ -100,8 +101,9 @@ vmm mount list|sync <name> [tag]
 vmm snapshot create <vm> <name> [--stop]|list [vm]|restore <vm> <name> [-f] [--no-start]|show <vm> <name>|delete <vm> <name>
 vmm image list [--remote]|pull [name]|import|snapshot|delete
 vmm kernel list [--remote]|pull <name>|import|delete|build [--profile default|k8s|nested|security|security-kasan]
-vmm cluster create <name> [--type kubeadm|openshift] [--cni cilium|calico] [--workers N] [--cpus N] [--memory MB] [--disk MB] [--k8s-version VER] [--openshift-version VER] [--ssh-key PATH] [--image NAME] [--kernel NAME] [--admin-workstation] [--nested]
-vmm cluster delete|list|kubeconfig <name>
+vmm cluster create <name> [--type kubeadm|openshift] [--cni cilium|calico] [--workers N] [--cpus N] [--memory MB] [--disk MB] [--k8s-version VER] [--openshift-version VER] [--ssh-key PATH] [--image NAME] [--kernel NAME] [--admin-workstation] [--nested] [--json]
+vmm cluster delete|kubeconfig <name>
+vmm cluster list [--json]|show <name> [--json]
 vmm cluster start <name> [--no-wait] [--timeout DUR]|stop <name>
 vmm config show|init [--data-dir PATH]|set <key> <value>   # set supports: data_dir
 vmm upgrade [--check] [--version X] [-y] [--force] [--rollback] [--update-units] [--with-cloud-hypervisor]

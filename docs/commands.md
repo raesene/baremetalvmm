@@ -10,7 +10,7 @@ Run vmm commands with `sudo`. The data directory (`/var/lib/vmm`) is root-only, 
 | `vmm start <name>` | Start a VM - assigns IP address, sets up networking, boots VM |
 | `vmm stop <name>` | Stop a running VM |
 | `vmm delete <name>` | Delete a VM and its resources |
-| `vmm list` | List all VMs |
+| `vmm list [--json]` | List all VMs; `--json` prints the VM records (`[]` when there are none) |
 | `vmm set <name> autostart on\|off` | Choose whether the VM starts at boot (via `vmm.service`; new VMs default to on) |
 | `vmm set <name> restrict-local-networks on\|off` | Block the VM from the host, local networks and other VMs, keeping internet access (applies immediately if running) |
 
@@ -163,10 +163,36 @@ Each mount is a copy of the host directory, taken into an ext4 image when the VM
 | `vmm cluster delete <name>` | Delete a cluster and all its VMs |
 | `vmm cluster start <name> [--no-wait] [--timeout 5m]` | Start a cluster's VMs, control plane first, and wait for every node to report Ready |
 | `vmm cluster stop <name>` | Stop a cluster's VMs, workers first, then the control plane |
-| `vmm cluster list` | List all clusters |
+| `vmm cluster list [--json]` | List all clusters |
+| `vmm cluster show <name> [--json]` | Show a cluster's nodes, their VMs, states and IPs, and its kubectl context |
 | `vmm cluster kubeconfig <name>` | Re-extract and merge kubeconfig |
 
 See [Kubernetes Clusters](kubernetes.md) for full cluster create options.
+
+### JSON output
+
+For scripts, `vmm list --json`, `vmm cluster list --json` and `vmm cluster show <name> --json` print JSON instead of a table, and `vmm cluster create --json` prints the ready cluster on stdout with its progress on stderr (nothing on stdout, and a non-zero exit, if it fails). The table output stays the default. Clusters, from all three cluster commands, are this object (never the kubeadm join token):
+
+```json
+{
+  "name": "lab",
+  "state": "running",
+  "type": "kubeadm",
+  "cni": "cilium",
+  "k8s_version": "1.37.1",
+  "nested": false,
+  "control_plane_ip": "172.16.0.2",
+  "context": "vmm-lab",
+  "nodes": [
+    {"role": "control-plane", "name": "lab-control-plane", "ip": "172.16.0.2", "state": "running"},
+    {"role": "worker", "name": "lab-worker-1", "ip": "172.16.0.3", "state": "running"}
+  ],
+  "admin_workstation": {"name": "lab-admin", "ip": "172.16.0.4", "state": "running"},
+  "created_at": "2026-11-23T12:00:00Z"
+}
+```
+
+`role` is `control-plane` or `worker`. `state` is the same as the table's: `creating`, `running`, `error`, or `degraded` for a running cluster with a VM that isn't running. A node's `state` is its VM's (`running`, `stopped`, ...), or `missing` if the VM record is gone, and `ip` is empty until the VM has one. OpenShift clusters have `openshift_version` instead of `k8s_version`, and `admin_workstation` is left out without `--admin-workstation`.
 
 ## Upgrading
 

@@ -12,6 +12,7 @@ import (
 
 func listCmd() *cobra.Command {
 	var all bool
+	var jsonOutput bool
 
 	cmd := &cobra.Command{
 		Use:     "list",
@@ -25,14 +26,24 @@ func listCmd() *cobra.Command {
 				return fmt.Errorf("failed to list VMs: %w", err)
 			}
 
-			if len(vms) == 0 {
-				fmt.Println("No VMs found. Create one with: vmm create <name>")
-				return nil
-			}
-
 			// Update state for each VM
 			for _, v := range vms {
 				hypervisor.UpdateVMState(v)
+			}
+
+			if jsonOutput {
+				out := []vm.VM{}
+				for _, v := range vms {
+					if all || v.State != vm.StateStopped {
+						out = append(out, vmJSON(v))
+					}
+				}
+				return writeJSON(os.Stdout, out)
+			}
+
+			if len(vms) == 0 {
+				fmt.Println("No VMs found. Create one with: vmm create <name>")
+				return nil
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -55,6 +66,7 @@ func listCmd() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVarP(&all, "all", "a", true, "Show all VMs including stopped")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output the VMs as JSON ([] when there are none)")
 
 	return cmd
 }

@@ -31,6 +31,7 @@ func clusterCmd() *cobra.Command {
 		clusterStartCmd(),
 		clusterStopCmd(),
 		clusterListCmd(),
+		clusterShowCmd(),
 		clusterKubeconfigCmd(),
 	)
 	return cmd
@@ -50,6 +51,7 @@ func clusterCreateCmd() *cobra.Command {
 	var distro string
 	var openshiftVersion string
 	var cni string
+	var jsonOutput bool
 
 	cmd := &cobra.Command{
 		Use:   "create <name>",
@@ -59,6 +61,15 @@ func clusterCreateCmd() *cobra.Command {
 			name := args[0]
 			if err := validate.ClusterName(name); err != nil {
 				return err
+			}
+
+			// With --json, stdout carries only the finished cluster (the
+			// same object as 'cluster list --json'); progress goes to stderr
+			var jsonOut *os.File
+			if jsonOutput {
+				var restore func()
+				jsonOut, restore = reserveStdoutForJSON()
+				defer restore()
 			}
 
 			// Normalize distro selection (accept friendly aliases).
@@ -418,6 +429,9 @@ func clusterCreateCmd() *cobra.Command {
 			}
 			fmt.Printf("\nUse: kubectl --context vmm-%s get nodes\n", name)
 
+			if jsonOut != nil {
+				return writeJSON(jsonOut, cl.Status(paths.VMs))
+			}
 			return nil
 		},
 	}
@@ -437,6 +451,7 @@ func clusterCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&cni, "cni", "cilium", "CNI plugin: 'cilium' (default) or 'calico'")
 	cmd.Flags().BoolVar(&nested, "nested", false, "Run the nodes nested under cloud-hypervisor so they can run VMs (e.g. Kata Containers); kubeadm only")
 	cmd.Flags().BoolVar(&adminWorkstation, "admin-workstation", false, "Create an admin workstation VM with security tools and cluster kubeconfig")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Print the ready cluster as JSON on stdout (as 'cluster list --json'), with progress on stderr")
 	cmd.RegisterFlagCompletionFunc("kernel", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return completeKernelNames(cmd, nil, toComplete)
 	})
@@ -559,7 +574,9 @@ func clusterDeleteCmd() *cobra.Command {
 }
 
 func clusterListCmd() *cobra.Command {
-	return &cobra.Command{
+	var jsonOutput bool
+
+	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List Kubernetes clusters",
@@ -570,53 +587,33 @@ func clusterListCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to list clusters: %w", err)
 			}
+			statuses := clusterStatuses(clusters, paths.VMs)
 
-			if len(clusters) == 0 {
+			if jsonOutput {
+				return writeJSON(os.Stdout, statuses)
+			}
+
+			if len(statuses) == 0 {
 				fmt.Println("No clusters found")
 				return nil
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "NAME\tSTATE\tTYPE\tCNI\tVERSION\tNODES\tCONTROL PLANE IP\tCONTEXT")
-			for _, cl := range clusters {
-				// Update VM states
-				allRunning := true
-				for _, vmName := range cl.AllVMs() {
-					v, err := vm.Load(paths.VMs, vmName)
-					if err != nil {
-						allRunning = false
-						continue
-					}
-					hypervisor.UpdateVMState(v)
-					if v.State != vm.StateRunning {
-						allRunning = false
-					}
+			for _, st := range statuses {
+				version := st.K8sVersion
+				if st.Type == cluster.DistroOpenShift {
+					version = st.OpenShiftVersion
 				}
-				state := string(cl.State)
-				if cl.State == cluster.StateRunning && !allRunning {
-					state = "degraded"
-				}
-
-				nodes := 1 + len(cl.WorkerVMs)
-				distro := cl.Distro
-				if distro == "" {
-					distro = cluster.DistroKubeadm
-				}
-				version := cl.K8sVersion
-				if distro == cluster.DistroOpenShift {
-					version = cl.OpenShiftVer
-				}
-				cniDisplay := cl.CNI
-				if cniDisplay == "" {
-					cniDisplay = cluster.CNICilium
-				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\t%s\tvmm-%s\n",
-					cl.Name, state, distro, cniDisplay, version, nodes, cl.ControlPlaneIP, cl.Name)
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
+					st.Name, st.State, st.Type, st.CNI, version, len(st.Nodes), st.ControlPlaneIP, st.Context)
 			}
 			w.Flush()
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output the clusters as JSON ([] when there are none)")
+	return cmd
 }
 
 func clusterKubeconfigCmd() *cobra.Command {
