@@ -2,7 +2,7 @@
 
 ## Overview
 
-`vmm cluster` creates Kubernetes clusters from Firecracker microVMs using kubeadm and Cilium CNI. Each cluster gets a control plane VM and optional worker VMs.
+`vmm cluster` creates Kubernetes clusters from Firecracker microVMs using kubeadm with Cilium (default) or Calico CNI. `--type openshift` builds a single-node MicroShift cluster instead. Each cluster gets a control plane VM and optional worker VMs.
 
 ## Cluster Defaults
 
@@ -13,10 +13,26 @@
 | Memory per node | 4096 MB | `--memory MB` |
 | Disk per node | 10240 MB | `--disk MB` |
 | Kubernetes version | newest 1.37 patch | `--k8s-version VER` (exact, or MAJOR.MINOR for its newest patch; `--image k8s-X.Y.Z` implies X.Y.Z) |
+| CNI | `cilium` | `--cni cilium\|calico` |
+| Cluster type | `kubeadm` | `--type kubeadm\|openshift` (OpenShift = MicroShift, `--openshift-version`, default 4.20) |
+| Admin workstation | off | `--admin-workstation` (extra VM with security tools and the cluster kubeconfig) |
+
+## CNI Choice
+
+| CNI | kube-proxy | Notes |
+|-----|------------|-------|
+| `cilium` (default) | **Not installed** — kubeadm runs with `--skip-phases=addon/kube-proxy`; Cilium does kube-proxy replacement | Needs `k8s-kernel` for BPF |
+| `calico` | **Installed** (kubeadm default kube-proxy DaemonSet) | Tigera operator (Calico v3.29.3), VXLAN encapsulation, nftables dataplane, BGP disabled |
+
+Use `--cni calico` when you need kube-proxy present (e.g. auditing kube-proxy configuration) or want Calico NetworkPolicy behaviour.
+
+```bash
+sudo vmm cluster create calico-test --cni calico --workers 1
+```
 
 ## Kernel and Rootfs Requirements
 
-Clusters need the `k8s-kernel` (Linux 6.6 LTS) for Cilium BPF support. If `k8s-kernel` is available locally, it is auto-selected automatically — you don't need to pass `--kernel k8s-kernel` explicitly. If `k8s-kernel` is not available, the default kernel is used — but Cilium may fail without 6.6+ BPF features.
+Clusters need the `k8s-kernel` (Linux 6.6 LTS) for Cilium BPF support. If `k8s-kernel` is available locally, it is auto-selected automatically — you don't need to pass `--kernel k8s-kernel` explicitly. It is **not** pulled automatically: if it's missing the default 6.1 kernel is used and Cilium will fail, so run `sudo vmm kernel pull k8s-kernel` once before the first cluster (`sudo vmm kernel list` to check). OpenShift clusters prefer `security-kernel` (6.12) when present, then `k8s-kernel`.
 
 Pre-built K8s rootfs images (`k8s-<version>.ext4`) include containerd and kubeadm pre-installed, cutting provisioning time significantly. If not available locally, vmm attempts to download from GitHub releases. If that fails, packages are installed at runtime over the network (~30-60s extra per node).
 
@@ -30,27 +46,31 @@ sudo vmm cluster create dev
 sudo vmm cluster create prod --workers 2 --cpus 4 --memory 8192
 
 # Explicitly specify kernel, image, and K8s version
-sudo vmm cluster create prod --kernel k8s-kernel --image k8s-1.36.5 --workers 2
+sudo vmm cluster create prod --kernel k8s-kernel --image k8s-1.37.1 --workers 2
 
-# Use a custom SSH key for cluster provisioning
+# Add your own SSH key to the nodes
 sudo vmm cluster create dev --ssh-key ~/.ssh/id_ed25519.pub
 
-# List clusters
-vmm cluster list
+# Add an admin workstation VM (security tools + kubeconfig, its own SSH key to the nodes)
+sudo vmm cluster create dev --workers 1 --admin-workstation
 
-# Extract kubeconfig (also merges into ~/.kube/config)
-vmm cluster kubeconfig mycluster
+# List / inspect clusters (add --json for machine-readable output)
+sudo vmm cluster list
+sudo vmm cluster show mycluster
+
+# Extract kubeconfig again (merges into the invoking user's ~/.kube/config)
+sudo vmm cluster kubeconfig mycluster
 
 # Stop / start a cluster (start waits for fresh node Ready status;
 # a plain `kubectl wait` right after a restart can pass on stale status)
 sudo vmm cluster stop mycluster
-sudo vmm cluster start mycluster
+sudo vmm cluster start mycluster              # --timeout 10m, or --no-wait to skip the Ready wait
 
 # Delete cluster and all its VMs
 sudo vmm cluster delete mycluster -f
 ```
 
-`--ssh-key` is optional. When omitted, the VMM-managed Ed25519 key (`/var/lib/vmm/ssh/vmm_ed25519`) is used for cluster provisioning (kubeadm over SSH). If you provide a public key, it is added to the nodes alongside the managed key, and its private half is used for provisioning when it sits next to it (otherwise the managed key is).
+`--ssh-key` is optional. When omitted, the VMM-managed Ed25519 key (`/var/lib/vmm/ssh/vmm_ed25519`) is used for cluster provisioning (kubeadm over SSH). If you provide a public key, it is added to the nodes alongside the managed key, and its private half is tried first for provisioning when it sits next to it, falling back to the managed key (e.g. when the private key has a passphrase and there's no ssh-agent).
 
 ## VM Naming Convention
 
@@ -58,6 +78,7 @@ Cluster VMs follow a fixed naming pattern:
 
 - Control plane: `{cluster-name}-control-plane`
 - Workers: `{cluster-name}-worker-1`, `{cluster-name}-worker-2`, ...
+- Admin workstation (if requested): `{cluster-name}-admin` — `sudo vmm ssh {cluster-name}-admin`, then `kubectl` and `ssh <node-ip>` work from inside it
 
 These VMs appear in `sudo vmm list` alongside standalone VMs.
 
@@ -70,14 +91,28 @@ kubectl --context vmm-mycluster get nodes
 kubectl --context vmm-mycluster get pods -A
 ```
 
+## JSON Output
+
+`cluster list --json` (array), `cluster show <name> --json` and `cluster create --json` all print the same stable shape, meant for scripts and test harnesses:
+
+```json
+{"name": "dev", "state": "running", "type": "kubeadm", "cni": "cilium", "k8s_version": "1.37.1",
+ "nested": false, "control_plane_ip": "172.16.0.5", "context": "vmm-dev",
+ "nodes": [{"name": "dev-control-plane", "role": "control-plane", "ip": "172.16.0.5", "state": "running"},
+           {"name": "dev-worker-1", "role": "worker", "ip": "172.16.0.6", "state": "running"}],
+ "created_at": "..."}
+```
+
+`admin_workstation` (`{name, ip, state}`) appears when there is one; OpenShift clusters have `openshift_version` instead of `k8s_version`. `cluster create --json` writes progress to stderr, so stdout holds only the JSON once the cluster is ready.
+
 ## Provisioning Sequence
 
 1. Create VMs (control plane + workers)
 2. Start all VMs, wait for SSH connectivity
 3. Install containerd on all nodes (skipped if pre-installed rootfs)
 4. Install kubeadm/kubelet/kubectl (skipped if pre-installed rootfs)
-5. `kubeadm init` on control plane (skips kube-proxy)
-6. Install Cilium CNI with kube-proxy replacement
+5. `kubeadm init` on control plane (skips kube-proxy for Cilium only)
+6. Install the CNI: Cilium with kube-proxy replacement (default), or Calico via the Tigera operator (`--cni calico`)
 7. Join workers via `kubeadm join`
 8. Wait for all nodes to reach Ready state (up to 5 minutes)
 9. Extract and merge kubeconfig
